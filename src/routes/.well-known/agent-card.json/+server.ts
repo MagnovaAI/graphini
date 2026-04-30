@@ -59,6 +59,19 @@ export const GET: RequestHandler = ({ url }) => {
         tags: ['markdown', 'documentation']
       },
       {
+        description:
+          'Draft and patch non-Mermaid code artifacts such as JSON, YAML, TypeScript, Svelte, HTML, CSS, and config.',
+        examples: [
+          'Create a JSON schema for this workflow.',
+          'Write a YAML deployment config draft.'
+        ],
+        id: 'code-agent',
+        inputModes: ['text/plain', 'application/json', 'application/yaml', 'text/yaml'],
+        name: 'Code Agent',
+        outputModes: ['application/json', 'application/yaml', 'text/plain'],
+        tags: ['code', 'json', 'yaml', 'config']
+      },
+      {
         description: 'Analyze uploaded files and tabular data for diagram or chart generation.',
         examples: ['Summarize the uploaded CSV and suggest a Mermaid chart.'],
         id: 'data-agent',

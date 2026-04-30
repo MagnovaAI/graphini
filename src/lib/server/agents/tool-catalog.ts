@@ -14,7 +14,8 @@ export type GraphiniAgentId =
   | 'research-agent'
   | 'document-agent'
   | 'data-agent'
-  | 'critic';
+  | 'critic'
+  | 'code-agent';
 
 export const graphiniMcpTools = [
   {
@@ -67,6 +68,65 @@ export const graphiniMcpTools = [
     inputSchema: objectSchema(lineRangeInput),
     name: 'diagramRead',
     title: 'Diagram Read'
+  },
+  {
+    annotations: { readOnlyHint: true, title: 'Code Read' },
+    description:
+      'Read the current non-Mermaid code artifact, optionally limited to a line range. Use for JSON, YAML, config, TypeScript, JavaScript, Svelte, HTML, CSS, shell, and text code.',
+    inputSchema: objectSchema(lineRangeInput),
+    name: 'codeRead',
+    title: 'Code Read'
+  },
+  {
+    annotations: { destructiveHint: true, title: 'Code Write' },
+    description:
+      'Create or replace a non-Mermaid code artifact. This drafts an artifact only and does not write repository files.',
+    inputSchema: objectSchema(
+      z.object({
+        content: z.string().min(1),
+        language: z.enum([
+          'json',
+          'yaml',
+          'typescript',
+          'javascript',
+          'svelte',
+          'html',
+          'css',
+          'markdown',
+          'text'
+        ]),
+        purpose: z.string().optional()
+      })
+    ),
+    name: 'codeWrite',
+    title: 'Code Write'
+  },
+  {
+    annotations: { destructiveHint: true, title: 'Code Patch' },
+    description:
+      'Patch the current non-Mermaid code artifact by replacing a 1-based line range. This does not write repository files.',
+    inputSchema: objectSchema(
+      z.object({
+        content: z.string().min(1),
+        endLine: z.number().int().min(1),
+        language: z
+          .enum([
+            'json',
+            'yaml',
+            'typescript',
+            'javascript',
+            'svelte',
+            'html',
+            'css',
+            'markdown',
+            'text'
+          ])
+          .optional(),
+        startLine: z.number().int().min(1)
+      })
+    ),
+    name: 'codePatch',
+    title: 'Code Patch'
   },
   {
     annotations: { destructiveHint: true, title: 'Diagram Write' },
@@ -290,6 +350,72 @@ export const graphiniMcpTools = [
     title: 'Sequential Thinking'
   },
   {
+    annotations: { readOnlyHint: true, title: 'Git Guard' },
+    description:
+      'Check git safety before repository file/docs mutation planning. Reports dirty/protected paths and never modifies files.',
+    inputSchema: objectSchema(
+      z.object({
+        operation: z.enum(['status', 'protect-paths', 'preflight']),
+        paths: z.array(z.string()).optional(),
+        reason: z.string().optional()
+      })
+    ),
+    name: 'gitGuard',
+    title: 'Git Guard'
+  },
+  {
+    annotations: { readOnlyHint: true, title: 'Subagent Fanout' },
+    description:
+      'Plan bounded subagent assignments with ownership, allowed tools, expected outputs, and file/path guardrails.',
+    inputSchema: objectSchema(
+      z.object({
+        agents: z
+          .array(
+            z.object({
+              allowedTools: z.array(z.string()).optional(),
+              id: z.string().min(1),
+              objective: z.string().min(1),
+              ownedPaths: z.array(z.string()).optional(),
+              role: z.enum([
+                'planner',
+                'diagram-engineer',
+                'visual-polish',
+                'research-agent',
+                'document-agent',
+                'data-agent',
+                'critic',
+                'code-agent'
+              ])
+            })
+          )
+          .min(1),
+        task: z.string().min(1)
+      })
+    ),
+    name: 'subagentFanout',
+    title: 'Subagent Fanout'
+  },
+  {
+    annotations: { readOnlyHint: true, title: 'Subagent Assemble' },
+    description:
+      'Assemble planned subagent outputs into an integration plan with conflicts and verification steps.',
+    inputSchema: objectSchema(
+      z.object({
+        outputs: z.array(
+          z.object({
+            agentId: z.string().min(1),
+            changedPaths: z.array(z.string()).optional(),
+            summary: z.string().min(1)
+          })
+        ),
+        runId: z.string().min(1),
+        verification: z.array(z.string()).optional()
+      })
+    ),
+    name: 'subagentAssemble',
+    title: 'Subagent Assemble'
+  },
+  {
     annotations: { readOnlyHint: true, title: 'Table Analytics' },
     description:
       'Analyze tabular data and suggest statistics, trends, outliers, or Mermaid charts.',
@@ -308,6 +434,7 @@ export const graphiniMcpTools = [
 ] satisfies McpToolDescriptor[];
 
 export const agentToolNames = {
+  'code-agent': ['codeRead', 'codeWrite', 'codePatch', 'gitGuard'],
   critic: ['diagramRead', 'markdownRead', 'selfCritique', 'errorChecker'],
   'data-agent': ['fileManager', 'tableAnalytics', 'dataAnalyzer'],
   'diagram-engineer': [
@@ -323,7 +450,10 @@ export const agentToolNames = {
     'planner',
     'planWithProgress',
     'sequentialThinking',
-    'longTermMemory'
+    'longTermMemory',
+    'gitGuard',
+    'subagentFanout',
+    'subagentAssemble'
   ],
   planner: ['planner', 'planWithProgress', 'sequentialThinking'],
   'research-agent': ['webSearch', 'fileManager'],

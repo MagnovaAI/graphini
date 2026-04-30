@@ -6,9 +6,11 @@ import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-l
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { error, json } from '@sveltejs/kit';
 import { stepCountIs, streamText, tool } from 'ai';
+import { execFile } from 'child_process';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import { promisify } from 'util';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 dotenv.config({ path: '.env.local' });
@@ -29,6 +31,9 @@ const diagramStore = new Map<string, string>();
 const markdownStore = new Map<string, string>();
 const memoryStore = new Map<string, string>();
 const planStore = new Map<string, string>();
+const codeStore = new Map<string, string>();
+const subagentStore = new Map<string, string>();
+const execFileAsync = promisify(execFile);
 
 // --- Iconifier: local icon index & resolution helpers ---
 
@@ -368,6 +373,59 @@ function parseMermaidNodes(diagram: string): { id: string; text: string; line: n
   return nodes;
 }
 
+type CodeArtifactLanguage =
+  | 'json'
+  | 'yaml'
+  | 'typescript'
+  | 'javascript'
+  | 'svelte'
+  | 'html'
+  | 'css'
+  | 'markdown'
+  | 'text';
+
+function detectCodeLanguage(code: string): CodeArtifactLanguage {
+  const trimmed = code.trim();
+  if (!trimmed) return 'text';
+  if (/^---\n/.test(trimmed) || /^[\w-]+:\s/m.test(trimmed)) return 'yaml';
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || trimmed.startsWith('[')) return 'json';
+  if (trimmed.includes('<script') && trimmed.includes('</script>')) return 'svelte';
+  if (/^<!doctype html/i.test(trimmed) || /<\/?[a-z][\s\S]*>/i.test(trimmed)) return 'html';
+  if (/\b(import|export|interface|type)\b/.test(trimmed)) return 'typescript';
+  if (/\b(function|const|let|var)\b/.test(trimmed)) return 'javascript';
+  return 'text';
+}
+
+function validateCodeArtifact(
+  code: string,
+  language: CodeArtifactLanguage
+): { valid: true } | { error: string; valid: false } {
+  const trimmed = code.trim();
+  const mermaidDiagramTypes =
+    /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)\b/i;
+
+  if (mermaidDiagramTypes.test(trimmed)) {
+    return {
+      error:
+        'REJECTED: code tools are for non-Mermaid code. Use diagramWrite/diagramPatch for Mermaid.',
+      valid: false
+    };
+  }
+
+  if (language === 'json') {
+    try {
+      JSON.parse(trimmed);
+    } catch (e) {
+      return {
+        error: `Invalid JSON: ${e instanceof Error ? e.message : 'parse failed'}`,
+        valid: false
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
 // AI SDK Tool Definitions for Multi-Step Calling
 const createDiagramTools = (sessionId: string) => ({
   actionItemExtractor: tool({
@@ -631,6 +689,131 @@ const createDiagramTools = (sessionId: string) => ({
         subgraphsStyled: subgraphIds.length,
         success: true,
         summary: `Styled ${nodeIds.length} nodes and ${subgraphIds.length} subgraphs with ${palette} palette`
+      };
+    }
+  }),
+
+  codePatch: tool({
+    description:
+      'Patch the current non-Mermaid code artifact by replacing a 1-based line range. Use for JSON, YAML, TypeScript, JavaScript, CSS, HTML, config, and other code. Never use this for Mermaid diagrams.',
+    inputSchema: z.object({
+      content: z.string().min(1).describe('Replacement code for the selected line range'),
+      endLine: z.number().int().min(1).describe('1-based ending line number'),
+      language: z
+        .enum([
+          'json',
+          'yaml',
+          'typescript',
+          'javascript',
+          'svelte',
+          'html',
+          'css',
+          'markdown',
+          'text'
+        ])
+        .optional()
+        .describe('Language of the code artifact'),
+      startLine: z.number().int().min(1).describe('1-based starting line number')
+    }),
+    execute: async ({ startLine, endLine, content, language }) => {
+      const current = codeStore.get(sessionId) || '';
+      const lines = current.split('\n');
+
+      if (startLine > endLine) {
+        return {
+          success: false,
+          error: `startLine (${startLine}) cannot exceed endLine (${endLine})`
+        };
+      }
+      if (!current.trim()) {
+        return { success: false, error: 'No code artifact exists yet. Use codeWrite first.' };
+      }
+      if (endLine > lines.length) {
+        return {
+          success: false,
+          error: `endLine ${endLine} exceeds artifact length (${lines.length})`
+        };
+      }
+
+      const unescapedContent = content.replace(/\\n/g, '\n');
+      lines.splice(startLine - 1, endLine - startLine + 1, ...unescapedContent.split('\n'));
+      const nextCode = lines.join('\n');
+      const validation = validateCodeArtifact(nextCode, language ?? detectCodeLanguage(nextCode));
+      if (!validation.valid) return { success: false, error: validation.error };
+
+      codeStore.set(sessionId, nextCode);
+      return {
+        content: nextCode,
+        language: language ?? detectCodeLanguage(nextCode),
+        lines: nextCode.split('\n').length,
+        success: true
+      };
+    }
+  }),
+
+  codeRead: tool({
+    description:
+      'Read the current code artifact content for JSON, YAML, TypeScript, JavaScript, CSS, HTML, config, or other non-Mermaid code. Use this before patching generated code artifacts.',
+    inputSchema: z.object({
+      endLine: z.number().int().min(1).optional().describe('Optional 1-based end line'),
+      startLine: z.number().int().min(1).optional().describe('Optional 1-based start line')
+    }),
+    execute: async ({ startLine, endLine } = {}) => {
+      const code = codeStore.get(sessionId) || '';
+      const lines = code.split('\n');
+
+      if (!code.trim()) {
+        return { content: '', isPartial: false, readFrom: 1, readTo: 0, totalLines: 0 };
+      }
+
+      const totalLines = lines.length;
+      const from = startLine ? Math.max(1, Math.min(startLine, totalLines)) : 1;
+      const to = endLine ? Math.max(from, Math.min(endLine, totalLines)) : totalLines;
+      const isPartial = from !== 1 || to !== totalLines;
+
+      return {
+        content: isPartial ? lines.slice(from - 1, to).join('\n') : code,
+        isPartial,
+        language: detectCodeLanguage(code),
+        readFrom: from,
+        readTo: to,
+        totalLines
+      };
+    }
+  }),
+
+  codeWrite: tool({
+    description:
+      'Create or replace a non-Mermaid code artifact. Use for JSON, YAML, TypeScript, JavaScript, Svelte, HTML, CSS, config, and plaintext code. This does not write to the repository filesystem.',
+    inputSchema: z.object({
+      content: z.string().min(1).describe('Complete code artifact content'),
+      language: z
+        .enum([
+          'json',
+          'yaml',
+          'typescript',
+          'javascript',
+          'svelte',
+          'html',
+          'css',
+          'markdown',
+          'text'
+        ])
+        .describe('Language of the code artifact'),
+      purpose: z.string().optional().describe('Short reason for creating this code artifact')
+    }),
+    execute: async ({ content, language, purpose }) => {
+      const unescapedContent = content.replace(/\\n/g, '\n');
+      const validation = validateCodeArtifact(unescapedContent, language);
+      if (!validation.valid) return { success: false, error: validation.error };
+
+      codeStore.set(sessionId, unescapedContent);
+      return {
+        content: unescapedContent,
+        language,
+        lines: unescapedContent.split('\n').length,
+        purpose,
+        success: true
       };
     }
   }),
@@ -1516,6 +1699,55 @@ WHEN TO USE:
     }
   }),
 
+  gitGuard: tool({
+    description:
+      'Check git safety before any repository file or docs mutation. Use this before planning codebase file edits. Reports dirty status and protected paths; does not modify files.',
+    inputSchema: z.object({
+      operation: z.enum(['status', 'protect-paths', 'preflight']).describe('Git guard operation'),
+      paths: z.array(z.string()).optional().describe('Paths the agent wants to read or modify'),
+      reason: z.string().optional().describe('Why these paths are needed')
+    }),
+    execute: async ({ operation, paths = [], reason }) => {
+      try {
+        const { stdout } = await execFileAsync('git', ['status', '--short'], {
+          cwd: process.cwd(),
+          timeout: 5000
+        });
+        const changedPaths = stdout
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => line.slice(3));
+        const requestedDirtyPaths = paths.filter((requestedPath) =>
+          changedPaths.some(
+            (changedPath) =>
+              changedPath === requestedPath ||
+              changedPath.startsWith(`${requestedPath}/`) ||
+              requestedPath.startsWith(`${changedPath}/`)
+          )
+        );
+
+        return {
+          changedPaths,
+          clean: changedPaths.length === 0,
+          operation,
+          protectedPaths: requestedDirtyPaths,
+          reason,
+          requestedPaths: paths,
+          requiresUserConfirmation: requestedDirtyPaths.length > 0,
+          success: true
+        };
+      } catch (e) {
+        return {
+          error: e instanceof Error ? e.message : 'Unable to run git status',
+          operation,
+          requestedPaths: paths,
+          success: false
+        };
+      }
+    }
+  }),
+
   iconifier: tool({
     description: `Post-processing tool that attaches visual icons to diagram nodes AFTER a diagram is created.
 
@@ -2044,6 +2276,83 @@ WHEN TO USE:
     }
   }),
 
+  subagentAssemble: tool({
+    description:
+      'Assemble planned subagent outputs into a single integration plan. Use after subagentFanout. Produces ordered changes, conflict notes, and verification steps; does not mutate files.',
+    inputSchema: z.object({
+      outputs: z.array(
+        z.object({
+          agentId: z.string().min(1),
+          changedPaths: z.array(z.string()).optional(),
+          summary: z.string().min(1)
+        })
+      ),
+      runId: z.string().min(1),
+      verification: z.array(z.string()).optional()
+    }),
+    execute: async ({ runId, outputs, verification = [] }) => {
+      return {
+        integrationPlan: outputs.map((output, index) => ({
+          order: index + 1,
+          ...output
+        })),
+        runId,
+        success: true,
+        verification,
+        warning:
+          'Assembly is advisory only. File writes require explicit repository write tooling and gitGuard preflight.'
+      };
+    }
+  }),
+
+  subagentFanout: tool({
+    description:
+      'Plan a multi-agent fanout for complex work. Creates bounded subagent assignments with ownership, allowed tools, expected outputs, and file/path guardrails. This plans work only; it does not spawn external processes or mutate files.',
+    inputSchema: z.object({
+      agents: z
+        .array(
+          z.object({
+            allowedTools: z.array(z.string()).optional(),
+            id: z.string().min(1),
+            objective: z.string().min(1),
+            ownedPaths: z.array(z.string()).optional(),
+            role: z.enum([
+              'planner',
+              'diagram-engineer',
+              'visual-polish',
+              'research-agent',
+              'document-agent',
+              'data-agent',
+              'critic',
+              'code-agent'
+            ])
+          })
+        )
+        .min(1),
+      task: z.string().min(1)
+    }),
+    execute: async ({ task, agents }) => {
+      const runId = crypto.randomUUID();
+      const assignments = agents.map((agent) => ({
+        ...agent,
+        guardrails: [
+          'Do not modify files outside ownedPaths.',
+          'Do not overwrite dirty user changes.',
+          'Return a patch or artifact summary before assembly.'
+        ],
+        status: 'planned'
+      }));
+      subagentStore.set(`subagents_${sessionId}_${runId}`, JSON.stringify({ assignments, task }));
+
+      return {
+        assignments,
+        runId,
+        success: true,
+        task
+      };
+    }
+  }),
+
   tableAnalytics: tool({
     description:
       'Analyze CSV/tabular data and generate insights. Can detect columns, calculate statistics (mean, median, min, max, outliers), and suggest chart types. Use when the user provides CSV data or asks to "analyze this data", "create a chart from this", or "what are the trends".',
@@ -2269,6 +2578,9 @@ TOOLS:
 - autoStyler(palette?, preserveExisting?) — Automatically style all nodes and subgraphs with harmonious colors. Palettes: vibrant, pastel, earth, ocean, sunset, monochrome. Use when user asks to "style", "colorize", or "make colorful". NOTE: autoStyler does NOT work on mindmap, timeline, pie, gantt, gitgraph, sequenceDiagram, erDiagram, sankey, or journey diagrams — these types do not support style directives. If the user asks to style one of these, explain the limitation and suggest converting to a flowchart first.
 - markdownRead() — Read content from the markdown/document editor panel.
 - markdownWrite(content, append?) — Write or append content to the markdown/document editor panel.
+- codeRead(startLine?, endLine?) — Read the current non-Mermaid code artifact. Use for JSON, YAML, TypeScript, JavaScript, Svelte, HTML, CSS, config, and text code.
+- codeWrite(content, language, purpose?) — Create or replace a non-Mermaid code artifact. Use for JSON, YAML, config files, TypeScript, JavaScript, Svelte, HTML, CSS, and code examples. This creates an artifact; it does NOT write to repository files.
+- codePatch(startLine, endLine, content, language?) — Patch the current non-Mermaid code artifact by line range.
 - webSearch(query) — Search the web for information, documentation, etc.
 - askQuestions(context, questions) — Ask the user multiple-choice/multi-select questions to clarify requirements. Use when the request is ambiguous.
 - planner(task, context?) — Decompose complex tasks into step-by-step plans. ALWAYS use this for multi-step requests like "create architecture for X", "design a system", "build a complete diagram". After calling planner, you MUST create a numbered step-by-step plan in your response, then execute each step using the appropriate tools (diagramWrite, autoStyler, iconifier, etc.).
@@ -2279,6 +2591,9 @@ TOOLS:
 - longTermMemory(operation, key?, value?, query?) — Store and retrieve persistent memories. Operations: "save" (store key-value), "get" (retrieve by key), "list" (show all), "delete" (remove), "search" (find by keyword). Use when user says "remember this" or asks "do you remember".
 - planWithProgress(operation, title?, steps?, stepId?, status?, message?) — Create and track visible plans. Operations: "create" (new plan with steps), "update" (change step status: pending/in_progress/done/skipped), "get" (view plan). Use for complex multi-step tasks to show progress.
 - sequentialThinking(thought, thoughtNumber, totalThoughts, nextAction?) — Think through problems step-by-step visibly. Use before complex architecture diagrams or when analyzing trade-offs.
+- gitGuard(operation, paths?, reason?) — Check git safety before repository file/docs mutation planning. Use before any codebase modification plan. It reports dirty/protected paths and never modifies files.
+- subagentFanout(task, agents) — Plan bounded subagent assignments for complex work. Use when the task needs parallel planning, research, code, docs, or review agents. It plans only and does not mutate files.
+- subagentAssemble(runId, outputs, verification?) — Assemble subagent outputs into one integration plan with conflict notes and verification steps. It plans only and does not mutate files.
 
 THINK HARDER / DEEP THINKING:
 When the user says "think harder", "think more", "think deeply", "think step by step", "reason through this", or similar phrases requesting deeper analysis, you MUST use the planner tool to create a detailed plan before taking action. Break the problem into clear steps analyzing requirements, trade-offs, and approach before creating or modifying anything. Then execute each step using the appropriate tools.
@@ -2286,9 +2601,12 @@ When the user says "think harder", "think more", "think deeply", "think step by 
 WHEN TO USE TOOLS:
 - Use diagram tools (diagramRead/diagramWrite/diagramPatch) ONLY for Mermaid diagram code.
 - Use markdown tools (markdownRead/markdownWrite) ONLY for documentation, notes, and prose text.
+- Use code tools (codeRead/codeWrite/codePatch) for JSON, YAML, TOML, TypeScript, JavaScript, Svelte, HTML, CSS, shell snippets, config files, and any non-Mermaid code artifact.
+- If the user asks for JSON or YAML, call codeWrite with language "json" or "yaml". NEVER put JSON/YAML in diagramWrite. Use markdownWrite only if the user explicitly wants explanatory prose around it.
 - For greetings ("hi", "hey", "hello"), casual chat, or general questions — just respond naturally WITHOUT calling any tools.
 - If the user asks to create a NEW diagram from scratch, use diagramWrite directly (no need to read first).
 - If the user asks to EDIT or FIX an existing diagram, call diagramRead first, then apply changes.
+- If the user asks to modify repository files or docs, call gitGuard first with the target paths, then use subagentFanout/subagentAssemble to plan ownership and verification. Do not claim files were changed unless an actual repository-writing tool exists and succeeds.
 - Use askQuestions when the user's request is vague or has multiple possible interpretations — ask 2-4 concise questions with clear options.
 - Use webSearch when you need to look up information you're unsure about.
 - When Fixing diagram or error, always read diagram first.
@@ -2296,9 +2614,17 @@ WHEN TO USE TOOLS:
 CRITICAL — TOOL SEPARATION (NEVER VIOLATE):
 - diagramWrite/diagramPatch: ONLY Mermaid diagram syntax (graph TD, flowchart LR, sequenceDiagram, etc.). NEVER write markdown, documentation, or prose to diagram tools.
 - markdownWrite: ONLY markdown documentation/prose. NEVER write Mermaid diagram code to markdownWrite.
-- These two tool categories are COMPLETELY INDEPENDENT. Writing to one must NEVER trigger writing to the other.
+- codeWrite/codePatch: ONLY non-Mermaid code artifacts such as JSON, YAML, config, TypeScript, JavaScript, Svelte, HTML, CSS, shell, or plaintext code. These tools do NOT write repository files.
+- These three tool categories are COMPLETELY INDEPENDENT. Writing to one must NEVER trigger writing to another.
 - If the user asks for BOTH a diagram AND documentation, call them as separate independent operations. Do NOT combine or mix content.
 - After ANY diagram edit (diagramWrite or diagramPatch), ALWAYS call errorChecker() to validate the syntax.
+
+GIT AND FILE SAFETY:
+- Before planning repository file or docs changes, call gitGuard with the paths you expect to touch.
+- Dirty/protected paths require explicit user confirmation before overwrite-style work.
+- Subagents must own explicit, non-overlapping paths. If two subagents need the same path, assign one owner and make the other produce review notes only.
+- Never delete, reset, or revert files. Never claim a repository mutation happened unless a real file-writing operation succeeded.
+- Current code tools create in-chat artifacts only; they are safe for drafting JSON/YAML/code before repository writes exist.
 
 WORKFLOW (for diagram edits only):
 1. Call diagramRead to see the current state
@@ -2312,6 +2638,20 @@ WORKFLOW (for markdown/documentation):
 2. Use markdownWrite to create or update documentation
 3. Respond with a brief summary of what was written
 4. Do NOT call any diagram tools as part of this workflow unless the user explicitly asked for diagram changes too
+
+WORKFLOW (for JSON/YAML/code artifacts):
+1. Use codeRead if editing an existing artifact
+2. Use codeWrite for a full artifact or codePatch for a local edit
+3. For JSON, ensure valid JSON before writing
+4. Respond with the artifact purpose and language
+5. Do NOT call diagram tools unless the user explicitly asks for Mermaid
+
+WORKFLOW (for multi-agent repository work planning):
+1. Call gitGuard(operation="preflight", paths, reason)
+2. Call subagentFanout with explicit roles, objectives, ownedPaths, and allowedTools
+3. Call subagentAssemble after outputs are known
+4. Provide verification steps and note any dirty/protected paths
+5. Do NOT say files were modified unless a repository-writing tool actually modified them
 
 RULES:
 - Do NOT call tools for greetings or casual conversation
@@ -2456,11 +2796,8 @@ export const POST: RequestHandler = async ({ request }) => {
       sessionId,
       conversationId,
       enabledTools,
-      isRepair,
-      engine
+      isRepair
     } = await clonedRequest.json();
-
-    const engineName = engine ?? 'mermaid';
 
     // Use sessionId if provided, otherwise fall back to conversationId, then 'default'
     const diagramSessionId = sessionId ?? conversationId ?? 'default';
