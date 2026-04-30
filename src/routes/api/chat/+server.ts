@@ -1,9 +1,26 @@
 import { validateSession } from '$lib/server/auth';
+import {
+  codeStore,
+  diagramStore,
+  markdownStore,
+  memoryStore,
+  planStore,
+  subagentStore
+} from '$lib/server/chat/state';
+import {
+  buildDiagramReview,
+  findMermaidDeclarations,
+  parseMermaidNodes,
+  validateSingleMermaidDocument
+} from '$lib/server/chat/mermaid';
+import { detectCodeLanguage, validateCodeArtifact } from '$lib/server/chat/code-artifacts';
+import { hasRecentSubagentFanout, shouldExposePlanningTool } from '$lib/server/chat/tool-gating';
+import { instructionsForSubagent } from '$lib/server/chat/subagents';
+import { openrouterFastChat } from '$lib/server/chat/model';
 import { getDb } from '$lib/server/db';
 import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
 import { stateManager } from '$lib/server/state-manager';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { error, json } from '@sveltejs/kit';
 import { generateText, streamText, tool } from 'ai';
 import { execFile } from 'child_process';
@@ -16,71 +33,7 @@ import type { RequestHandler } from './$types';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-// Initialize OpenRouter client
-if (!process.env.OPENROUTER_API_KEY) {
-  throw new Error('OPENROUTER_API_KEY is not set');
-}
-
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY
-});
-
-function openrouterFastChat(modelId: string) {
-  return openrouter.chat(modelId, {
-    includeReasoning: true,
-    reasoning: {
-      enabled: true,
-      max_tokens: 96,
-      exclude: false
-    }
-  });
-}
-
-// In-memory diagram store for multi-step tool calling
-// In production, use Redis or database
-const diagramStore = new Map<string, string>();
-const markdownStore = new Map<string, string>();
-const memoryStore = new Map<string, string>();
-const planStore = new Map<string, string>();
-const codeStore = new Map<string, string>();
-const subagentStore = new Map<string, string>();
 const execFileAsync = promisify(execFile);
-
-const MERMAID_DIAGRAM_DECLARATION =
-  /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)\b/i;
-
-function findMermaidDeclarations(source: string): { line: number; text: string }[] {
-  return source
-    .split('\n')
-    .map((line, index) => ({ line: index + 1, text: line.trim() }))
-    .filter(({ text }) => MERMAID_DIAGRAM_DECLARATION.test(text));
-}
-
-function validateSingleMermaidDocument(
-  source: string
-): { valid: true } | { error: string; hint: string; valid: false } {
-  const trimmed = source.trim();
-  if (!MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
-    return {
-      error:
-        'REJECTED: Content does not start with a valid Mermaid diagram type. Use markdownWrite for documentation/prose. Redo with valid Mermaid code that starts with a diagram type like "graph TD", "flowchart LR", "sequenceDiagram", etc.',
-      hint: 'Mermaid content must start with exactly one diagram declaration.',
-      valid: false
-    };
-  }
-
-  const declarations = findMermaidDeclarations(source);
-  if (declarations.length !== 1) {
-    const declarationLines = declarations.map(({ line }) => line).join(', ') || 'none';
-    return {
-      error: `REJECTED: Mermaid content contains ${declarations.length} diagram declarations at lines ${declarationLines}. Use exactly one top-level diagram declaration.`,
-      hint: 'Do not prepend placeholder graphs or mix declarations like "flowchart TD" and "graph TD" in one artifact.',
-      valid: false
-    };
-  }
-
-  return { valid: true };
-}
 
 // --- Iconifier: local icon index & resolution helpers ---
 
@@ -381,300 +334,6 @@ async function resolveIconForNode(
   }
 
   return null;
-}
-
-// Parse nodes from a Mermaid diagram: returns { id, text, line } for each node
-function parseMermaidNodes(diagram: string): { id: string; text: string; line: number }[] {
-  const lines = diagram.split('\n');
-  const nodes: { id: string; text: string; line: number }[] = [];
-  const seen = new Set<string>();
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // Skip subgraph definitions - they're not nodes
-    if (line.trim().startsWith('subgraph')) continue;
-    // Match node definitions like: NodeId["Text"] or NodeId[Text] or NodeId("Text") etc.
-    const nodeMatches = line.matchAll(
-      /\b([A-Za-z][A-Za-z0-9_]*)\s*(?:\["([^"]+)"\]|\[([^\]]+)\]|\("([^"]+)"\)|\(([^)]+)\)|\{"([^"]+)"\}|\{([^}]+)\}|\(\["([^"]+)"\]\)|\(\[([^\]]+)\]\)|\[\["([^"]+)"\]\]|\[\[([^\]]+)\]\])/g
-    );
-    for (const match of nodeMatches) {
-      const id = match[1];
-      const text =
-        match[2] ||
-        match[3] ||
-        match[4] ||
-        match[5] ||
-        match[6] ||
-        match[7] ||
-        match[8] ||
-        match[9] ||
-        match[10] ||
-        match[11] ||
-        '';
-      if (!seen.has(id) && text) {
-        seen.add(id);
-        nodes.push({ id, text, line: i });
-      }
-    }
-  }
-  return nodes;
-}
-
-type CodeArtifactLanguage =
-  | 'json'
-  | 'yaml'
-  | 'typescript'
-  | 'javascript'
-  | 'svelte'
-  | 'html'
-  | 'css'
-  | 'markdown'
-  | 'text';
-
-function detectCodeLanguage(code: string): CodeArtifactLanguage {
-  const trimmed = code.trim();
-  if (!trimmed) return 'text';
-  if (/^---\n/.test(trimmed) || /^[\w-]+:\s/m.test(trimmed)) return 'yaml';
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || trimmed.startsWith('[')) return 'json';
-  if (trimmed.includes('<script') && trimmed.includes('</script>')) return 'svelte';
-  if (/^<!doctype html/i.test(trimmed) || /<\/?[a-z][\s\S]*>/i.test(trimmed)) return 'html';
-  if (/\b(import|export|interface|type)\b/.test(trimmed)) return 'typescript';
-  if (/\b(function|const|let|var)\b/.test(trimmed)) return 'javascript';
-  return 'text';
-}
-
-function buildDiagramReview(diagram: string): {
-  improvements: { description: string; severity: 'info' | 'medium' | 'high'; title: string }[];
-  summary: string;
-} {
-  const lines = diagram.split('\n');
-  const nodes = parseMermaidNodes(diagram);
-  const hasComments = lines.some((line) => line.trim().startsWith('%%'));
-  const hasStyles = lines.some((line) => line.trim().startsWith('style '));
-  const hasClasses = lines.some((line) => line.trim().startsWith('classDef '));
-  const hasSubgraphs = lines.some((line) => line.trim().startsWith('subgraph '));
-  const hasQueue = /\b(queue|kafka|rabbitmq|pubsub|sqs|event|message)\b/i.test(diagram);
-  const hasDatabase = /\b(db|database|postgres|mysql|mongo|redis|dynamodb|cassandra)\b/i.test(
-    diagram
-  );
-  const hasObservability = /\b(log|metric|monitor|grafana|prometheus|trace|alert)\b/i.test(diagram);
-  const hasSecurity = /\b(auth|oauth|iam|waf|firewall|secret|token|identity)\b/i.test(diagram);
-  const hasIngress = /\b(load balancer|gateway|ingress|cdn|nginx|api gateway)\b/i.test(diagram);
-  const ids = nodes.map((node) => node.id);
-  const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
-
-  const improvements: {
-    description: string;
-    severity: 'info' | 'medium' | 'high';
-    title: string;
-  }[] = [];
-
-  if (nodes.length < 10) {
-    improvements.push({
-      description:
-        'The diagram is likely under-specified. Add meaningful supporting components such as auth, cache, queue, observability, CI/CD, external clients, and deployment/runtime boundaries.',
-      severity: 'high',
-      title: 'Expand component coverage'
-    });
-  }
-
-  if (!hasSubgraphs && nodes.length >= 8) {
-    improvements.push({
-      description:
-        'Group related nodes into subgraphs such as Client, Edge, Services, Data, Async Processing, and Observability so the architecture scans cleanly.',
-      severity: 'medium',
-      title: 'Add architectural boundaries'
-    });
-  }
-
-  if (!hasIngress) {
-    improvements.push({
-      description:
-        'Show the request entry point with a CDN, load balancer, ingress, or API gateway before traffic reaches internal services.',
-      severity: 'medium',
-      title: 'Clarify ingress path'
-    });
-  }
-
-  if (!hasDatabase) {
-    improvements.push({
-      description:
-        'Add the persistence layer and label which services own or query each datastore.',
-      severity: 'high',
-      title: 'Add data ownership'
-    });
-  }
-
-  if (!hasQueue) {
-    improvements.push({
-      description:
-        'For production systems, add an async message queue or event bus where work can be retried, buffered, or processed out of band.',
-      severity: 'medium',
-      title: 'Represent async workflows'
-    });
-  }
-
-  if (!hasSecurity) {
-    improvements.push({
-      description:
-        'Add authentication/authorization and any boundary controls such as IAM, WAF, or secrets management.',
-      severity: 'medium',
-      title: 'Show security controls'
-    });
-  }
-
-  if (!hasObservability) {
-    improvements.push({
-      description:
-        'Add logs, metrics, traces, alerts, or a monitoring dashboard so operational readiness is visible.',
-      severity: 'medium',
-      title: 'Add observability'
-    });
-  }
-
-  if (!hasStyles && !hasClasses) {
-    improvements.push({
-      description:
-        'Use class definitions or styling to visually distinguish clients, services, data stores, queues, and external systems.',
-      severity: 'info',
-      title: 'Improve visual hierarchy'
-    });
-  }
-
-  if (!hasComments && lines.length > 25) {
-    improvements.push({
-      description:
-        'For larger diagrams, lightweight Mermaid comments can explain non-obvious flows without cluttering node labels.',
-      severity: 'info',
-      title: 'Document complex flows'
-    });
-  }
-
-  if (duplicateIds.length > 0) {
-    improvements.push({
-      description: `Duplicate node IDs detected: ${[...new Set(duplicateIds)].join(', ')}. Mermaid nodes should have stable unique IDs to avoid accidental merges.`,
-      severity: 'high',
-      title: 'Fix duplicate node IDs'
-    });
-  }
-
-  if (improvements.length === 0) {
-    improvements.push({
-      description:
-        'The diagram covers the main structural concerns. The next improvement would be adding more precise edge labels for protocols, ownership, and sync versus async calls.',
-      severity: 'info',
-      title: 'Refine edge semantics'
-    });
-  }
-
-  return {
-    improvements,
-    summary: `Reviewed diagram: ${nodes.length} nodes, ${lines.length} lines, ${improvements.length} improvement${improvements.length !== 1 ? 's' : ''} suggested`
-  };
-}
-
-function validateCodeArtifact(
-  code: string,
-  language: CodeArtifactLanguage
-): { valid: true } | { error: string; valid: false } {
-  const trimmed = code.trim();
-  if (MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
-    return {
-      error:
-        'REJECTED: code tools are for non-Mermaid code. Use diagramWrite/diagramPatch for Mermaid.',
-      valid: false
-    };
-  }
-
-  if (language === 'json') {
-    try {
-      JSON.parse(trimmed);
-    } catch (e) {
-      return {
-        error: `Invalid JSON: ${e instanceof Error ? e.message : 'parse failed'}`,
-        valid: false
-      };
-    }
-  }
-
-  return { valid: true };
-}
-
-function wantsSubagents(message: string): boolean {
-  return /\b(subagents?|multi[-\s]?agent|fan\s*out|parallel agents?|specialist agents?)\b/i.test(
-    message
-  );
-}
-
-function wantsDeepThinking(message: string): boolean {
-  return /\b(think harder|think deeply|deep thinking|reason through|step by step|trade-?offs?|analy[sz]e deeply)\b/i.test(
-    message
-  );
-}
-
-function wantsRepoPlanning(message: string): boolean {
-  return /\b(modify|edit|write|patch|change|refactor|commit|repo|repository|codebase|file|docs?)\b/i.test(
-    message
-  );
-}
-
-function shouldExposePlanningTool(toolName: string, message: string): boolean {
-  const subagentRequested = wantsSubagents(message);
-  const deepThinkingRequested = wantsDeepThinking(message);
-  const repoPlanningRequested = wantsRepoPlanning(message);
-
-  switch (toolName) {
-    case 'subagentFanout':
-    case 'subagentAssemble':
-      return subagentRequested || repoPlanningRequested;
-    case 'sequentialThinking':
-      return deepThinkingRequested;
-    case 'planner':
-    case 'planWithProgress':
-      return deepThinkingRequested || subagentRequested || repoPlanningRequested;
-    case 'gitGuard':
-      return repoPlanningRequested;
-    default:
-      return true;
-  }
-}
-
-function hasRecentSubagentFanout(uiMessages: unknown): boolean {
-  if (!Array.isArray(uiMessages)) return false;
-
-  return uiMessages
-    .slice(-8)
-    .some((message) =>
-      /subagentFanout|Ran \d+ subagent|specialist output|Continue after fanout/i.test(
-        JSON.stringify(message)
-      )
-    );
-}
-
-function instructionsForSubagent(role: string): string {
-  const base =
-    'You are one specialist subagent in Graphini. Return concise, concrete output for your assignment. Do not claim you changed files or tools. Do not include hidden reasoning.';
-
-  switch (role) {
-    case 'planner':
-      return `${base} Focus on decomposition, risks, and execution order.`;
-    case 'diagram-engineer':
-      return `${base} Focus on Mermaid architecture, entities, flows, and syntax risks.`;
-    case 'visual-polish':
-      return `${base} Focus on layout, grouping, labels, colors, and icon/readability improvements.`;
-    case 'research-agent':
-      return `${base} Focus on factual assumptions and missing technical context.`;
-    case 'document-agent':
-      return `${base} Focus on concise documentation and explanatory structure.`;
-    case 'data-agent':
-      return `${base} Focus on data inputs, analysis requirements, and chart opportunities.`;
-    case 'critic':
-      return `${base} Focus on correctness gaps, missing components, and failure modes.`;
-    case 'code-agent':
-      return `${base} Focus on JSON/YAML/code artifacts and integration constraints.`;
-    default:
-      return base;
-  }
 }
 
 // AI SDK Tool Definitions for Multi-Step Calling
