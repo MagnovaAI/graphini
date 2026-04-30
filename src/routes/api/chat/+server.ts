@@ -30,7 +30,7 @@ function openrouterFastChat(modelId: string) {
     includeReasoning: true,
     reasoning: {
       enabled: true,
-      max_tokens: 256,
+      max_tokens: 96,
       exclude: false
     }
   });
@@ -441,6 +441,136 @@ function detectCodeLanguage(code: string): CodeArtifactLanguage {
   if (/\b(import|export|interface|type)\b/.test(trimmed)) return 'typescript';
   if (/\b(function|const|let|var)\b/.test(trimmed)) return 'javascript';
   return 'text';
+}
+
+function buildDiagramReview(diagram: string): {
+  improvements: { description: string; severity: 'info' | 'medium' | 'high'; title: string }[];
+  summary: string;
+} {
+  const lines = diagram.split('\n');
+  const nodes = parseMermaidNodes(diagram);
+  const hasComments = lines.some((line) => line.trim().startsWith('%%'));
+  const hasStyles = lines.some((line) => line.trim().startsWith('style '));
+  const hasClasses = lines.some((line) => line.trim().startsWith('classDef '));
+  const hasSubgraphs = lines.some((line) => line.trim().startsWith('subgraph '));
+  const hasQueue = /\b(queue|kafka|rabbitmq|pubsub|sqs|event|message)\b/i.test(diagram);
+  const hasDatabase = /\b(db|database|postgres|mysql|mongo|redis|dynamodb|cassandra)\b/i.test(
+    diagram
+  );
+  const hasObservability = /\b(log|metric|monitor|grafana|prometheus|trace|alert)\b/i.test(diagram);
+  const hasSecurity = /\b(auth|oauth|iam|waf|firewall|secret|token|identity)\b/i.test(diagram);
+  const hasIngress = /\b(load balancer|gateway|ingress|cdn|nginx|api gateway)\b/i.test(diagram);
+  const ids = nodes.map((node) => node.id);
+  const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
+
+  const improvements: {
+    description: string;
+    severity: 'info' | 'medium' | 'high';
+    title: string;
+  }[] = [];
+
+  if (nodes.length < 10) {
+    improvements.push({
+      description:
+        'The diagram is likely under-specified. Add meaningful supporting components such as auth, cache, queue, observability, CI/CD, external clients, and deployment/runtime boundaries.',
+      severity: 'high',
+      title: 'Expand component coverage'
+    });
+  }
+
+  if (!hasSubgraphs && nodes.length >= 8) {
+    improvements.push({
+      description:
+        'Group related nodes into subgraphs such as Client, Edge, Services, Data, Async Processing, and Observability so the architecture scans cleanly.',
+      severity: 'medium',
+      title: 'Add architectural boundaries'
+    });
+  }
+
+  if (!hasIngress) {
+    improvements.push({
+      description:
+        'Show the request entry point with a CDN, load balancer, ingress, or API gateway before traffic reaches internal services.',
+      severity: 'medium',
+      title: 'Clarify ingress path'
+    });
+  }
+
+  if (!hasDatabase) {
+    improvements.push({
+      description:
+        'Add the persistence layer and label which services own or query each datastore.',
+      severity: 'high',
+      title: 'Add data ownership'
+    });
+  }
+
+  if (!hasQueue) {
+    improvements.push({
+      description:
+        'For production systems, add an async message queue or event bus where work can be retried, buffered, or processed out of band.',
+      severity: 'medium',
+      title: 'Represent async workflows'
+    });
+  }
+
+  if (!hasSecurity) {
+    improvements.push({
+      description:
+        'Add authentication/authorization and any boundary controls such as IAM, WAF, or secrets management.',
+      severity: 'medium',
+      title: 'Show security controls'
+    });
+  }
+
+  if (!hasObservability) {
+    improvements.push({
+      description:
+        'Add logs, metrics, traces, alerts, or a monitoring dashboard so operational readiness is visible.',
+      severity: 'medium',
+      title: 'Add observability'
+    });
+  }
+
+  if (!hasStyles && !hasClasses) {
+    improvements.push({
+      description:
+        'Use class definitions or styling to visually distinguish clients, services, data stores, queues, and external systems.',
+      severity: 'info',
+      title: 'Improve visual hierarchy'
+    });
+  }
+
+  if (!hasComments && lines.length > 25) {
+    improvements.push({
+      description:
+        'For larger diagrams, lightweight Mermaid comments can explain non-obvious flows without cluttering node labels.',
+      severity: 'info',
+      title: 'Document complex flows'
+    });
+  }
+
+  if (duplicateIds.length > 0) {
+    improvements.push({
+      description: `Duplicate node IDs detected: ${[...new Set(duplicateIds)].join(', ')}. Mermaid nodes should have stable unique IDs to avoid accidental merges.`,
+      severity: 'high',
+      title: 'Fix duplicate node IDs'
+    });
+  }
+
+  if (improvements.length === 0) {
+    improvements.push({
+      description:
+        'The diagram covers the main structural concerns. The next improvement would be adding more precise edge labels for protocols, ownership, and sync versus async calls.',
+      severity: 'info',
+      title: 'Refine edge semantics'
+    });
+  }
+
+  return {
+    improvements,
+    summary: `Reviewed diagram: ${nodes.length} nodes, ${lines.length} lines, ${improvements.length} improvement${improvements.length !== 1 ? 's' : ''} suggested`
+  };
 }
 
 function validateCodeArtifact(
@@ -2339,6 +2469,9 @@ WHEN TO USE:
         } else {
           const lines = diagram.split('\n');
           const nodes = parseMermaidNodes(diagram);
+          const review = buildDiagramReview(diagram);
+          result.summary = review.summary;
+          result.improvements = review.improvements;
           result.diagram = {
             content: diagram,
             hasComments: lines.some((l: string) => l.trim().startsWith('%%')),
@@ -2742,6 +2875,7 @@ IMPORTANT COMMUNICATION RULES:
 - Keep conversations natural and user-friendly
 - Do not write diagrams without tools.
 - Be FAST and DIRECT. Do NOT over-think or over-explain. Act immediately with tools — minimal reasoning, maximum action.
+- Never narrate tool choice or internal control flow in visible text/reasoning. Do not say "we need to call", "thus produce the function call", or similar. If the right tool is obvious, call it directly.
 - Default to the shortest working path. Most requests should use 1-3 tool calls total.
 - Keep text responses to 1-3 sentences. No lengthy explanations unless asked.
 - For simple requests (create diagram, add node, fix error, write JSON/YAML/code), call the concrete tool immediately without preamble.

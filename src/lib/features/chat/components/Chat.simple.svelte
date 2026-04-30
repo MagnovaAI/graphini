@@ -618,6 +618,29 @@
     }
   }
 
+  function shouldShowReasoning(content: string): boolean {
+    const text = content.trim();
+    if (!text) return false;
+
+    const lower = text.toLowerCase();
+    const toolChoiceSignals = [
+      'according to the workflow',
+      'call diagram',
+      'call selfcritique',
+      'call subagent',
+      'call the tool',
+      'function call',
+      'need to call',
+      'produce a function',
+      'produce the call',
+      'tool call',
+      'use the tool',
+      'we need to call'
+    ];
+
+    return !toolChoiceSignals.some((signal) => lower.includes(signal));
+  }
+
   let questionnaireResponses = $state<Record<string, Record<string, string | string[]>>>({});
   let messageParts = $state<Record<number, ContentPart[]>>({});
 
@@ -2800,7 +2823,7 @@
                       <div class="pl-3 text-[13px] leading-relaxed text-foreground/90">
                         <Response content={part.text} />
                       </div>
-                    {:else if part.type === 'reasoning' && reasoningMap[part.id]}
+                    {:else if part.type === 'reasoning' && reasoningMap[part.id] && shouldShowReasoning(reasoningMap[part.id].content)}
                       {@const reasoning = reasoningMap[part.id]}
                       <ReasoningBlock
                         content={reasoning.content}
