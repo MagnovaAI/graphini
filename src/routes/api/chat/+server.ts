@@ -29,7 +29,7 @@ function openrouterFastChat(modelId: string) {
   return openrouter.chat(modelId, {
     includeReasoning: false,
     reasoning: {
-      enabled: false,
+      enabled: true,
       effort: 'low',
       exclude: true
     }
@@ -2957,14 +2957,12 @@ export const POST: RequestHandler = async ({ request }) => {
       allTools = filtered as typeof allTools;
     }
 
-    const stepLimit = wantsDeepThinking(message) || wantsSubagents(message) ? 4 : 3;
-
     // Convert to AI SDK format and stream with multi-step tool calling
     const result = streamText({
       messages: messages,
       model: openrouterFastChat(actualModelId),
-      stopWhen: stepCountIs(stepLimit),
-      temperature: 0.35,
+      stopWhen: stepCountIs(5),
+      temperature: 0.55,
       tools: allTools
     });
 
@@ -3253,7 +3251,7 @@ async function _runDiagramAgent(
           const result = await streamText({
             model: openrouterFastChat(modelId),
             messages: messages,
-            temperature: 0.35
+            temperature: 0.55
           });
 
           let fullOutput = '';
