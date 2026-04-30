@@ -30,7 +30,7 @@ function openrouterFastChat(modelId: string) {
     includeReasoning: true,
     reasoning: {
       enabled: true,
-      effort: 'low',
+      max_tokens: 256,
       exclude: false
     }
   });
@@ -45,6 +45,42 @@ const planStore = new Map<string, string>();
 const codeStore = new Map<string, string>();
 const subagentStore = new Map<string, string>();
 const execFileAsync = promisify(execFile);
+
+const MERMAID_DIAGRAM_DECLARATION =
+  /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)\b/i;
+
+function findMermaidDeclarations(source: string): { line: number; text: string }[] {
+  return source
+    .split('\n')
+    .map((line, index) => ({ line: index + 1, text: line.trim() }))
+    .filter(({ text }) => MERMAID_DIAGRAM_DECLARATION.test(text));
+}
+
+function validateSingleMermaidDocument(
+  source: string
+): { valid: true } | { error: string; hint: string; valid: false } {
+  const trimmed = source.trim();
+  if (!MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
+    return {
+      error:
+        'REJECTED: Content does not start with a valid Mermaid diagram type. Use markdownWrite for documentation/prose. Redo with valid Mermaid code that starts with a diagram type like "graph TD", "flowchart LR", "sequenceDiagram", etc.',
+      hint: 'Mermaid content must start with exactly one diagram declaration.',
+      valid: false
+    };
+  }
+
+  const declarations = findMermaidDeclarations(source);
+  if (declarations.length !== 1) {
+    const declarationLines = declarations.map(({ line }) => line).join(', ') || 'none';
+    return {
+      error: `REJECTED: Mermaid content contains ${declarations.length} diagram declarations at lines ${declarationLines}. Use exactly one top-level diagram declaration.`,
+      hint: 'Do not prepend placeholder graphs or mix declarations like "flowchart TD" and "graph TD" in one artifact.',
+      valid: false
+    };
+  }
+
+  return { valid: true };
+}
 
 // --- Iconifier: local icon index & resolution helpers ---
 
@@ -412,10 +448,7 @@ function validateCodeArtifact(
   language: CodeArtifactLanguage
 ): { valid: true } | { error: string; valid: false } {
   const trimmed = code.trim();
-  const mermaidDiagramTypes =
-    /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)\b/i;
-
-  if (mermaidDiagramTypes.test(trimmed)) {
+  if (MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
     return {
       error:
         'REJECTED: code tools are for non-Mermaid code. Use diagramWrite/diagramPatch for Mermaid.',
@@ -1383,6 +1416,14 @@ WHEN TO USE:
       const unescapedContent = content.replace(/\\n/g, '\n');
       lines.splice(startLine - 1, endLine - startLine + 1, ...unescapedContent.split('\n'));
       const newDiagram = lines.join('\n');
+      const validation = validateSingleMermaidDocument(newDiagram);
+      if (!validation.valid) {
+        return {
+          error: validation.error,
+          hint: validation.hint
+        };
+      }
+
       diagramStore.set(sessionId, newDiagram);
 
       return { success: true, newLineCount: lines.length, content: newDiagram };
@@ -1448,14 +1489,12 @@ WHEN TO USE:
       const unescapedContent = content.replace(/\\n/g, '\n');
       const trimmed = unescapedContent.trim();
 
-      // Validate: must start with a valid Mermaid diagram type
-      const validDiagramTypes =
-        /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)/i;
-      if (!validDiagramTypes.test(trimmed)) {
+      // Validate: must be one complete Mermaid document with one diagram root
+      const validation = validateSingleMermaidDocument(trimmed);
+      if (!validation.valid) {
         return {
-          error:
-            'REJECTED: Content does not start with a valid Mermaid diagram type. Use markdownWrite for documentation/prose. Redo with valid Mermaid code that starts with a diagram type like "graph TD", "flowchart LR", "sequenceDiagram", etc.',
-          hint: 'diagramWrite only accepts Mermaid diagram syntax. For markdown/documentation, use markdownWrite instead.'
+          error: validation.error,
+          hint: validation.hint
         };
       }
 
@@ -1490,6 +1529,14 @@ WHEN TO USE:
 
       const errors: { line: number; message: string }[] = [];
       const lines = diagram.split('\n');
+      const singleDocumentValidation = validateSingleMermaidDocument(diagram);
+      if (!singleDocumentValidation.valid) {
+        const declaration = findMermaidDeclarations(diagram)[1];
+        errors.push({
+          line: declaration?.line ?? 1,
+          message: `${singleDocumentValidation.error} ${singleDocumentValidation.hint}`
+        });
+      }
 
       // Basic syntax checks
       const firstLine = lines[0]?.trim() || '';
@@ -2745,6 +2792,7 @@ WHEN TO USE TOOLS:
 
 CRITICAL — TOOL SEPARATION (NEVER VIOLATE):
 - diagramWrite/diagramPatch: ONLY Mermaid diagram syntax (graph TD, flowchart LR, sequenceDiagram, etc.). NEVER write markdown, documentation, or prose to diagram tools.
+- Every Mermaid artifact must contain exactly ONE top-level diagram declaration. Do not prepend placeholder diagrams like "A[Start] --> B[New diagram]". Do not mix "flowchart TD" and "graph TD" in one artifact.
 - markdownWrite: ONLY markdown documentation/prose. NEVER write Mermaid diagram code to markdownWrite.
 - codeWrite/codePatch: ONLY non-Mermaid code artifacts such as JSON, YAML, config, TypeScript, JavaScript, Svelte, HTML, CSS, shell, or plaintext code. These tools do NOT write repository files.
 - These three tool categories are COMPLETELY INDEPENDENT. Writing to one must NEVER trigger writing to another.
@@ -2759,7 +2807,7 @@ GIT AND FILE SAFETY:
 - Current code tools create in-chat artifacts only; they are safe for drafting JSON/YAML/code before repository writes exist.
 
 WORKFLOW (for diagram edits only):
-1. For new diagrams, call diagramWrite directly. For edits, call diagramRead first.
+1. For new diagrams, call diagramWrite directly with exactly one Mermaid declaration followed by nodes/edges. For edits, call diagramRead first.
 2. Apply the diagram with diagramWrite or diagramPatch
 3. Call errorChecker() once
 4. Only fix if errorChecker reports errors
