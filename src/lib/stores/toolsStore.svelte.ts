@@ -9,7 +9,16 @@ export interface ToolConfig {
   id: string;
   label: string;
   description: string;
-  category: 'diagram' | 'icons' | 'search' | 'interaction' | 'intelligence' | 'files';
+  category:
+    | 'diagram'
+    | 'icons'
+    | 'search'
+    | 'interaction'
+    | 'intelligence'
+    | 'files'
+    | 'code'
+    | 'agents'
+    | 'safety';
   enabled: boolean;
 }
 
@@ -92,11 +101,74 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     label: 'Auto Styler'
   },
   {
+    category: 'code',
+    description: 'Read generated JSON, YAML, config, or code artifacts',
+    enabled: true,
+    id: 'codeRead',
+    label: 'Code Read'
+  },
+  {
+    category: 'code',
+    description: 'Write generated JSON, YAML, config, or code artifacts',
+    enabled: true,
+    id: 'codeWrite',
+    label: 'Code Write'
+  },
+  {
+    category: 'code',
+    description: 'Patch generated code artifacts by line range',
+    enabled: true,
+    id: 'codePatch',
+    label: 'Code Patch'
+  },
+  {
     category: 'intelligence',
     description: 'Decompose complex tasks into step-by-step plans',
     enabled: true,
     id: 'planner',
     label: 'Planner'
+  },
+  {
+    category: 'intelligence',
+    description: 'Think through complex tasks step-by-step before acting',
+    enabled: true,
+    id: 'sequentialThinking',
+    label: 'Sequential Thinking'
+  },
+  {
+    category: 'agents',
+    description: 'Plan bounded specialist agents for complex work',
+    enabled: true,
+    id: 'subagentFanout',
+    label: 'Subagent Fanout'
+  },
+  {
+    category: 'agents',
+    description: 'Assemble specialist agent outputs into one plan',
+    enabled: true,
+    id: 'subagentAssemble',
+    label: 'Subagent Assemble'
+  },
+  {
+    category: 'safety',
+    description: 'Check git status and protected paths before repository work',
+    enabled: true,
+    id: 'gitGuard',
+    label: 'Git Guard'
+  },
+  {
+    category: 'intelligence',
+    description: 'Create and update visible checklist plans',
+    enabled: true,
+    id: 'planWithProgress',
+    label: 'Plan Progress'
+  },
+  {
+    category: 'intelligence',
+    description: 'Store and retrieve user or project memories',
+    enabled: true,
+    id: 'longTermMemory',
+    label: 'Long-term Memory'
   },
   {
     category: 'intelligence',
@@ -212,5 +284,8 @@ export const TOOL_CATEGORIES: { id: string; label: string }[] = [
   { id: 'search', label: 'Search' },
   { id: 'interaction', label: 'Interaction' },
   { id: 'intelligence', label: 'Intelligence' },
-  { id: 'files', label: 'Files & Data' }
+  { id: 'files', label: 'Files & Data' },
+  { id: 'code', label: 'Code' },
+  { id: 'agents', label: 'Agents' },
+  { id: 'safety', label: 'Safety' }
 ];
