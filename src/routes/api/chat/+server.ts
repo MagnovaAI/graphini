@@ -2591,6 +2591,7 @@ WHEN TO USE:
     }),
     execute: async ({ task, agents }) => {
       const runId = crypto.randomUUID();
+      const runStartedAt = new Date();
       const assignments = agents.map((agent) => ({
         ...agent,
         guardrails: [
@@ -2603,11 +2604,34 @@ WHEN TO USE:
 
       const agentOutputs = await Promise.all(
         assignments.map(async (agent) => {
+          const startedAt = new Date();
+          const system = instructionsForSubagent(agent.role);
+          const prompt = [
+            `Task: ${task}`,
+            `Specialist objective: ${agent.objective}`,
+            agent.ownedPaths?.length ? `Owned paths: ${agent.ownedPaths.join(', ')}` : '',
+            agent.allowedTools?.length ? `Allowed tools: ${agent.allowedTools.join(', ')}` : '',
+            'Return: concise findings, proposed concrete output, and any blocker.'
+          ]
+            .filter(Boolean)
+            .join('\n');
+
           if (!modelId) {
+            const completedAt = new Date();
             return {
               agentId: agent.id,
+              allowedTools: agent.allowedTools || [],
+              completedAt: completedAt.toISOString(),
+              durationMs: completedAt.getTime() - startedAt.getTime(),
+              events: [
+                { at: startedAt.toISOString(), label: 'Queued specialist assignment' },
+                { at: completedAt.toISOString(), label: 'Failed: no model available' }
+              ],
+              objective: agent.objective,
               output: 'No model was available for specialist execution.',
+              prompt,
               role: agent.role,
+              startedAt: startedAt.toISOString(),
               status: 'failed'
             };
           }
@@ -2616,30 +2640,48 @@ WHEN TO USE:
             const result = await generateText({
               maxOutputTokens: 900,
               model: openrouterFastChat(modelId),
-              prompt: [
-                `Task: ${task}`,
-                `Specialist objective: ${agent.objective}`,
-                agent.ownedPaths?.length ? `Owned paths: ${agent.ownedPaths.join(', ')}` : '',
-                agent.allowedTools?.length ? `Allowed tools: ${agent.allowedTools.join(', ')}` : '',
-                'Return: concise findings, proposed concrete output, and any blocker.'
-              ]
-                .filter(Boolean)
-                .join('\n'),
-              system: instructionsForSubagent(agent.role),
+              prompt,
+              system,
               temperature: 0.45
             });
+            const completedAt = new Date();
 
             return {
               agentId: agent.id,
+              allowedTools: agent.allowedTools || [],
+              completedAt: completedAt.toISOString(),
+              durationMs: completedAt.getTime() - startedAt.getTime(),
+              events: [
+                { at: startedAt.toISOString(), label: 'Queued specialist assignment' },
+                { at: startedAt.toISOString(), label: `Started ${agent.role}` },
+                { at: completedAt.toISOString(), label: 'Returned specialist output' }
+              ],
+              modelId,
+              objective: agent.objective,
               output: result.text,
+              prompt,
               role: agent.role,
+              startedAt: startedAt.toISOString(),
               status: 'completed'
             };
           } catch (e) {
+            const completedAt = new Date();
             return {
               agentId: agent.id,
+              allowedTools: agent.allowedTools || [],
+              completedAt: completedAt.toISOString(),
+              durationMs: completedAt.getTime() - startedAt.getTime(),
+              events: [
+                { at: startedAt.toISOString(), label: 'Queued specialist assignment' },
+                { at: startedAt.toISOString(), label: `Started ${agent.role}` },
+                { at: completedAt.toISOString(), label: 'Failed during specialist execution' }
+              ],
+              modelId,
+              objective: agent.objective,
               output: e instanceof Error ? e.message : 'Subagent execution failed',
+              prompt,
               role: agent.role,
+              startedAt: startedAt.toISOString(),
               status: 'failed'
             };
           }
@@ -2651,12 +2693,17 @@ WHEN TO USE:
         JSON.stringify({ assignments, outputs: agentOutputs, task })
       );
 
+      const runCompletedAt = new Date();
+
       return {
         assignments,
+        completedAt: runCompletedAt.toISOString(),
+        durationMs: runCompletedAt.getTime() - runStartedAt.getTime(),
         nextRequiredAction:
           'Continue after fanout: use the completed specialist outputs to perform the concrete next tool step, call subagentAssemble, or ask one blocking question.',
         outputs: agentOutputs,
         runId,
+        startedAt: runStartedAt.toISOString(),
         success: true,
         task
       };

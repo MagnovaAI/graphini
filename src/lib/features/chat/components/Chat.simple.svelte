@@ -531,10 +531,19 @@
   let artifactMap = $state<Record<string, Artifact>>({});
 
   interface SubagentAssignment {
+    allowedTools?: string[];
+    completedAt?: string;
+    durationMs?: number;
+    events?: { at: string; label: string }[];
     id: string;
+    modelId?: string;
     objective: string;
     ownedPaths?: string[];
+    output?: string;
+    prompt?: string;
     role: string;
+    startedAt?: string;
+    status?: string;
   }
 
   // Ordered content parts per assistant message: text, artifact refs, and reasoning in stream order
@@ -2395,6 +2404,8 @@
                         } else if (toolName === 'subagentFanout') {
                           if (output.task) toolDetails.push(`Task: ${output.task}`);
                           if (output.runId) toolDetails.push(`Run: ${output.runId}`);
+                          if (output.durationMs)
+                            toolDetails.push(`Duration: ${(output.durationMs / 1000).toFixed(1)}s`);
                           if (output.assignments?.length) {
                             toolDetails.push(
                               ...output.assignments.map(
@@ -2414,15 +2425,7 @@
                           }
                           if (output.outputs?.length) {
                             toolDetails.push(
-                              ...output.outputs.map(
-                                (agentOutput: {
-                                  agentId: string;
-                                  output: string;
-                                  role: string;
-                                  status: string;
-                                }) =>
-                                  `${agentOutput.agentId} output (${agentOutput.status}): ${agentOutput.output.slice(0, 220)}${agentOutput.output.length > 220 ? '…' : ''}`
-                              )
+                              `Outputs: ${output.outputs.length} specialist result(s)`
                             );
                           }
                           if (output.nextRequiredAction)
@@ -2459,8 +2462,22 @@
                             `${toolName} complete`,
                           status: 'done',
                           subagents:
-                            toolName === 'subagentFanout' && output.assignments?.length
-                              ? output.assignments
+                            toolName === 'subagentFanout' &&
+                            (output.assignments?.length || output.outputs?.length)
+                              ? (output.assignments || []).map(
+                                  (agent: SubagentAssignment): SubagentAssignment => {
+                                    const agentOutput = output.outputs?.find(
+                                      (item: SubagentAssignment & { agentId?: string }) =>
+                                        item.agentId === agent.id
+                                    );
+                                    return {
+                                      ...agent,
+                                      ...agentOutput,
+                                      id: agent.id,
+                                      role: agent.role
+                                    };
+                                  }
+                                )
                               : parts[idx].type === 'tool-status'
                                 ? parts[idx].subagents
                                 : undefined
@@ -3050,15 +3067,63 @@
                                       <span class="font-medium text-cyan-500">{agent.role}</span>
                                       <span class="truncate text-muted-foreground/70"
                                         >{agent.id}</span>
+                                      {#if agent.status}
+                                        <span
+                                          class="ml-auto rounded bg-background/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                          {agent.status}
+                                        </span>
+                                      {/if}
                                     </div>
                                     <p class="mt-0.5 leading-relaxed text-foreground/70">
                                       {agent.objective}
                                     </p>
+                                    <div
+                                      class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground/60">
+                                      {#if agent.modelId}
+                                        <span>model: {agent.modelId}</span>
+                                      {/if}
+                                      {#if agent.durationMs !== undefined}
+                                        <span>{(agent.durationMs / 1000).toFixed(1)}s</span>
+                                      {/if}
+                                      {#if agent.allowedTools?.length}
+                                        <span>tools: {agent.allowedTools.join(', ')}</span>
+                                      {/if}
+                                    </div>
                                     {#if agent.ownedPaths?.length}
                                       <p
                                         class="mt-0.5 truncate text-[10px] text-muted-foreground/50">
                                         {agent.ownedPaths.join(', ')}
                                       </p>
+                                    {/if}
+                                    {#if agent.events?.length}
+                                      <div
+                                        class="mt-1.5 space-y-0.5 border-l border-cyan-500/20 pl-2">
+                                        {#each agent.events as event, eventIndex (eventIndex)}
+                                          <div class="text-[10px] text-muted-foreground/70">
+                                            {event.label}
+                                          </div>
+                                        {/each}
+                                      </div>
+                                    {/if}
+                                    {#if agent.prompt}
+                                      <details class="mt-1.5">
+                                        <summary
+                                          class="cursor-pointer text-[10px] font-medium text-muted-foreground/70">
+                                          Prompt
+                                        </summary>
+                                        <pre
+                                          class="mt-1 rounded bg-background/70 p-2 text-[10px] leading-relaxed whitespace-pre-wrap text-muted-foreground">{agent.prompt}</pre>
+                                      </details>
+                                    {/if}
+                                    {#if agent.output}
+                                      <details class="mt-1.5" open={part.status === 'done'}>
+                                        <summary
+                                          class="cursor-pointer text-[10px] font-medium text-cyan-500/90">
+                                          Output
+                                        </summary>
+                                        <pre
+                                          class="mt-1 rounded bg-background/70 p-2 text-[10px] leading-relaxed whitespace-pre-wrap text-foreground/75">{agent.output}</pre>
+                                      </details>
                                     {/if}
                                   </div>
                                 {/each}
