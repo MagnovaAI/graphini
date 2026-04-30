@@ -5,7 +5,7 @@ import { stateManager } from '$lib/server/state-manager';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { error, json } from '@sveltejs/kit';
-import { stepCountIs, streamText, tool } from 'ai';
+import { streamText, tool } from 'ai';
 import { execFile } from 'child_process';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -2961,7 +2961,6 @@ export const POST: RequestHandler = async ({ request }) => {
     const result = streamText({
       messages: messages,
       model: openrouterFastChat(actualModelId),
-      stopWhen: stepCountIs(5),
       temperature: 0.55,
       tools: allTools
     });
