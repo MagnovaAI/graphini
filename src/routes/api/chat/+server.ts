@@ -2296,6 +2296,8 @@ WHEN TO USE:
           order: index + 1,
           ...output
         })),
+        nextRequiredAction:
+          'Continue after assembly: execute the next concrete tool step, ask for missing confirmation, or clearly state the blocker. Do not stop at assembly alone.',
         runId,
         success: true,
         verification,
@@ -2346,6 +2348,8 @@ WHEN TO USE:
 
       return {
         assignments,
+        nextRequiredAction:
+          'Continue after fanout: either run the assigned specialist work with available tools, call subagentAssemble with concrete outputs, or ask the user for confirmation if file mutation is required.',
         runId,
         success: true,
         task
@@ -2649,9 +2653,16 @@ WORKFLOW (for JSON/YAML/code artifacts):
 WORKFLOW (for multi-agent repository work planning):
 1. Call gitGuard(operation="preflight", paths, reason)
 2. Call subagentFanout with explicit roles, objectives, ownedPaths, and allowedTools
-3. Call subagentAssemble after outputs are known
-4. Provide verification steps and note any dirty/protected paths
-5. Do NOT say files were modified unless a repository-writing tool actually modified them
+3. Continue the work after fanout. subagentFanout is NOT a final answer. It is a planning step.
+4. Use available concrete tools for each assignment where possible (codeWrite/codePatch for code artifacts, markdownWrite for docs, diagramWrite/diagramPatch for Mermaid, webSearch/fileManager/dataAnalyzer for research/data)
+5. Call subagentAssemble after concrete outputs are known
+6. Provide verification steps and note any dirty/protected paths
+7. Do NOT say files were modified unless a repository-writing tool actually modified them
+
+IMPORTANT MULTI-AGENT CONTINUATION RULE:
+- Never stop immediately after subagentFanout unless the tool result says user confirmation is required or the user explicitly asked only for a plan.
+- After subagentFanout, either execute the next concrete tool step, call subagentAssemble with outputs, or ask one concise blocking question.
+- After subagentAssemble, summarize the assembled result and continue to the next requested action if one remains.
 
 RULES:
 - Do NOT call tools for greetings or casual conversation

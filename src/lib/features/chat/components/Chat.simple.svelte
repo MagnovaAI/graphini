@@ -1692,12 +1692,15 @@
                         diagramDelete: 'Clearing diagram…',
                         errorChecker: 'Checking for errors…',
                         fileManager: 'Managing files…',
+                        gitGuard: 'Checking git safety…',
                         iconifier: 'Adding icons…',
                         longTermMemory: 'Accessing memory…',
                         planWithProgress: 'Managing plan…',
                         planner: 'Creating plan…',
                         selfCritique: 'Reviewing & improving…',
                         sequentialThinking: 'Thinking step by step…',
+                        subagentAssemble: 'Assembling agent work…',
+                        subagentFanout: 'Spawning subagents…',
                         tableAnalytics: 'Analyzing data…',
                         webSearch: 'Searching the web…'
                       };
@@ -2240,6 +2243,9 @@
                           errorChecker: !checkerValid
                             ? `Found ${checkerErrors.length} error(s)`
                             : 'No errors found ✓',
+                          gitGuard: output.clean
+                            ? 'Git safety check passed'
+                            : `${output.changedPaths?.length || 0} changed path(s) detected`,
                           longTermMemory: output.message || 'Memory accessed',
                           planWithProgress: output.progress || output.message || 'Plan updated',
                           planner: output.task
@@ -2249,6 +2255,12 @@
                           sequentialThinking: output.isComplete
                             ? `Thinking complete (${output.totalThoughts} steps)`
                             : `Thought ${output.thoughtNumber}/${output.totalThoughts}`,
+                          subagentAssemble: output.integrationPlan
+                            ? `Assembled ${output.integrationPlan.length} agent output(s)`
+                            : 'Agent work assembled',
+                          subagentFanout: output.assignments
+                            ? `Spawned ${output.assignments.length} subagent(s)`
+                            : 'Subagents spawned',
                           tableAnalytics: output.summary || 'Analysis complete'
                         };
                         // Build details array for dropdown
@@ -2285,6 +2297,64 @@
                                     (imp.title as string) ||
                                     JSON.stringify(imp)
                             );
+                        } else if (toolName === 'gitGuard') {
+                          if (output.requestedPaths?.length) {
+                            toolDetails.push(`Requested: ${output.requestedPaths.join(', ')}`);
+                          }
+                          if (output.changedPaths?.length) {
+                            toolDetails.push(`Changed: ${output.changedPaths.join(', ')}`);
+                          }
+                          if (output.protectedPaths?.length) {
+                            toolDetails.push(`Protected: ${output.protectedPaths.join(', ')}`);
+                          }
+                          if (output.requiresUserConfirmation) {
+                            toolDetails.push(
+                              'User confirmation required before overwriting dirty paths'
+                            );
+                          }
+                        } else if (toolName === 'subagentFanout') {
+                          if (output.task) toolDetails.push(`Task: ${output.task}`);
+                          if (output.runId) toolDetails.push(`Run: ${output.runId}`);
+                          if (output.assignments?.length) {
+                            toolDetails.push(
+                              ...output.assignments.map(
+                                (agent: {
+                                  id: string;
+                                  role: string;
+                                  objective: string;
+                                  ownedPaths?: string[];
+                                }) =>
+                                  `${agent.id} (${agent.role}): ${agent.objective}${
+                                    agent.ownedPaths?.length
+                                      ? ` [${agent.ownedPaths.join(', ')}]`
+                                      : ''
+                                  }`
+                              )
+                            );
+                          }
+                          if (output.nextRequiredAction)
+                            toolDetails.push(output.nextRequiredAction);
+                        } else if (toolName === 'subagentAssemble') {
+                          if (output.runId) toolDetails.push(`Run: ${output.runId}`);
+                          if (output.integrationPlan?.length) {
+                            toolDetails.push(
+                              ...output.integrationPlan.map(
+                                (item: {
+                                  agentId: string;
+                                  changedPaths?: string[];
+                                  order: number;
+                                  summary: string;
+                                }) =>
+                                  `${item.order}. ${item.agentId}: ${item.summary}${
+                                    item.changedPaths?.length
+                                      ? ` [${item.changedPaths.join(', ')}]`
+                                      : ''
+                                  }`
+                              )
+                            );
+                          }
+                          if (output.nextRequiredAction)
+                            toolDetails.push(output.nextRequiredAction);
                         }
                         parts[idx] = {
                           ...parts[idx],
