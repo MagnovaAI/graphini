@@ -27,11 +27,11 @@ const openrouter = createOpenRouter({
 
 function openrouterFastChat(modelId: string) {
   return openrouter.chat(modelId, {
-    includeReasoning: false,
+    includeReasoning: true,
     reasoning: {
       enabled: true,
       effort: 'low',
-      exclude: true
+      exclude: false
     }
   });
 }

@@ -9,16 +9,8 @@
 
   let { content, isStreaming = false, durationMs }: Props = $props();
 
-  let isCollapsed = $state(false);
+  let isCollapsed = $derived(!isStreaming);
   let contentEl: HTMLDivElement | undefined = $state();
-
-  // Derived initial collapsed state from isStreaming prop
-  let shouldBeCollapsed = $derived(!isStreaming);
-
-  // Initialize and update isCollapsed based on derived value
-  $effect(() => {
-    isCollapsed = shouldBeCollapsed;
-  });
 
   // Clean content: strip markdown artifacts for display
   let displayContent = $derived(
@@ -31,7 +23,7 @@
       .trim()
   );
 
-  let wordCount = $derived(displayContent.split(/\s+/).filter((w) => w.length > 0).length);
+  let tokenCount = $derived(Math.max(0, Math.ceil(displayContent.length / 4)));
 
   let formattedDuration = $derived.by(() => {
     if (!durationMs) return '';
@@ -76,7 +68,7 @@
       {#if isStreaming}
         <span class="reasoning-shimmer">Thinking...</span>
       {:else}
-        Thought {formattedDuration ? `for ${formattedDuration}` : ''} · {wordCount} words
+        Thought {formattedDuration ? `for ${formattedDuration}` : ''} · ~{tokenCount} tokens
       {/if}
     </span>
 
@@ -126,12 +118,7 @@
   }
 
   .reasoning-shimmer {
-    background: linear-gradient(
-      90deg,
-      currentColor 0%,
-      var(--foreground) 40%,
-      currentColor 80%
-    );
+    background: linear-gradient(90deg, currentColor 0%, var(--foreground) 40%, currentColor 80%);
     background-size: 200% 100%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -140,7 +127,11 @@
   }
 
   @keyframes reasoning-shimmer-slide {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 </style>
