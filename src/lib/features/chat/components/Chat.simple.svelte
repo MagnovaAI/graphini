@@ -530,6 +530,13 @@
   // Artifacts stored by ID for quick lookup
   let artifactMap = $state<Record<string, Artifact>>({});
 
+  interface SubagentAssignment {
+    id: string;
+    objective: string;
+    ownedPaths?: string[];
+    role: string;
+  }
+
   // Ordered content parts per assistant message: text, artifact refs, and reasoning in stream order
   type ContentPart =
     | { type: 'text'; text: string }
@@ -551,6 +558,7 @@
         status: 'running' | 'done';
         message?: string;
         details?: string[];
+        subagents?: SubagentAssignment[];
         iconResults?: {
           nodeId: string;
           nodeText: string;
@@ -579,6 +587,37 @@
     type: 'single' | 'multi';
     options: { id: string; label: string }[];
   }
+
+  function parseSubagentInput(input: string): {
+    agents?: SubagentAssignment[];
+    task?: string;
+  } {
+    try {
+      const parsed = JSON.parse(input);
+      return {
+        agents: Array.isArray(parsed.agents) ? parsed.agents : undefined,
+        task: typeof parsed.task === 'string' ? parsed.task : undefined
+      };
+    } catch {
+      const taskMatch = input.match(/"task"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      const roles = [...input.matchAll(/"role"\s*:\s*"([^"]+)"/g)].map((match) => match[1]);
+      const objectives = [...input.matchAll(/"objective"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map(
+        (match) => match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n')
+      );
+      const ids = [...input.matchAll(/"id"\s*:\s*"([^"]+)"/g)].map((match) => match[1]);
+      const agents = roles.map((role, index) => ({
+        id: ids[index] || `agent-${index + 1}`,
+        objective: objectives[index] || 'Preparing assignment…',
+        role
+      }));
+
+      return {
+        agents: agents.length > 0 ? agents : undefined,
+        task: taskMatch?.[1]?.replace(/\\"/g, '"').replace(/\\n/g, '\n')
+      };
+    }
+  }
+
   let questionnaireResponses = $state<Record<string, Record<string, string | string[]>>>({});
   let messageParts = $state<Record<number, ContentPart[]>>({});
 
@@ -1923,6 +1962,24 @@
                           );
                           if (thoughtMatch && totalMatch)
                             liveMsg = `Thinking step ${thoughtMatch[1]}/${totalMatch[1]}…`;
+                        } else if (currentToolName === 'subagentFanout') {
+                          const parsed = parseSubagentInput(currentToolInputJson);
+                          if (parsed.agents?.length) {
+                            liveMsg = `Preparing ${parsed.agents.length} subagent${parsed.agents.length !== 1 ? 's' : ''}…`;
+                            const details = [
+                              ...(parsed.task ? [`Task: ${parsed.task}`] : []),
+                              ...parsed.agents.map((agent) => `${agent.role}: ${agent.objective}`)
+                            ];
+                            parts[idx] = {
+                              ...parts[idx],
+                              details,
+                              message: liveMsg,
+                              subagents: parsed.agents
+                            } as ContentPart;
+                            messageParts[assistantIndex] = [...parts];
+                            scrollToBottom();
+                            liveMsg = '';
+                          }
                         }
                         if (liveMsg) {
                           parts[idx] = { ...parts[idx], message: liveMsg } as ContentPart;
@@ -2371,13 +2428,19 @@
                         }
                         parts[idx] = {
                           ...parts[idx],
-                          status: 'done',
+                          details: toolDetails.length > 0 ? toolDetails : undefined,
                           message:
                             doneLabel[toolName] ||
                             output.summary ||
                             output.message ||
                             `${toolName} complete`,
-                          details: toolDetails.length > 0 ? toolDetails : undefined
+                          status: 'done',
+                          subagents:
+                            toolName === 'subagentFanout' && output.assignments?.length
+                              ? output.assignments
+                              : parts[idx].type === 'tool-status'
+                                ? parts[idx].subagents
+                                : undefined
                         } as ContentPart;
                         messageParts[assistantIndex] = [...parts];
                         scrollToBottom();
@@ -2797,6 +2860,7 @@
                         (part.toolName === 'webSearch' &&
                           part.searchResults &&
                           part.searchResults.length > 0) ||
+                        (part.subagents && part.subagents.length > 0) ||
                         (part.details && part.details.length > 0)}
                       {@const addedCount =
                         part.iconResults?.filter((ic) => ic.status === 'added').length || 0}
@@ -2808,6 +2872,8 @@
                       {@const isSearch = part.toolName === 'webSearch'}
                       {@const isFileManager = part.toolName === 'fileManager'}
                       {@const isDiagramRead = part.toolName === 'diagramRead'}
+                      {@const isSubagent =
+                        part.toolName === 'subagentFanout' || part.toolName === 'subagentAssemble'}
                       {@const isChecker =
                         part.toolName === 'errorChecker' || part.toolName === 'selfCritique'}
                       {@const isAnalytics = part.toolName === 'tableAnalytics'}
@@ -2835,9 +2901,11 @@
                                             ? 'bg-teal-500/10 text-teal-500'
                                             : part.toolName === 'planWithProgress'
                                               ? 'bg-emerald-500/10 text-emerald-500'
-                                              : part.toolName === 'sequentialThinking'
-                                                ? 'bg-yellow-500/10 text-yellow-500'
-                                                : 'bg-muted text-muted-foreground'}
+                                              : isSubagent
+                                                ? 'bg-cyan-500/10 text-cyan-500'
+                                                : part.toolName === 'sequentialThinking'
+                                                  ? 'bg-yellow-500/10 text-yellow-500'
+                                                  : 'bg-muted text-muted-foreground'}
                       <div
                         class="group overflow-hidden rounded-lg border transition-all duration-200
                         {part.status === 'running'
@@ -2892,6 +2960,9 @@
                             {:else if part.toolName === 'planWithProgress'}
                               <Target
                                 class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if isSubagent}
+                              <Network
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'sequentialThinking'}
                               <Lightbulb
                                 class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
@@ -2936,7 +3007,7 @@
                               ></span>
                             </div>
                           {/if}
-                          {#if hasDetails && part.status === 'done'}
+                          {#if hasDetails && (part.status === 'done' || !isSubagent)}
                             <div class="tool-chevron text-muted-foreground/40 transition-transform">
                               <ChevronRight class="size-3.5" />
                             </div>
@@ -2944,9 +3015,46 @@
                         </button>
                         {#if hasDetails}
                           <div
-                            class="hidden border-t border-border px-3 py-2.5"
+                            class="{isSubagent && part.status === 'running'
+                              ? ''
+                              : 'hidden'} border-t border-border px-3 py-2.5"
                             style="max-height: 250px; overflow-y: auto;">
-                            {#if isIconifier && part.iconResults}
+                            {#if isSubagent && part.subagents?.length}
+                              <div class="space-y-1.5">
+                                {#each part.subagents as agent (agent.id)}
+                                  <div class="rounded-md bg-muted/35 px-2 py-1.5 text-[11px]">
+                                    <div class="flex items-center gap-1.5">
+                                      <span class="font-medium text-cyan-500">{agent.role}</span>
+                                      <span class="truncate text-muted-foreground/70"
+                                        >{agent.id}</span>
+                                    </div>
+                                    <p class="mt-0.5 leading-relaxed text-foreground/70">
+                                      {agent.objective}
+                                    </p>
+                                    {#if agent.ownedPaths?.length}
+                                      <p
+                                        class="mt-0.5 truncate text-[10px] text-muted-foreground/50">
+                                        {agent.ownedPaths.join(', ')}
+                                      </p>
+                                    {/if}
+                                  </div>
+                                {/each}
+                              </div>
+                              {#if part.details && part.status === 'done'}
+                                <div class="mt-2 border-t border-border/70 pt-2">
+                                  <div class="space-y-1">
+                                    {#each part.details as detail, dIdx (dIdx)}
+                                      <div class="flex items-start gap-1.5 text-[11px]">
+                                        <span class="mt-0.5 shrink-0 text-muted-foreground/50"
+                                          >·</span>
+                                        <span class="leading-relaxed text-foreground/70"
+                                          >{detail}</span>
+                                      </div>
+                                    {/each}
+                                  </div>
+                                </div>
+                              {/if}
+                            {:else if isIconifier && part.iconResults}
                               <div class="space-y-1">
                                 {#each part.iconResults as icon (icon.nodeId)}
                                   <div class="flex items-center gap-2 text-[11px]">
