@@ -28,182 +28,182 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     description: 'Read current diagram content from the editor',
     enabled: true,
     id: 'diagramRead',
-    label: 'Diagram Read'
+    label: 'diagramRead'
   },
   {
     category: 'diagram',
     description: 'Write or replace the entire diagram',
     enabled: true,
     id: 'diagramWrite',
-    label: 'Diagram Write'
+    label: 'diagramWrite'
   },
   {
     category: 'diagram',
     description: 'Apply surgical edits to specific lines',
     enabled: true,
     id: 'diagramPatch',
-    label: 'Diagram Patch'
+    label: 'diagramPatch'
   },
   {
     category: 'diagram',
     description: 'Clear the entire diagram',
     enabled: true,
     id: 'diagramDelete',
-    label: 'Diagram Delete'
+    label: 'diagramDelete'
   },
   {
     category: 'icons',
     description: 'Add or remove icons on diagram nodes',
     enabled: true,
     id: 'iconifier',
-    label: 'Iconifier'
+    label: 'iconifier'
   },
   {
     category: 'search',
     description: 'Search the web for information',
     enabled: true,
     id: 'webSearch',
-    label: 'Web Search'
+    label: 'webSearch'
   },
   {
     category: 'interaction',
     description: 'Ask clarifying questions before creating diagrams',
     enabled: true,
     id: 'askQuestions',
-    label: 'Ask Questions'
+    label: 'askQuestions'
   },
   {
     category: 'diagram',
     description: 'Read content from the markdown editor',
     enabled: true,
     id: 'markdownRead',
-    label: 'Markdown Read'
+    label: 'markdownRead'
   },
   {
     category: 'diagram',
     description: 'Write content to the markdown editor',
     enabled: true,
     id: 'markdownWrite',
-    label: 'Markdown Write'
+    label: 'markdownWrite'
   },
   {
     category: 'diagram',
     description: 'Validate diagram syntax and report errors',
     enabled: true,
     id: 'errorChecker',
-    label: 'Error Checker'
+    label: 'errorChecker'
   },
   {
     category: 'diagram',
     description: 'Automatically style nodes and subgraphs with harmonious colors',
     enabled: true,
     id: 'autoStyler',
-    label: 'Auto Styler'
+    label: 'autoStyler'
   },
   {
     category: 'code',
     description: 'Read generated JSON, YAML, config, or code artifacts',
     enabled: true,
     id: 'codeRead',
-    label: 'Code Read'
+    label: 'codeRead'
   },
   {
     category: 'code',
     description: 'Write generated JSON, YAML, config, or code artifacts',
     enabled: true,
     id: 'codeWrite',
-    label: 'Code Write'
+    label: 'codeWrite'
   },
   {
     category: 'code',
     description: 'Patch generated code artifacts by line range',
     enabled: true,
     id: 'codePatch',
-    label: 'Code Patch'
+    label: 'codePatch'
   },
   {
     category: 'intelligence',
     description: 'Decompose complex tasks into step-by-step plans',
     enabled: true,
     id: 'planner',
-    label: 'Planner'
+    label: 'planner'
   },
   {
     category: 'intelligence',
     description: 'Think through complex tasks step-by-step before acting',
     enabled: true,
     id: 'sequentialThinking',
-    label: 'Sequential Thinking'
+    label: 'sequentialThinking'
   },
   {
     category: 'agents',
     description: 'Plan bounded specialist agents for complex work',
     enabled: true,
     id: 'subagentFanout',
-    label: 'Subagent Fanout'
+    label: 'subagentFanout'
   },
   {
     category: 'agents',
     description: 'Assemble specialist agent outputs into one plan',
     enabled: true,
     id: 'subagentAssemble',
-    label: 'Subagent Assemble'
+    label: 'subagentAssemble'
   },
   {
     category: 'safety',
     description: 'Check git status and protected paths before repository work',
     enabled: true,
     id: 'gitGuard',
-    label: 'Git Guard'
+    label: 'gitGuard'
   },
   {
     category: 'intelligence',
     description: 'Create and update visible checklist plans',
     enabled: true,
     id: 'planWithProgress',
-    label: 'Plan Progress'
+    label: 'planWithProgress'
   },
   {
     category: 'intelligence',
     description: 'Store and retrieve user or project memories',
     enabled: true,
     id: 'longTermMemory',
-    label: 'Long-term Memory'
+    label: 'longTermMemory'
   },
   {
     category: 'intelligence',
     description: 'Extract action items, risks, KPIs, and entities from documents',
     enabled: true,
     id: 'actionItemExtractor',
-    label: 'Action Items'
+    label: 'actionItemExtractor'
   },
   {
     category: 'intelligence',
     description: 'Analyze CSV/tabular data with statistics and chart suggestions',
     enabled: true,
     id: 'tableAnalytics',
-    label: 'Table Analytics'
+    label: 'tableAnalytics'
   },
   {
     category: 'intelligence',
     description: 'Evaluate and improve diagrams/documents for quality',
     enabled: true,
     id: 'selfCritique',
-    label: 'Self Critique'
+    label: 'selfCritique'
   },
   {
     category: 'files',
     description: 'List, read, search, and manage uploaded files and attachments',
     enabled: true,
     id: 'fileManager',
-    label: 'File Manager'
+    label: 'fileManager'
   },
   {
     category: 'files',
     description: 'Analyze CSV/Excel data: frequency, groupBy, filter, topN, correlations',
     enabled: true,
     id: 'dataAnalyzer',
-    label: 'Data Analyzer'
+    label: 'dataAnalyzer'
   }
 ];
 

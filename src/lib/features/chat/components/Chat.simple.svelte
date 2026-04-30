@@ -521,6 +521,7 @@
     operation: 'create' | 'update' | 'patch' | 'delete' | 'read';
     isStreaming: boolean;
     title: string;
+    language?: string;
     hasErrors?: boolean;
     errors?: string[];
     readFrom?: number;
@@ -1666,20 +1667,31 @@
                     lastPartWasText = false;
 
                     const opMap: Record<string, Artifact['operation']> = {
-                      diagramWrite: 'create',
+                      codePatch: 'patch',
+                      codeRead: 'read',
+                      codeWrite: 'create',
+                      diagramDelete: 'delete',
                       diagramPatch: 'patch',
                       diagramRead: 'read',
-                      diagramDelete: 'delete'
+                      diagramWrite: 'create'
                     };
                     const op = opMap[currentToolName] || 'update';
                     const titleMap: Record<string, string> = {
-                      diagramWrite: 'Writing Diagram',
+                      codePatch: 'codePatch',
+                      codeRead: 'codeRead',
+                      codeWrite: 'codeWrite',
+                      diagramDelete: 'Clearing Diagram',
                       diagramPatch: 'Patching Diagram',
                       diagramRead: 'Reading Diagram',
-                      diagramDelete: 'Clearing Diagram'
+                      diagramWrite: 'Writing Diagram'
                     };
 
-                    if (currentToolName === 'diagramWrite' || currentToolName === 'diagramPatch') {
+                    if (
+                      currentToolName === 'diagramWrite' ||
+                      currentToolName === 'diagramPatch' ||
+                      currentToolName === 'codeWrite' ||
+                      currentToolName === 'codePatch'
+                    ) {
                       // Reuse existing artifact card in same assistant message if one exists
                       const parts = messageParts[assistantIndex] || [];
                       const existingAid = (() => {
@@ -1698,6 +1710,10 @@
                           errors: undefined,
                           hasErrors: false,
                           isStreaming: true,
+                          language:
+                            currentToolName === 'codeWrite' || currentToolName === 'codePatch'
+                              ? artifactMap[currentArtifactId].language || 'text'
+                              : 'mermaid',
                           operation: op,
                           previousCode:
                             artifactMap[currentArtifactId].code || $stateStore.code || '',
@@ -1711,6 +1727,10 @@
                           code: '',
                           id: currentArtifactId,
                           isStreaming: true,
+                          language:
+                            currentToolName === 'codeWrite' || currentToolName === 'codePatch'
+                              ? 'text'
+                              : 'mermaid',
                           operation: op,
                           previousCode: prevCode,
                           title: titleMap[currentToolName] || 'Processing'
@@ -1734,6 +1754,22 @@
                       messageParts[assistantIndex] = [...parts];
                       questionnaireResponses[qId] = {};
                       scrollToBottom();
+                    } else if (currentToolName === 'codeRead') {
+                      const aid = `code-read-${currentToolCallId || Date.now()}`;
+                      const parts = messageParts[assistantIndex] || [];
+                      artifactMap[aid] = {
+                        code: '',
+                        id: aid,
+                        isStreaming: true,
+                        language: 'text',
+                        operation: 'read',
+                        previousCode: '',
+                        title: 'codeRead'
+                      };
+                      artifactMap = { ...artifactMap };
+                      parts.push({ type: 'artifact', artifactId: aid });
+                      messageParts[assistantIndex] = [...parts];
+                      scrollToBottom();
                     } else if (
                       currentToolName === 'markdownWrite' ||
                       currentToolName === 'markdownRead'
@@ -1756,29 +1792,10 @@
                     } else {
                       // Generic tool-status UI for all other tools
                       const statusId = `status-${currentToolCallId}`;
-                      const statusLabel: Record<string, string> = {
-                        actionItemExtractor: 'Extracting action items…',
-                        autoStyler: 'Styling diagram…',
-                        dataAnalyzer: 'Analyzing data…',
-                        diagramDelete: 'Clearing diagram…',
-                        errorChecker: 'Checking for errors…',
-                        fileManager: 'Managing files…',
-                        gitGuard: 'Checking git safety…',
-                        iconifier: 'Adding icons…',
-                        longTermMemory: 'Accessing memory…',
-                        planWithProgress: 'Managing plan…',
-                        planner: 'Creating plan…',
-                        selfCritique: 'Reviewing & improving…',
-                        sequentialThinking: 'Thinking step by step…',
-                        subagentAssemble: 'Assembling agent work…',
-                        subagentFanout: 'Spawning subagents…',
-                        tableAnalytics: 'Analyzing data…',
-                        webSearch: 'Searching the web…'
-                      };
                       const parts = messageParts[assistantIndex] || [];
                       parts.push({
                         id: statusId,
-                        message: statusLabel[currentToolName] || `Running ${currentToolName}…`,
+                        message: currentToolName,
                         status: 'running',
                         toolName: currentToolName,
                         type: 'tool-status'
@@ -1905,10 +1922,16 @@
                       }
                     } else if (
                       currentArtifactId &&
-                      (currentToolName === 'diagramWrite' || currentToolName === 'diagramPatch')
+                      (currentToolName === 'diagramWrite' ||
+                        currentToolName === 'diagramPatch' ||
+                        currentToolName === 'codeWrite' ||
+                        currentToolName === 'codePatch')
                     ) {
                       const contentMatch = currentToolInputJson.match(
                         /"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/
+                      );
+                      const languageMatch = currentToolInputJson.match(
+                        /"language"\s*:\s*"((?:[^"\\]|\\.)*)"/
                       );
                       if (contentMatch) {
                         const rawCode = contentMatch[1]
@@ -1920,14 +1943,23 @@
                         if (rawCode.trim() && artifactMap[currentArtifactId]) {
                           artifactMap[currentArtifactId] = {
                             ...artifactMap[currentArtifactId],
-                            code: rawCode
+                            code: rawCode,
+                            language:
+                              languageMatch?.[1] ||
+                              artifactMap[currentArtifactId].language ||
+                              (currentToolName.startsWith('code') ? 'text' : 'mermaid')
                           };
                           artifactMap = { ...artifactMap };
                           // Live canvas preview: debounce update to canvas during streaming
-                          if (streamCanvasTimer) clearTimeout(streamCanvasTimer);
-                          streamCanvasTimer = setTimeout(() => {
-                            inputStateStore.update((s) => ({ ...s, code: rawCode }));
-                          }, 300);
+                          if (
+                            currentToolName === 'diagramWrite' ||
+                            currentToolName === 'diagramPatch'
+                          ) {
+                            if (streamCanvasTimer) clearTimeout(streamCanvasTimer);
+                            streamCanvasTimer = setTimeout(() => {
+                              inputStateStore.update((s) => ({ ...s, code: rawCode }));
+                            }, 300);
+                          }
                           scrollToBottom();
                         }
                       }
@@ -2063,6 +2095,42 @@
                       parts.push({ type: 'artifact', artifactId: aid });
                       messageParts[assistantIndex] = [...parts];
                       lastPartWasText = false;
+                      scrollToBottom();
+                    } else if (
+                      output &&
+                      typeof output.content === 'string' &&
+                      (toolName === 'codeRead' ||
+                        toolName === 'codeWrite' ||
+                        toolName === 'codePatch')
+                    ) {
+                      const aid =
+                        currentArtifactId && artifactMap[currentArtifactId]
+                          ? currentArtifactId
+                          : `code-${data.toolCallId || Date.now()}`;
+                      const codeContent = output.content || '';
+                      artifactMap[aid] = {
+                        code: codeContent,
+                        id: aid,
+                        isStreaming: false,
+                        language: output.language || artifactMap[aid]?.language || 'text',
+                        operation:
+                          toolName === 'codeRead'
+                            ? 'read'
+                            : toolName === 'codePatch'
+                              ? 'patch'
+                              : 'create',
+                        previousCode: artifactMap[aid]?.previousCode || '',
+                        readFrom: output.readFrom,
+                        readTo: output.readTo,
+                        title: toolName,
+                        totalLines: output.totalLines || output.lines
+                      };
+                      artifactMap = { ...artifactMap };
+                      const parts = messageParts[assistantIndex] || [];
+                      if (!parts.some((p) => p.type === 'artifact' && p.artifactId === aid)) {
+                        parts.push({ type: 'artifact', artifactId: aid });
+                        messageParts[assistantIndex] = [...parts];
+                      }
                       scrollToBottom();
                     } else if (
                       output &&
@@ -2851,7 +2919,7 @@
                       <CodeArtifact
                         code={artifact.code}
                         previousCode={artifact.previousCode}
-                        language="mermaid"
+                        language={artifact.language || 'mermaid'}
                         title={artifact.title}
                         isStreaming={artifact.isStreaming}
                         operation={artifact.operation}
@@ -3016,22 +3084,27 @@
                             {part.status === 'running'
                               ? 'text-foreground'
                               : 'text-muted-foreground'}">
-                            {#if part.status === 'running'}
-                              {part.message || `Running ${part.toolName}…`}
-                            {:else if isIconifier}
-                              {part.iconMode === 'remove'
-                                ? `Removed ${removedCount} icon${removedCount !== 1 ? 's' : ''}`
-                                : `${addedCount} icon${addedCount !== 1 ? 's' : ''} added${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}
-                            {:else if isSearch}
-                              {part.searchResults?.length || 0} result{(part.searchResults
-                                ?.length || 0) !== 1
-                                ? 's'
-                                : ''}
-                              {#if part.searchQuery}
-                                · "{part.searchQuery}"{/if}
-                            {:else}
-                              {part.message}
-                            {/if}
+                            <span class="font-mono">{part.toolName}</span>
+                            <span class="ml-1 text-muted-foreground/70">
+                              {#if part.status === 'running'}
+                                · {part.message && part.message !== part.toolName
+                                  ? part.message
+                                  : 'running'}
+                              {:else if isIconifier}
+                                · {part.iconMode === 'remove'
+                                  ? `removed ${removedCount} icon${removedCount !== 1 ? 's' : ''}`
+                                  : `${addedCount} icon${addedCount !== 1 ? 's' : ''} added${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}
+                              {:else if isSearch}
+                                · {part.searchResults?.length || 0} result{(part.searchResults
+                                  ?.length || 0) !== 1
+                                  ? 's'
+                                  : ''}
+                                {#if part.searchQuery}
+                                  · "{part.searchQuery}"{/if}
+                              {:else if part.message && part.message !== part.toolName}
+                                · {part.message}
+                              {/if}
+                            </span>
                           </span>
                           {#if part.status === 'running'}
                             {@const dotColor = 'bg-muted-foreground/40'}
