@@ -47,14 +47,20 @@
     const content = markdownContent;
     saveTimeout = setTimeout(() => {
       documentMarkdownStore.set(content);
-      workspaceStore.markDirty();
+      workspaceStore.setActiveDiagramDocumentMarkdown(content);
     }, 400);
   }
 
   // Watch for file changes
   $effect(() => {
-    const newId = workspaceStore.workspace?.id || '_default';
-    const newName = workspaceStore.workspace?.title || 'Untitled';
+    const activeDiagram = workspaceStore.diagrams.find(
+      (diagram) => diagram.id === workspaceStore.activeDiagramId
+    );
+    const newId =
+      workspaceStore.workspace?.id && workspaceStore.activeDiagramId
+        ? `${workspaceStore.workspace.id}:${workspaceStore.activeDiagramId}`
+        : workspaceStore.workspace?.id || '_default';
+    const newName = activeDiagram?.title || workspaceStore.workspace?.title || 'Untitled';
     if (newId !== currentFileId) {
       currentFileId = newId;
       currentFileName = newName;
@@ -80,7 +86,7 @@
     if (ignoreExternalUpdate) return;
     if (externalMd && externalMd !== markdownContent) {
       markdownContent = externalMd;
-      workspaceStore.markDirty();
+      workspaceStore.setActiveDiagramDocumentMarkdown(externalMd);
       // Sync to Monaco
       if (monacoEditor && markdownContent !== currentEditorText) {
         currentEditorText = markdownContent;

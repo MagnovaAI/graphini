@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
   import * as Dialog from '$lib/components/ui/dialog';
+  import { Input } from '$lib/components/ui/input';
   import { aiSettings, TOOL_CATEGORIES, toolsStore } from '$lib/stores';
   import { kv } from '$lib/stores/kvStore.svelte';
   import {
@@ -14,10 +16,15 @@
   import { downloadAppState } from '$lib/util/serialization/exportState';
   import {
     BookOpen,
+    Check,
     Download,
+    EyeOff,
     Pencil,
+    Power,
+    RefreshCw,
     RotateCcw,
     Save,
+    Search,
     ToggleLeft,
     ToggleRight,
     Trash2,
@@ -100,6 +107,13 @@
       description: string;
     }>
   >([]);
+  let enabledModels = $state<Record<string, any>[]>([]);
+  let enabledModelsLoading = $state(false);
+  let openRouterModels = $state<Record<string, any>[]>([]);
+  let openRouterLoading = $state(false);
+  let openRouterSearch = $state('');
+  let modelAdminError = $state('');
+  let modelAdminNotice = $state('');
 
   // Critical fix: Sync API key input when provider changes
   $effect(() => {
@@ -128,6 +142,17 @@
   let favoriteModels = $derived(favoriteModelsStore.value);
   let selectedChatModels = $derived(selectedChatModelsStore.value);
   let loadingProviders = $derived(modelsLoadingStore.value);
+  let filteredOpenRouterModels = $derived.by(() => {
+    const q = openRouterSearch.toLowerCase().trim();
+    if (!q) return openRouterModels.slice(0, 80);
+    return openRouterModels
+      .filter((model) =>
+        [model.id, model.name, model.description, model.architecture?.modality]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(q))
+      )
+      .slice(0, 80);
+  });
 
   async function loadProvidersAndModels() {
     // Load all models from admin
@@ -162,14 +187,120 @@
     }
   }
 
+  async function adminFetch(action: string, params: Record<string, string> = {}) {
+    const search = new URLSearchParams({ action, ...params });
+    const res = await fetch(`/api/admin?${search}`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || `Failed to load ${action}`);
+    }
+    return data.data;
+  }
+
+  async function adminPost(body: Record<string, unknown>) {
+    const res = await fetch('/api/admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || 'Admin action failed');
+    }
+    return data.data;
+  }
+
+  async function loadEnabledModels() {
+    enabledModelsLoading = true;
+    modelAdminError = '';
+    try {
+      enabledModels = (await adminFetch('models')) || [];
+    } catch (error) {
+      modelAdminError = error instanceof Error ? error.message : 'Failed to load enabled models';
+    } finally {
+      enabledModelsLoading = false;
+    }
+  }
+
+  async function loadOpenRouterModels() {
+    openRouterLoading = true;
+    modelAdminError = '';
+    try {
+      openRouterModels = (await adminFetch('openrouter_models')) || [];
+    } catch (error) {
+      modelAdminError = error instanceof Error ? error.message : 'Failed to load OpenRouter models';
+    } finally {
+      openRouterLoading = false;
+    }
+  }
+
+  async function toggleEnabledModel(modelId: string, isEnabled: boolean) {
+    modelAdminError = '';
+    modelAdminNotice = '';
+    try {
+      await adminPost({ action: 'toggleEnabledModel', isEnabled, modelId });
+      await loadEnabledModels();
+      await loadModelsFromAPI();
+    } catch (error) {
+      modelAdminError = error instanceof Error ? error.message : 'Failed to update model';
+    }
+  }
+
+  async function deleteEnabledModel(modelId: string) {
+    if (!confirm(`Delete model ${modelId}?`)) return;
+    modelAdminError = '';
+    modelAdminNotice = '';
+    try {
+      await adminPost({ action: 'deleteEnabledModel', modelId });
+      await loadEnabledModels();
+      await loadModelsFromAPI();
+    } catch (error) {
+      modelAdminError = error instanceof Error ? error.message : 'Failed to delete model';
+    }
+  }
+
+  async function importOpenRouterModel(model: Record<string, any>) {
+    const fullId = `openrouter/${model.id}`;
+    modelAdminError = '';
+    modelAdminNotice = '';
+    try {
+      await adminPost({
+        action: 'importOpenRouterModel',
+        modelData: {
+          category: model.architecture?.modality || 'General',
+          description: (model.description || '').slice(0, 120),
+          gems_per_message:
+            model.pricing?.prompt === '0' && model.pricing?.completion === '0' ? 1 : 2,
+          is_free: model.pricing?.prompt === '0' && model.pricing?.completion === '0',
+          max_tokens: model.context_length || 4000,
+          metadata: { openrouter_id: model.id, pricing: model.pricing },
+          model_id: fullId,
+          model_name: model.name || model.id,
+          provider: 'openrouter',
+          tool_support: true
+        }
+      });
+      modelAdminNotice = `Imported ${model.name || model.id}`;
+      await loadEnabledModels();
+      await loadModelsFromAPI();
+    } catch (error) {
+      modelAdminError = error instanceof Error ? error.message : 'Failed to import model';
+    }
+  }
+
+  function isOpenRouterImported(modelId: string) {
+    return enabledModels.some((model) => model.model_id === `openrouter/${modelId}`);
+  }
+
   onMount(() => {
     // Load providers and models
     loadProvidersAndModels();
+    loadEnabledModels();
     // Load memories
     loadMemories();
 
-    return () => {
-    };
+    return () => {};
   });
 
   function setProvider(nextProvider: string) {
@@ -228,7 +359,7 @@
 </script>
 
 <Dialog.Root bind:open {onOpenChange}>
-  <Dialog.Content class="max-h-[85vh] overflow-y-auto sm:max-w-[560px]">
+  <Dialog.Content class="max-h-[92vh] overflow-y-auto sm:max-w-[1120px]">
     <Dialog.Header>
       <div class="flex items-center gap-3">
         <div
@@ -245,6 +376,202 @@
     </Dialog.Header>
 
     <div class="space-y-4 py-3">
+      <!-- Model Access Card -->
+      <div
+        class="space-y-3 rounded-xl border border-border/50 bg-muted/5 p-3.5 dark:border-border/30 dark:bg-white/[0.02]">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <div class="flex size-6 items-center justify-center rounded-lg bg-violet-500/10">
+              <Power class="size-3 text-violet-500" />
+            </div>
+            <div>
+              <span class="text-xs font-semibold text-foreground">Model Access</span>
+              <p class="text-[10px] text-muted-foreground/60">
+                Manage the models shown in chat. Admin-only controls live here now.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <Badge variant="outline" class="text-[10px]">{enabledModels.length} models</Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              class="h-7 gap-1 text-[10px]"
+              disabled={enabledModelsLoading}
+              onclick={loadEnabledModels}>
+              <RefreshCw class="size-3 {enabledModelsLoading ? 'animate-spin' : ''}" />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {#if modelAdminError}
+          <div
+            class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-700 dark:text-amber-300">
+            {modelAdminError}
+          </div>
+        {/if}
+        {#if modelAdminNotice}
+          <div
+            class="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-700 dark:text-emerald-300">
+            {modelAdminNotice}
+          </div>
+        {/if}
+
+        <div class="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+          <div class="overflow-hidden rounded-lg border border-border/40 bg-background/80">
+            <div class="flex items-center justify-between border-b border-border/40 px-3 py-2">
+              <span class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
+                >Enabled Models</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                class="h-6 gap-1 text-[10px]"
+                onclick={async () => {
+                  for (const model of enabledModels.filter((item) => item.is_enabled)) {
+                    await toggleEnabledModel(model.model_id, false);
+                  }
+                }}>
+                <EyeOff class="size-3" /> Disable All
+              </Button>
+            </div>
+            <div class="max-h-[360px] overflow-auto">
+              {#if enabledModelsLoading}
+                <div class="flex items-center justify-center py-10">
+                  <RefreshCw class="size-5 animate-spin text-muted-foreground" />
+                </div>
+              {:else if enabledModels.length === 0}
+                <div class="p-6 text-center text-[11px] text-muted-foreground">
+                  No enabled models yet. Import one from OpenRouter.
+                </div>
+              {:else}
+                <div class="divide-y divide-border/40">
+                  {#each enabledModels as model (model.model_id)}
+                    <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-[11px] font-semibold text-foreground">
+                          {model.model_name}
+                        </div>
+                        <div class="truncate font-mono text-[9px] text-muted-foreground/70">
+                          {model.model_id}
+                        </div>
+                        <div class="mt-1 flex flex-wrap items-center gap-1">
+                          <Badge variant="secondary" class="text-[8px]"
+                            >{model.provider || 'openrouter'}</Badge>
+                          <Badge variant="outline" class="text-[8px]"
+                            >{model.category || 'General'}</Badge>
+                          {#if model.is_free}
+                            <Badge variant="default" class="text-[8px]">Free</Badge>
+                          {/if}
+                          {#if model.tool_support}
+                            <Badge variant="outline" class="text-[8px]">Tools</Badge>
+                          {/if}
+                        </div>
+                      </div>
+                      <div class="flex shrink-0 items-center gap-1">
+                        <span class="text-[10px] text-muted-foreground"
+                          >{model.gems_per_message ?? 2} gems</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="size-7 p-0"
+                          title={model.is_enabled ? 'Disable' : 'Enable'}
+                          onclick={() => toggleEnabledModel(model.model_id, !model.is_enabled)}>
+                          <Power
+                            class="size-3.5 {model.is_enabled
+                              ? 'text-emerald-500'
+                              : 'text-muted-foreground/50'}" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="size-7 p-0 text-red-500"
+                          title="Delete"
+                          onclick={() => deleteEnabledModel(model.model_id)}>
+                          <Trash2 class="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <div class="overflow-hidden rounded-lg border border-border/40 bg-background/80">
+            <div class="space-y-2 border-b border-border/40 p-3">
+              <div class="flex items-center justify-between gap-2">
+                <span
+                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
+                  >OpenRouter Import</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-6 gap-1 text-[10px]"
+                  disabled={openRouterLoading}
+                  onclick={loadOpenRouterModels}>
+                  <RefreshCw class="size-3 {openRouterLoading ? 'animate-spin' : ''}" />
+                  Load
+                </Button>
+              </div>
+              <div class="relative">
+                <Search
+                  class="absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground/50" />
+                <Input
+                  class="h-8 pl-7 text-[11px]"
+                  placeholder="Search Claude, GPT, GLM, MiniMax..."
+                  bind:value={openRouterSearch} />
+              </div>
+            </div>
+            <div class="max-h-[360px] overflow-auto">
+              {#if openRouterLoading}
+                <div class="flex items-center justify-center py-10">
+                  <RefreshCw class="size-5 animate-spin text-muted-foreground" />
+                </div>
+              {:else if openRouterModels.length === 0}
+                <div class="p-6 text-center text-[11px] text-muted-foreground">
+                  Load OpenRouter models to import tool-capable options.
+                </div>
+              {:else}
+                <div class="divide-y divide-border/40">
+                  {#each filteredOpenRouterModels as model (model.id)}
+                    {@const imported = isOpenRouterImported(model.id)}
+                    <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-[11px] font-semibold text-foreground">
+                          {model.name || model.id}
+                        </div>
+                        <div class="truncate font-mono text-[9px] text-muted-foreground/70">
+                          {model.id}
+                        </div>
+                        <div class="mt-1 text-[9px] text-muted-foreground/60">
+                          {model.context_length
+                            ? `${(model.context_length / 1000).toFixed(0)}k context`
+                            : 'Context unknown'}
+                        </div>
+                      </div>
+                      {#if imported}
+                        <Badge variant="secondary" class="shrink-0 text-[8px]">
+                          <Check class="mr-1 size-3" /> Imported
+                        </Badge>
+                      {:else}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          class="h-7 shrink-0 gap-1 text-[10px]"
+                          onclick={() => importOpenRouterModel(model)}>
+                          <Download class="size-3" /> Import
+                        </Button>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Tools Configuration Card -->
       <div
         class="space-y-2.5 rounded-xl border border-border/50 bg-muted/5 p-3.5 dark:border-border/30 dark:bg-white/[0.02]">

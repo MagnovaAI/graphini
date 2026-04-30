@@ -2,246 +2,383 @@
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { Header } from '$lib/components/ui/header/index.js';
-  import { HeroSection } from '$lib/components/ui/hero-section/index.js';
   import {
     ArrowRight,
-    Sparkles,
-    Code2,
-    Paintbrush,
+    Braces,
     Download,
-    Users,
-    Globe,
-    Github
+    FileSearch,
+    GitBranch,
+    Github,
+    LayoutGrid,
+    MessageSquareText,
+    Mic,
+    PanelsTopLeft,
+    Paperclip,
+    Palette,
+    Presentation,
+    Share2,
+    ShieldCheck,
+    Sparkles,
+    Table2,
+    TerminalSquare,
+    Wand2,
+    Wrench
   } from 'lucide-svelte';
 
   function gotoEdit(prompt: string) {
     goto(resolve('/dashboard') + `?prompt=${encodeURIComponent(prompt)}`);
   }
 
-  const features = [
-    {
-      description:
-        'Describe your diagram in plain English. Graphini turns words into production-ready Mermaid code.',
-      icon: Sparkles,
-      title: 'AI Generation'
-    },
-    {
-      description:
-        'Full Mermaid.js support. Syntax highlighting, live preview, intelligent auto-complete.',
-      icon: Code2,
-      title: 'Mermaid DSL'
-    },
-    {
-      description: 'Pan, zoom, arrange. Your workspace, your layout. No constraints.',
-      icon: Paintbrush,
-      title: 'Infinite Canvas'
-    },
-    {
-      description: 'SVG, PNG, or raw Mermaid code. Embed diagrams in docs, slides, READMEs.',
-      icon: Download,
-      title: 'Export Anything'
-    },
-    {
-      description: 'Save, organize, revisit. Auto-save keeps your work safe as you go.',
-      icon: Users,
-      title: 'Workspaces'
-    },
-    {
-      description: 'Built in the open. Fork it, extend it, self-host it. MIT licensed.',
-      icon: Globe,
-      title: 'Open Source'
-    }
-  ];
-
-  const prompts = [
-    'microservices architecture with API gateway',
-    'user authentication flow with OAuth2',
-    'CI/CD pipeline for a monorepo',
-    'database schema for e-commerce',
-    'state machine for order processing',
-    'class diagram for a chat app'
-  ];
-
   const diagramTypes = [
     'Flowchart',
     'Sequence',
-    'Class',
+    'Architecture',
+    'C4 Model',
     'State',
     'ERD',
     'Gantt',
     'Mindmap',
-    'Git Graph'
+    'Git Graph',
+    'User Journey',
+    'Packet Flow',
+    'Deployment',
+    'Decision Tree'
   ];
 
-  const stack = [
-    { name: 'SvelteKit', url: 'https://kit.svelte.dev' },
-    { name: 'Mermaid.js', url: 'https://mermaid.js.org' },
-    { name: 'TypeScript', url: 'https://typescriptlang.org' },
-    { name: 'Tailwind CSS', url: 'https://tailwindcss.com' },
-    { name: 'Vercel AI SDK', url: 'https://sdk.vercel.ai' },
-    { name: 'Neon PostgreSQL', url: 'https://neon.tech' }
+  const workflow = [
+    {
+      title: 'Start from a sentence',
+      description: 'Ask for the system, process, schema, or dependency map you need.',
+      icon: MessageSquareText
+    },
+    {
+      title: 'Edit the Mermaid source',
+      description: 'Use the generated code directly, or keep shaping it in the workspace.',
+      icon: Braces
+    },
+    {
+      title: 'Arrange on canvas',
+      description: 'Keep diagrams, notes, and exports together without leaving the page.',
+      icon: PanelsTopLeft
+    },
+    {
+      title: 'Ship the result',
+      description: 'Export SVG, PNG, or Mermaid for docs, READMEs, slides, and tickets.',
+      icon: Download
+    }
+  ];
+
+  const details = [
+    {
+      title: 'Mermaid-native',
+      description: 'The output stays readable, portable, and easy to review in git.',
+      icon: GitBranch
+    },
+    {
+      title: 'Workspace history',
+      description:
+        'Save diagrams as workspaces so the rough draft and final version stay connected.',
+      icon: LayoutGrid
+    },
+    {
+      title: 'Open source',
+      description:
+        'Graphini is MIT licensed and built for teams that want to self-host or extend it.',
+      icon: Share2
+    }
+  ];
+
+  const useCases = [
+    'Architecture reviews',
+    'API handoffs',
+    'Incident notes',
+    'Database planning',
+    'Sprint specs',
+    'README diagrams'
+  ];
+
+  const formats = [
+    {
+      title: 'Prompt to Mermaid',
+      description: 'Generate a first draft, then keep the DSL close enough to edit by hand.',
+      icon: TerminalSquare
+    },
+    {
+      title: 'Docs-ready exports',
+      description: 'Use SVG or PNG when a diagram needs to leave the workspace cleanly.',
+      icon: Presentation
+    },
+    {
+      title: 'Structured diagrams',
+      description: 'Flowcharts, sequences, ERDs, state machines, Gantt plans, and more.',
+      icon: Table2
+    }
+  ];
+
+  const scannedFeatures = [
+    {
+      group: 'AI workspace',
+      items: [
+        {
+          title: 'Context-aware chat',
+          description:
+            'Ask the assistant to create, expand, convert, review, or document the active diagram.',
+          icon: Sparkles
+        },
+        {
+          title: 'Syntax repair',
+          description:
+            'Diagram edits can be validated and repaired against Mermaid syntax before you keep working.',
+          icon: Wrench
+        },
+        {
+          title: 'Prompt enhancer',
+          description:
+            'Rewrite rough prompts into clearer diagram instructions from inside the chat panel.',
+          icon: Wand2
+        }
+      ]
+    },
+    {
+      group: 'Inputs',
+      items: [
+        {
+          title: 'File-aware prompts',
+          description:
+            'Attach PDFs, spreadsheets, CSVs, Markdown, code, Mermaid files, or logs for the assistant to read.',
+          icon: Paperclip
+        },
+        {
+          title: 'Image understanding',
+          description:
+            'Uploaded diagrams, screenshots, charts, and technical images are described for reuse in chat.',
+          icon: FileSearch
+        },
+        {
+          title: 'Voice input',
+          description: 'Record audio and turn it into a prompt without leaving the workspace.',
+          icon: Mic
+        }
+      ]
+    },
+    {
+      group: 'Editing',
+      items: [
+        {
+          title: 'Visual node tools',
+          description:
+            'Add shapes, edit labels, tune colors, change arrows, and style nodes from the canvas.',
+          icon: Palette
+        },
+        {
+          title: 'Markdown document panel',
+          description: 'Keep explanation, requirements, and handoff notes beside the diagram.',
+          icon: Presentation
+        },
+        {
+          title: 'C4 / Structurizr mode',
+          description:
+            'Create architecture workspaces with Structurizr DSL, multiple files, and selectable views.',
+          icon: ShieldCheck
+        }
+      ]
+    }
   ];
 </script>
 
 <svelte:head>
-  <title>Graphini — AI-powered diagram workspace</title>
+  <title>Graphini — AI diagram workspace</title>
   <meta
     name="description"
-    content="Turn ideas into diagrams instantly. Describe in plain English or Mermaid DSL, watch it render live. Open source, AI-powered." />
-  <meta property="og:title" content="Graphini — AI-powered diagram workspace" />
+    content="Create Mermaid diagrams from plain English, edit them in a workspace, and export clean assets for docs and presentations." />
+  <meta property="og:title" content="Graphini — AI diagram workspace" />
   <meta
     property="og:description"
-    content="Turn ideas into diagrams instantly. Describe in plain English or Mermaid DSL, watch it render live." />
+    content="Create Mermaid diagrams from plain English, edit them in a workspace, and export clean assets." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://graphini.magnova.ai" />
   <meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
-<div class="flex w-full flex-col bg-background">
-  <!-- Header -->
+<div class="min-h-screen bg-background text-foreground">
   <Header />
 
-  <!-- Main content -->
-  <main class="grow">
-    <!-- Hero Section -->
-    <HeroSection />
+  <main>
+    <section
+      class="mx-auto grid max-w-6xl gap-10 px-5 pt-14 pb-12 md:grid-cols-[0.78fr_1.22fr] md:px-8 md:pt-20">
+      <div class="intro-copy">
+        <div class="product-line">
+          <img src="/brand/logo.png" alt="" class="size-6 rounded-md" />
+          <span>Graphini</span>
+        </div>
 
-    <!-- Example prompts -->
-    <div class="mx-auto mt-16 flex max-w-3xl flex-wrap items-center justify-center gap-2 px-4">
-      <span class="mr-1 text-xs font-medium text-muted-foreground">Try:</span>
-      {#each prompts as prompt (prompt)}
-        <button class="prompt-chip" onclick={() => gotoEdit(prompt)}>
-          "{prompt}"
-        </button>
-      {/each}
-    </div>
+        <h1>Diagram the idea before it goes stale.</h1>
 
-    <!-- Diagram types -->
-    <section class="mt-16 border-y border-border py-5">
-      <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-2 px-5">
-        {#each diagramTypes as type (type)}
-          <button class="surface-chip" onclick={() => gotoEdit(type + ' diagram')}>
-            {type}
-          </button>
+        <p>
+          Turn rough architecture notes, process descriptions, and data models into Mermaid diagrams
+          you can edit, save, and export.
+        </p>
+
+        <div class="action-row">
+          <a href={resolve('/dashboard')} class="primary-action">
+            Open workspace
+            <ArrowRight class="size-4" />
+          </a>
+          <a
+            href="https://github.com/omkarbhad/graphini"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="secondary-action">
+            <Github class="size-4" />
+            GitHub
+          </a>
+        </div>
+
+        <div class="prompt-row" aria-label="Example diagram prompts">
+          {#each diagramTypes as type (type)}
+            <button type="button" onclick={() => gotoEdit(`${type} diagram`)}>{type}</button>
+          {/each}
+        </div>
+      </div>
+
+      <a
+        href={resolve('/dashboard')}
+        class="workspace-preview"
+        aria-label="Open Graphini workspace">
+        <img src="/demo2.png" alt="Graphini workspace with Mermaid editor and rendered diagram" />
+      </a>
+    </section>
+
+    <section class="border-y border-border bg-card">
+      <div
+        class="mx-auto grid max-w-6xl divide-y divide-border px-5 md:grid-cols-4 md:divide-x md:divide-y-0 md:px-8">
+        {#each workflow as item (item.title)}
+          {@const Icon = item.icon}
+          <article class="workflow-item">
+            <Icon class="mb-4 size-5 text-muted-foreground" />
+            <h2>{item.title}</h2>
+            <p>{item.description}</p>
+          </article>
         {/each}
       </div>
     </section>
 
-    <!-- Demo images -->
-    <section class="mx-auto mt-20 max-w-5xl px-5 sm:px-8 md:px-10">
-      <div class="mb-10 text-center">
-        <h2 class="section-heading">See it in action</h2>
-        <p class="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-muted-foreground">
-          Describe your architecture in plain English, get a diagram instantly.
-        </p>
-      </div>
-      <div class="grid gap-8">
-        <div class="overflow-hidden rounded-xl border border-border">
-          <img src="/demo2.png" alt="Graphini Interface" class="w-full" />
+    <section class="border-y border-border">
+      <div class="mx-auto grid max-w-6xl gap-6 px-5 py-10 md:grid-cols-[0.45fr_1fr] md:px-8">
+        <div class="section-copy">
+          <h2>Useful when the diagram is part of the work.</h2>
+          <p>
+            Graphini is meant for the messy middle: when a note, ticket, or design discussion needs
+            a diagram before it is polished.
+          </p>
         </div>
-        <div class="overflow-hidden rounded-xl border border-border">
-          <img src="/demo1.png" alt="Generated Microservices Diagram" class="w-full" />
+
+        <div class="use-case-list" aria-label="Graphini use cases">
+          {#each useCases as item (item)}
+            <button type="button" onclick={() => gotoEdit(item)}>{item}</button>
+          {/each}
         </div>
       </div>
     </section>
 
-    <!-- Features -->
-    <section class="mx-auto max-w-6xl px-5 py-24 sm:px-8 md:px-10">
-      <div class="mb-16 text-center">
-        <h2 class="section-heading">Everything you need to diagram</h2>
-        <p class="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-muted-foreground">
-          From quick sketches to production architecture docs.
-        </p>
+    <section
+      class="mx-auto grid max-w-6xl gap-8 px-5 py-14 md:grid-cols-[1fr_0.82fr] md:px-8 md:py-20">
+      <div class="image-stack">
+        <img src="/demo2.png" alt="Graphini prompt and generated diagram view" />
+        <img src="/demo1.png" alt="Generated microservices diagram exported from Graphini" />
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {#each features as feature (feature.title)}
-          {@const Icon = feature.icon}
-          <div class="feature-card">
-            <div class="mb-5 flex size-10 items-center justify-center rounded-lg bg-muted">
-              <Icon class="size-[18px] text-muted-foreground" />
+      <div class="detail-list">
+        <div>
+          <h2>Built around the Mermaid file, not around a proprietary canvas.</h2>
+          <p>
+            Graphini keeps the source visible and editable, then gives you a canvas around it for
+            iteration, organization, and export.
+          </p>
+        </div>
+
+        {#each details as item (item.title)}
+          {@const Icon = item.icon}
+          <article>
+            <Icon class="mb-4 size-5 text-muted-foreground" />
+            <div>
+              <h3>{item.title}</h3>
+              <p>{item.description}</p>
             </div>
-            <h3 class="mb-2 text-[15px] font-semibold text-foreground">{feature.title}</h3>
-            <p class="text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
-          </div>
+          </article>
+        {/each}
+
+        <a href={resolve('/dashboard')} class="text-link">
+          Create a diagram
+          <Sparkles class="size-4" />
+        </a>
+      </div>
+    </section>
+
+    <section class="border-t border-border bg-card">
+      <div
+        class="mx-auto grid max-w-6xl divide-y divide-border px-5 md:grid-cols-3 md:divide-x md:divide-y-0 md:px-8">
+        {#each formats as item (item.title)}
+          {@const Icon = item.icon}
+          <article class="format-item">
+            <Icon class="mb-4 size-5 text-muted-foreground" />
+            <h2>{item.title}</h2>
+            <p>{item.description}</p>
+          </article>
         {/each}
       </div>
     </section>
 
-    <!-- Built with -->
-    <section
-      class="mx-auto max-w-5xl border-t border-border px-5 py-20 text-center sm:px-8 md:px-10">
-      <h2 class="mb-3 text-lg font-bold tracking-tight text-foreground">Built with</h2>
-      <p class="mb-8 text-sm text-muted-foreground">Modern stack, open source all the way down.</p>
-      <div class="flex flex-wrap items-center justify-center gap-2.5">
-        {#each stack as tech (tech.name)}
-          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-          <a href={tech.url} target="_blank" rel="noopener noreferrer" class="tech-chip"
-            >{tech.name}</a>
-        {/each}
+    <section class="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
+      <div class="section-copy feature-heading">
+        <h2>Feature scan from the actual workspace.</h2>
+        <p>
+          These are the things the app already has behind the homepage: panels, tools, endpoints,
+          and stores that show up in the working product.
+        </p>
       </div>
-    </section>
 
-    <!-- CTA -->
-    <section
-      class="mx-auto max-w-4xl border-t border-border px-5 py-24 text-center sm:px-8 md:px-10">
-      <h2 class="text-[clamp(1.5rem,5vw,2.25rem)] font-bold tracking-tight text-foreground">
-        Ready to diagram?
-      </h2>
-      <p class="mt-4 text-base text-muted-foreground">
-        Sign in, create a workspace, and start building.
-      </p>
-      <div class="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4">
-        <a
-          href={resolve('/dashboard')}
-          class="btn-primary min-w-[200px] justify-center py-3 text-sm">
-          Go to Dashboard
-          <ArrowRight class="size-4" />
-        </a>
-        <a
-          href="https://github.com/omkarbhad/graphini"
-          target="_blank"
-          rel="noopener"
-          class="btn-secondary min-w-[200px] justify-center">
-          <Github class="size-4" />
-          View Source
-        </a>
+      <div class="scanned-grid">
+        {#each scannedFeatures as group (group.group)}
+          <section class="feature-group" aria-labelledby={`${group.group}-features`}>
+            <h3 id={`${group.group}-features`}>{group.group}</h3>
+            <div class="feature-group-list">
+              {#each group.items as item (item.title)}
+                {@const Icon = item.icon}
+                <article>
+                  <Icon class="mt-0.5 size-4 text-muted-foreground" />
+                  <div>
+                    <h4>{item.title}</h4>
+                    <p>{item.description}</p>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          </section>
+        {/each}
       </div>
     </section>
   </main>
 
-  <!-- Footer -->
-  <footer class="border-t border-border px-5 py-6 sm:px-8 md:px-10">
-    <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-      <div class="flex items-center gap-3">
-        <img src="/brand/logo.png" alt="Graphini" class="size-5 rounded-md" />
-        <span class="text-sm font-semibold text-foreground">Graphini</span>
-        <span class="text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} Magnova
-        </span>
+  <footer class="border-t border-border">
+    <div
+      class="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-8">
+      <div class="flex items-center gap-2">
+        <img src="/brand/logo.png" alt="" class="size-5 rounded" />
+        <span class="font-medium text-foreground">Graphini</span>
+        <span>&copy; {new Date().getFullYear()} Magnova</span>
       </div>
-      <nav class="flex items-center gap-5">
-        <a
-          href={resolve('/dashboard')}
-          class="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >Dashboard</a>
-        <a
-          href="https://github.com/omkarbhad/graphini"
-          target="_blank"
-          rel="noopener"
-          class="text-sm text-muted-foreground transition-colors hover:text-foreground">GitHub</a>
-        <a
-          href="https://github.com/omkarbhad/graphini/blob/main/CONTRIBUTING.md"
-          target="_blank"
-          rel="noopener"
-          class="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >Contributing</a>
+      <nav class="flex flex-wrap items-center gap-4">
+        <a href={resolve('/dashboard')}>Dashboard</a>
+        <a href="https://github.com/omkarbhad/graphini" target="_blank" rel="noopener noreferrer">
+          Source
+        </a>
         <a
           href="https://github.com/omkarbhad/graphini/blob/main/LICENSE"
           target="_blank"
-          rel="noopener"
-          class="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >MIT License</a>
+          rel="noopener noreferrer">
+          MIT License
+        </a>
       </nav>
     </div>
   </footer>
@@ -250,77 +387,168 @@
 <style>
   @reference "../app.css";
 
-  /* ── Buttons ── */
-  .btn-primary {
-    @apply inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-colors duration-150;
-    @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
-    background: var(--color-primary);
-  }
-  .btn-primary:hover {
-    opacity: 0.9;
+  .intro-copy {
+    @apply flex flex-col justify-center;
   }
 
-  .btn-secondary {
-    @apply inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-medium text-muted-foreground transition-colors duration-150;
+  .product-line {
+    @apply mb-5 flex items-center gap-2 text-sm font-semibold;
+  }
+
+  h1 {
+    @apply max-w-xl text-4xl leading-[1.05] font-semibold tracking-normal text-foreground md:text-5xl;
+  }
+
+  .intro-copy > p {
+    @apply mt-5 max-w-xl text-base leading-7 text-muted-foreground md:text-lg;
+  }
+
+  .action-row {
+    @apply mt-8 flex flex-col gap-3 sm:flex-row;
+  }
+
+  .primary-action,
+  .secondary-action {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition-colors duration-150;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-  }
-  .btn-secondary:hover {
-    background: var(--color-accent);
-    color: var(--color-foreground);
   }
 
-  .prompt-chip {
-    @apply cursor-pointer rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors duration-150;
-    @apply focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none;
-    border: 1px solid var(--color-border);
-    background: var(--color-card);
-    color: var(--color-muted-foreground);
-  }
-  .prompt-chip:hover {
-    border-color: var(--color-primary);
-    background: var(--color-accent);
-    color: var(--color-foreground);
+  .primary-action {
+    @apply bg-primary text-primary-foreground hover:opacity-90;
   }
 
-  .surface-chip {
-    @apply cursor-pointer rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150;
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-  }
-  .surface-chip:hover {
-    border-color: var(--color-primary);
-    background: var(--color-accent);
-    color: var(--color-foreground);
+  .secondary-action {
+    @apply border border-border bg-card text-foreground hover:bg-accent;
   }
 
-  /* ── Section headings ── */
-  .section-heading {
-    @apply text-[clamp(1.5rem,4vw,2.5rem)] font-bold tracking-tight text-foreground;
+  .prompt-row {
+    @apply mt-8 flex max-w-xl flex-wrap gap-2;
   }
 
-  /* ── Feature Cards ── */
-  .feature-card {
-    @apply relative rounded-xl p-6 transition-colors duration-150;
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-  }
-  .feature-card:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+  .prompt-row button {
+    @apply h-8 cursor-pointer rounded-md border border-border bg-card px-3 text-sm text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground;
   }
 
-  /* ── Tech chips ── */
-  .tech-chip {
-    @apply rounded-lg px-4 py-2.5 text-sm font-medium transition-colors duration-150;
-    @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-    color: var(--color-muted-foreground);
+  .workspace-preview {
+    @apply block overflow-hidden rounded-lg border border-border bg-card transition-colors duration-150 hover:border-foreground/30;
   }
-  .tech-chip:hover {
-    border-color: var(--color-primary);
-    background: var(--color-accent);
-    color: var(--color-foreground);
+
+  .workspace-preview img,
+  .image-stack img {
+    @apply block w-full;
+  }
+
+  .workflow-item {
+    @apply px-0 py-6 md:px-5;
+  }
+
+  .workflow-item h2,
+  .detail-list h3,
+  .format-item h2 {
+    @apply text-base font-semibold tracking-normal text-foreground;
+  }
+
+  .workflow-item p,
+  .detail-list p,
+  .format-item p {
+    @apply mt-2 text-sm leading-6 text-muted-foreground;
+  }
+
+  .section-copy h2 {
+    @apply text-xl leading-tight font-semibold tracking-normal text-foreground md:text-2xl;
+  }
+
+  .section-copy p {
+    @apply mt-3 max-w-md text-sm leading-6 text-muted-foreground;
+  }
+
+  .feature-heading {
+    @apply mb-8;
+  }
+
+  .use-case-list {
+    @apply grid gap-2 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  .use-case-list button {
+    @apply h-10 cursor-pointer rounded-md border border-border bg-card px-3 text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-accent;
+  }
+
+  .image-stack {
+    @apply grid gap-4;
+  }
+
+  .image-stack img {
+    @apply rounded-lg border border-border bg-card;
+  }
+
+  .detail-list {
+    @apply flex flex-col justify-center gap-8;
+  }
+
+  .detail-list > div:first-child h2 {
+    @apply text-2xl leading-tight font-semibold tracking-normal text-foreground md:text-3xl;
+  }
+
+  .detail-list > div:first-child p {
+    @apply mt-4 text-base leading-7;
+  }
+
+  .detail-list article {
+    @apply grid grid-cols-[24px_1fr] gap-4 border-t border-border pt-6;
+  }
+
+  .text-link {
+    @apply inline-flex w-fit items-center gap-2 text-sm font-semibold text-foreground underline underline-offset-4 transition-colors duration-150 hover:text-muted-foreground;
+  }
+
+  .format-item {
+    @apply px-0 py-6 md:px-6;
+  }
+
+  .scanned-grid {
+    @apply grid gap-4 md:grid-cols-3;
+  }
+
+  .feature-group {
+    @apply rounded-lg border border-border bg-card p-5;
+  }
+
+  .feature-group h3 {
+    @apply text-sm font-semibold tracking-normal text-foreground;
+  }
+
+  .feature-group-list {
+    @apply mt-5 grid gap-5;
+  }
+
+  .feature-group article {
+    @apply grid grid-cols-[20px_1fr] gap-3;
+  }
+
+  .feature-group h4 {
+    @apply text-sm font-semibold tracking-normal text-foreground;
+  }
+
+  .feature-group p {
+    @apply mt-1 text-sm leading-6 text-muted-foreground;
+  }
+
+  footer a {
+    @apply transition-colors duration-150 hover:text-foreground;
+  }
+
+  @media (max-width: 767px) {
+    .workspace-preview {
+      @apply rounded-md;
+    }
+
+    .prompt-row {
+      @apply gap-1.5;
+    }
+
+    .prompt-row button {
+      @apply px-2.5;
+    }
   }
 </style>

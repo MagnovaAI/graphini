@@ -5,8 +5,10 @@
  */
 
 import type {
+  DiagramEngine,
   DiagramWorkspace,
   DiagramWorkspaceSummary,
+  WorkspaceDiagram,
   WorkspaceDocument
 } from '$lib/types/workspace';
 import { DEFAULT_WORKSPACE_DOCUMENT } from '$lib/types/workspace';
@@ -43,27 +45,112 @@ const SAVE_DEBOUNCE_MS = 5000;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+const DEFAULT_CANVAS: WorkspaceDocument['canvas'] = {
+  connections: [],
+  elements: [],
+  gridEnabled: true,
+  gridSize: 20,
+  snapToGrid: true,
+  viewport: { x: 0, y: 0, zoom: 1 }
+};
+
+function createDiagram(
+  title: string,
+  engine: DiagramEngine,
+  seed?: Partial<WorkspaceDiagram>
+): WorkspaceDiagram {
+  const now = new Date().toISOString();
+  return {
+    canvas: seed?.canvas ?? DEFAULT_CANVAS,
+    chat: seed?.chat ?? { messages: [] },
+    createdAt: seed?.createdAt ?? now,
+    documentMarkdown: seed?.documentMarkdown ?? '',
+    engine,
+    files: seed?.files ?? {},
+    id: seed?.id ?? crypto.randomUUID(),
+    mermaidCode: seed?.mermaidCode ?? '',
+    title,
+    updatedAt: now
+  };
+}
+
+function normalizeDocument(document?: WorkspaceDocument): WorkspaceDocument {
+  const base = document ?? DEFAULT_WORKSPACE_DOCUMENT;
+  const diagrams =
+    base.diagrams && base.diagrams.length > 0
+      ? base.diagrams
+      : [
+          createDiagram(
+            base.engine === 'mermaid'
+              ? 'Untitled Mermaid'
+              : `Untitled ${base.engine.toUpperCase()}`,
+            base.engine,
+            {
+              canvas: base.canvas ?? DEFAULT_CANVAS,
+              chat: base.chat ?? { messages: [] },
+              documentMarkdown: base.documentMarkdown ?? '',
+              files: base.files ?? {},
+              mermaidCode: base.mermaidCode ?? ''
+            }
+          )
+        ];
+  const activeDiagramId =
+    diagrams.find((diagram) => diagram.id === base.activeDiagramId)?.id ?? diagrams[0]?.id;
+  const activeDiagram = diagrams.find((diagram) => diagram.id === activeDiagramId) ?? diagrams[0];
+
+  return {
+    ...base,
+    activeDiagramId,
+    canvas: activeDiagram?.canvas ?? DEFAULT_CANVAS,
+    chat: activeDiagram?.chat ?? { messages: [] },
+    diagrams,
+    documentMarkdown: activeDiagram?.documentMarkdown ?? '',
+    engine: activeDiagram?.engine ?? base.engine,
+    files: activeDiagram?.files ?? {},
+    mermaidCode: activeDiagram?.mermaidCode ?? '',
+    version: Math.max(base.version ?? 1, 2)
+  };
+}
+
+function getActiveDiagram(document = state.workspace?.document): WorkspaceDiagram | null {
+  const diagrams = document?.diagrams ?? [];
+  return (
+    diagrams.find((diagram) => diagram.id === document?.activeDiagramId) ?? diagrams[0] ?? null
+  );
+}
+
 function collectDocument(): WorkspaceDocument {
   const mermaidState = get(inputStateStore);
   const docMarkdown = documentMarkdownStore.value;
-  const existingDoc = state.workspace?.document;
-  const engine = existingDoc?.engine ?? 'mermaid';
+  const existingDoc = normalizeDocument(state.workspace?.document);
+  const activeDiagram = getActiveDiagram(existingDoc);
+  const engine = activeDiagram?.engine ?? existingDoc.engine ?? 'mermaid';
+  const activeDiagramId = activeDiagram?.id ?? existingDoc.activeDiagramId;
+  const updatedActiveDiagram = activeDiagram
+    ? {
+        ...activeDiagram,
+        documentMarkdown: docMarkdown || '',
+        files: activeDiagram.files ?? {},
+        mermaidCode: mermaidState?.code || '',
+        updatedAt: new Date().toISOString()
+      }
+    : null;
+  const diagrams = updatedActiveDiagram
+    ? existingDoc.diagrams?.map((diagram) =>
+        diagram.id === updatedActiveDiagram.id ? updatedActiveDiagram : diagram
+      )
+    : existingDoc.diagrams;
 
   return {
-    canvas: {
-      connections: [],
-      elements: [],
-      gridEnabled: true,
-      gridSize: 20,
-      snapToGrid: true,
-      viewport: { x: 0, y: 0, zoom: 1 }
-    },
-    chat: existingDoc?.chat || { messages: [] },
+    activeDiagramId,
+    canvas: updatedActiveDiagram?.canvas ?? existingDoc.canvas ?? DEFAULT_CANVAS,
+    chat: updatedActiveDiagram?.chat ?? existingDoc.chat ?? { messages: [] },
+    diagrams,
     documentMarkdown: docMarkdown || '',
     engine,
-    files: existingDoc?.files ?? {},
-    mermaidCode: engine === 'mermaid' ? mermaidState?.code || '' : '',
-    version: 1
+    files: updatedActiveDiagram?.files ?? existingDoc.files ?? {},
+    mermaidCode: mermaidState?.code || '',
+    version: 2
   };
 }
 
@@ -111,17 +198,19 @@ async function load(id: string): Promise<boolean> {
     }
 
     const workspace: DiagramWorkspace = await res.json();
-    state.workspace = workspace;
+    const doc = normalizeDocument(workspace.document || DEFAULT_WORKSPACE_DOCUMENT);
+    state.workspace = { ...workspace, document: doc };
     state.dirty = false;
     state.lastSavedAt = Date.now();
 
     // Hydrate sub-stores
-    const doc = workspace.document || DEFAULT_WORKSPACE_DOCUMENT;
-
-    // Canvas store removed — canvas state lives in workspace.document only
     documentMarkdownStore.set(doc.documentMarkdown || '');
-
-    inputStateStore.update((s) => ({ ...s, code: doc.mermaidCode || '', updateDiagram: true }));
+    inputStateStore.update((s) => ({
+      ...s,
+      code: doc.mermaidCode || '',
+      editorMode: 'code',
+      updateDiagram: doc.engine === 'mermaid'
+    }));
 
     state.loading = false;
     return true;
@@ -191,7 +280,10 @@ function addChatMessage(message: {
 }) {
   if (!state.workspace?.document) return;
 
-  const chatMessages = [...(state.workspace.document.chat?.messages || [])];
+  const document = collectDocument();
+  const activeDiagram = getActiveDiagram(document);
+  if (!activeDiagram) return;
+  const chatMessages = [...(activeDiagram.chat?.messages || [])];
   chatMessages.push({
     ...message,
     timestamp: new Date().toISOString()
@@ -200,26 +292,208 @@ function addChatMessage(message: {
   state.workspace = {
     ...state.workspace,
     document: {
-      ...state.workspace.document,
+      ...document,
       chat: {
-        ...state.workspace.document.chat,
+        ...activeDiagram.chat,
         messages: chatMessages
-      }
+      },
+      diagrams: document.diagrams?.map((diagram) =>
+        diagram.id === activeDiagram.id
+          ? { ...diagram, chat: { ...diagram.chat, messages: chatMessages } }
+          : diagram
+      )
     }
   };
   markDirty();
 }
 
-function updateFile(filename: string, content: string) {
-  if (!state.workspace?.document) return;
+function setActiveDiagramChatMessages(messages: WorkspaceDocument['chat']['messages']) {
+  if (!state.workspace) return;
+  const document = collectDocument();
+  const activeDiagram = getActiveDiagram(document);
+  if (!activeDiagram) return;
+  const chat = { ...activeDiagram.chat, messages };
   state.workspace = {
     ...state.workspace,
     document: {
-      ...state.workspace.document,
-      files: {
-        ...state.workspace.document.files,
-        [filename]: content
-      }
+      ...document,
+      chat,
+      diagrams: document.diagrams?.map((diagram) =>
+        diagram.id === activeDiagram.id ? { ...diagram, chat } : diagram
+      )
+    }
+  };
+  markDirty();
+}
+
+function setActiveDiagramDocumentMarkdown(markdown: string) {
+  if (!state.workspace) return;
+  const document = collectDocument();
+  const activeDiagram = getActiveDiagram(document);
+  if (!activeDiagram) return;
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...document,
+      documentMarkdown: markdown,
+      diagrams: document.diagrams?.map((diagram) =>
+        diagram.id === activeDiagram.id
+          ? { ...diagram, documentMarkdown: markdown, updatedAt: new Date().toISOString() }
+          : diagram
+      )
+    }
+  };
+  markDirty();
+}
+
+function hydrateActiveDiagram() {
+  const document = normalizeDocument(state.workspace?.document);
+  const activeDiagram = getActiveDiagram(document);
+  if (!activeDiagram || !state.workspace) return;
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...document,
+      canvas: activeDiagram.canvas,
+      chat: activeDiagram.chat,
+      documentMarkdown: activeDiagram.documentMarkdown,
+      engine: activeDiagram.engine,
+      files: activeDiagram.files,
+      mermaidCode: activeDiagram.mermaidCode
+    }
+  };
+  documentMarkdownStore.set(activeDiagram.documentMarkdown || '');
+  inputStateStore.update((s) => ({
+    ...s,
+    code: activeDiagram.mermaidCode || '',
+    editorMode: 'code',
+    updateDiagram: activeDiagram.engine === 'mermaid'
+  }));
+}
+
+function getDefaultSource(engine: DiagramEngine) {
+  if (engine === 'json')
+    return JSON.stringify(
+      {
+        title: 'New Blog Post',
+        content: 'This is the content of the blog post...',
+        publishedDate: '2023-08-25T15:00:00Z',
+        author: {
+          username: 'authoruser',
+          email: 'author@example.com'
+        },
+        tags: ['Technology', 'Programming']
+      },
+      null,
+      2
+    );
+  if (engine === 'yaml')
+    return `title: New Blog Post
+content: This is the content of the blog post...
+publishedDate: 2023-08-25T15:00:00Z
+author:
+  username: authoruser
+  email: author@example.com
+tags:
+  - Technology
+  - Programming
+`;
+  return 'flowchart TD\n    A[Start] --> B[New diagram]\n';
+}
+
+function addDiagram(engine: DiagramEngine, title: string) {
+  if (!state.workspace) return null;
+  const document = collectDocument();
+  const diagram = createDiagram(title, engine, {
+    files: {},
+    mermaidCode: getDefaultSource(engine)
+  });
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...document,
+      activeDiagramId: diagram.id,
+      diagrams: [...(document.diagrams ?? []), diagram]
+    }
+  };
+  hydrateActiveDiagram();
+  markDirty();
+  return diagram;
+}
+
+function switchDiagram(id: string) {
+  if (!state.workspace) return;
+  const document = collectDocument();
+  if (!document.diagrams?.some((diagram) => diagram.id === id)) return;
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...document,
+      activeDiagramId: id
+    }
+  };
+  hydrateActiveDiagram();
+  markDirty();
+}
+
+function renameDiagram(id: string, title: string) {
+  if (!state.workspace || !title.trim()) return;
+  const document = collectDocument();
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...document,
+      diagrams: document.diagrams?.map((diagram) =>
+        diagram.id === id
+          ? { ...diagram, title: title.trim(), updatedAt: new Date().toISOString() }
+          : diagram
+      )
+    }
+  };
+  hydrateActiveDiagram();
+  markDirty();
+}
+
+function closeDiagram(id: string) {
+  if (!state.workspace) return;
+  const document = collectDocument();
+  const diagrams = document.diagrams ?? [];
+  if (diagrams.length <= 1) return;
+  const index = diagrams.findIndex((diagram) => diagram.id === id);
+  if (index === -1) return;
+  const remaining = diagrams.filter((diagram) => diagram.id !== id);
+  const nextActiveId =
+    document.activeDiagramId === id
+      ? remaining[Math.max(0, Math.min(index, remaining.length - 1))]?.id
+      : document.activeDiagramId;
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...document,
+      activeDiagramId: nextActiveId,
+      diagrams: remaining
+    }
+  };
+  hydrateActiveDiagram();
+  markDirty();
+}
+
+function updateFile(filename: string, content: string) {
+  if (!state.workspace?.document) return;
+  const document = collectDocument();
+  const activeDiagram = getActiveDiagram(document);
+  const files = {
+    ...(activeDiagram?.files ?? document.files),
+    [filename]: content
+  };
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...document,
+      files,
+      diagrams: document.diagrams?.map((diagram) =>
+        diagram.id === activeDiagram?.id ? { ...diagram, files } : diagram
+      )
     }
   };
   markDirty();
@@ -227,14 +501,19 @@ function updateFile(filename: string, content: string) {
 
 function deleteFile(filename: string) {
   if (!state.workspace?.document) return;
-  const files = { ...state.workspace.document.files };
+  const document = collectDocument();
+  const activeDiagram = getActiveDiagram(document);
+  const files = { ...(activeDiagram?.files ?? document.files) };
   // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
   delete files[filename];
   state.workspace = {
     ...state.workspace,
     document: {
-      ...state.workspace.document,
-      files
+      ...document,
+      files,
+      diagrams: document.diagrams?.map((diagram) =>
+        diagram.id === activeDiagram?.id ? { ...diagram, files } : diagram
+      )
     }
   };
   markDirty();
@@ -242,7 +521,9 @@ function deleteFile(filename: string) {
 
 function renameFile(oldName: string, newName: string) {
   if (!state.workspace?.document) return;
-  const files = { ...state.workspace.document.files };
+  const document = collectDocument();
+  const activeDiagram = getActiveDiagram(document);
+  const files = { ...(activeDiagram?.files ?? document.files) };
   if (!(oldName in files)) return;
   files[newName] = files[oldName];
   // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -250,8 +531,11 @@ function renameFile(oldName: string, newName: string) {
   state.workspace = {
     ...state.workspace,
     document: {
-      ...state.workspace.document,
-      files
+      ...document,
+      files,
+      diagrams: document.diagrams?.map((diagram) =>
+        diagram.id === activeDiagram?.id ? { ...diagram, files } : diagram
+      )
     }
   };
   markDirty();
@@ -311,7 +595,7 @@ function unload() {
 
 async function createWorkspace(
   title?: string,
-  engine: 'mermaid' | 'structurizr' = 'mermaid'
+  engine: DiagramEngine = 'mermaid'
 ): Promise<DiagramWorkspace | null> {
   try {
     const res = await fetch('/api/workspaces', {
@@ -394,9 +678,11 @@ async function listWorkspaces(options?: {
 
 export const workspaceStore = {
   addChatMessage,
+  addDiagram,
 
   // Dashboard operations
   create: createWorkspace,
+  closeDiagram,
   delete: deleteWorkspace,
   deleteFile,
   duplicate: duplicateWorkspace,
@@ -413,11 +699,21 @@ export const workspaceStore = {
   get isSaving() {
     return state.saving;
   },
+  get activeDiagramId() {
+    return state.workspace?.document?.activeDiagramId ?? null;
+  },
+  get diagrams() {
+    return state.workspace?.document?.diagrams ?? [];
+  },
   list: listWorkspaces,
   load,
   markDirty,
   renameFile,
+  renameDiagram,
   save,
+  setActiveDiagramChatMessages,
+  setActiveDiagramDocumentMarkdown,
+  switchDiagram,
   get state() {
     return state;
   },

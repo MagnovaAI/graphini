@@ -1,4 +1,3 @@
-import { buildStructurizrSystemPrompt } from '$lib/features/structurizr/system-prompt';
 import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
@@ -2528,8 +2527,7 @@ export const POST: RequestHandler = async ({ request }) => {
     // Build messages array — always text-only (images are pre-processed in /api/upload)
     const userContent = message;
 
-    const systemPrompt =
-      engineName === 'structurizr' ? buildStructurizrSystemPrompt() : buildMultiStepSystemPrompt();
+    const systemPrompt = buildMultiStepSystemPrompt();
 
     const messages: Record<string, unknown>[] = [
       { role: 'system', content: systemPrompt },

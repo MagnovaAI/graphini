@@ -11,7 +11,8 @@
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   export let onUpdate: (code: string) => void = () => {};
   export let isMobile = false;
-  export let isStructurizr = false;
+  export let language: 'mermaid' | 'json' | 'yaml' = 'mermaid';
+  export let showMermaidError = true;
   export let sendChatMessage: (
     message: string,
     options?: { isRepair?: boolean }
@@ -80,11 +81,10 @@
   {#if isMobile}
     <MobileEditor onUpdate={handleUpdate} />
   {:else}
-    <DesktopEditor onUpdate={handleUpdate} />
+    <DesktopEditor onUpdate={handleUpdate} {language} />
   {/if}
 
-  <!-- Compact error bar — suppressed for Structurizr workspaces where DSL is not Mermaid -->
-  {#if !isStructurizr && ((showError && $stateStore.error instanceof Error) || $stateStore.validationError)}
+  {#if showMermaidError && ((showError && $stateStore.error instanceof Error) || $stateStore.validationError)}
     {@const errorMsg = $stateStore.validationError
       ? $stateStore.validationErrorLine
         ? `Line ${$stateStore.validationErrorLine}: ${$stateStore.validationError}`

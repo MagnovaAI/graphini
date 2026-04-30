@@ -12,7 +12,10 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
 
-  const { onUpdate }: EditorProps = $props();
+  const {
+    onUpdate,
+    language = 'mermaid'
+  }: EditorProps & { language?: 'mermaid' | 'json' | 'yaml' } = $props();
 
   let divElement: HTMLDivElement | undefined = $state();
   let editor: monaco.editor.IStandaloneCodeEditor | undefined;
@@ -44,6 +47,11 @@
   }
 
   async function performValidation(code: string) {
+    if (language !== 'mermaid') {
+      kv.set('editor', 'editorValidationError', null);
+      return;
+    }
+
     if (!code || code.trim().length < 5) {
       lastValidatedCode = code;
       lastValidationResult = null;
@@ -188,11 +196,25 @@
   };
 
   const jsonUri = monaco.Uri.parse('internal://config.json');
+  const jsonDiagramUri = monaco.Uri.parse('internal://diagram.json');
   const mermaidUri = monaco.Uri.parse('internal://mermaid.mmd');
+  const yamlUri = monaco.Uri.parse('internal://diagram.yaml');
   const jsonModel =
     monaco.editor.getModel(jsonUri) ?? monaco.editor.createModel('', 'json', jsonUri);
+  const jsonDiagramModel =
+    monaco.editor.getModel(jsonDiagramUri) ??
+    monaco.editor.createModel('', 'json', jsonDiagramUri);
   const mermaidModel =
     monaco.editor.getModel(mermaidUri) ?? monaco.editor.createModel('', 'mermaid', mermaidUri);
+  const yamlModel =
+    monaco.editor.getModel(yamlUri) ?? monaco.editor.createModel('', 'yaml', yamlUri);
+
+  function getCodeModel(editorMode: string) {
+    if (editorMode !== 'code') return jsonModel;
+    if (language === 'json') return jsonDiagramModel;
+    if (language === 'yaml') return yamlModel;
+    return mermaidModel;
+  }
 
   onMount(() => {
     if (!divElement) {
@@ -216,7 +238,7 @@
 
     // Initialize editor with current state immediately
     const currentState = get(stateStore);
-    const model = currentState.editorMode === 'code' ? mermaidModel : jsonModel;
+    const model = getCodeModel(currentState.editorMode);
     editor.setModel(model);
 
     const initialText =
@@ -244,7 +266,7 @@
         return;
       }
 
-      const model = editorMode === 'code' ? mermaidModel : jsonModel;
+      const model = getCodeModel(editorMode);
 
       if (editor.getModel()?.id !== model.id) {
         editor.setModel(model);
@@ -264,7 +286,7 @@
         currentText = newText;
 
         // Trigger validation when switching to code mode
-        if (editorMode === 'code') {
+        if (editorMode === 'code' && language === 'mermaid') {
           triggerValidation(newText);
         }
       }
@@ -312,7 +334,17 @@
         // ignore disposal errors
       }
       try {
+        jsonDiagramModel.dispose();
+      } catch {
+        // ignore disposal errors
+      }
+      try {
         mermaidModel.dispose();
+      } catch {
+        // ignore disposal errors
+      }
+      try {
+        yamlModel.dispose();
       } catch {
         // ignore disposal errors
       }

@@ -17,14 +17,22 @@ type CanvasElement = Record<string, any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CanvasConnection = Record<string, any>;
 
+export type DiagramEngine = 'mermaid' | 'json' | 'yaml';
+
 // ── Workspace Document (the JSONB blob) ────────────────────────────────────
 
 export interface WorkspaceDocument {
   /** Schema version for future migrations */
   version: number;
 
-  /** Rendering engine for this workspace */
-  engine: 'mermaid' | 'structurizr';
+  /** Active diagram inside this workspace */
+  activeDiagramId?: string;
+
+  /** Diagram tabs stored inside this workspace */
+  diagrams?: WorkspaceDiagram[];
+
+  /** Rendering engine for the active diagram */
+  engine: DiagramEngine;
 
   /** Canvas state — elements, connections, viewport, grid */
   canvas: {
@@ -36,10 +44,10 @@ export interface WorkspaceDocument {
     snapToGrid: boolean;
   };
 
-  /** Mermaid code from the code editor panel */
+  /** Source from the code editor panel */
   mermaidCode: string;
 
-  /** Multi-file DSL content (used by Structurizr workspaces) */
+  /** Reserved for future multi-file diagram formats */
   files: Record<string, string>;
 
   /** Chat messages stored inline */
@@ -51,6 +59,19 @@ export interface WorkspaceDocument {
 
   /** Document panel markdown */
   documentMarkdown: string;
+}
+
+export interface WorkspaceDiagram {
+  id: string;
+  title: string;
+  engine: DiagramEngine;
+  canvas: WorkspaceDocument['canvas'];
+  mermaidCode: string;
+  files: Record<string, string>;
+  chat: WorkspaceDocument['chat'];
+  documentMarkdown: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WorkspaceChatMessage {
@@ -112,49 +133,6 @@ export const DEFAULT_WORKSPACE_DOCUMENT: WorkspaceDocument = {
   documentMarkdown: '',
   engine: 'mermaid',
   files: {},
-  mermaidCode: '',
-  version: 1
-};
-
-export const DEFAULT_STRUCTURIZR_DOCUMENT: WorkspaceDocument = {
-  canvas: {
-    connections: [],
-    elements: [],
-    gridEnabled: true,
-    gridSize: 20,
-    snapToGrid: true,
-    viewport: { x: 0, y: 0, zoom: 1 }
-  },
-  chat: { messages: [] },
-  documentMarkdown: '',
-  engine: 'structurizr',
-  files: {
-    'workspace.dsl': `workspace {
-
-    model {
-        user = person "User" "A user of the system"
-        system = softwareSystem "System" "Description" {
-            webapp = container "Web App" "Serves the UI" "React"
-            api = container "API" "Backend services" "Node.js"
-            db = container "Database" "Stores data" "PostgreSQL"
-        }
-        user -> webapp "Uses"
-        webapp -> api "Makes API calls to"
-        api -> db "Reads from and writes to"
-    }
-
-    views {
-        systemContext system "SystemContext" {
-            include *
-            autoLayout
-        }
-        container system "Containers" {
-            include *
-            autoLayout
-        }
-    }
-}`
-  },
   mermaidCode: '',
   version: 1
 };

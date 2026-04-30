@@ -13,16 +13,15 @@
   import ElementToolbar from '$lib/components/canvas/ElementToolbar.svelte';
   import IconPanel from '$lib/components/canvas/IconPanel.svelte';
   import Editor from '$lib/features/editor/components/Editor.svelte';
+  import StructuredGraphView from '$lib/components/layout/StructuredGraphView.svelte';
   import { View } from '$lib/components/layout';
-  import StructurizrView from '$lib/features/structurizr/components/StructurizrView.svelte';
-  import FileTabs from '$lib/features/structurizr/components/FileTabs.svelte';
   import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/components/panels';
-  import RefillGemsModal from '$lib/components/RefillGemsModal.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import Chat from '$lib/features/chat/components/Chat.simple.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
+  import type { DiagramEngine } from '$lib/types/workspace';
   // autosave replaced by workspace auto-save
   import { conversationsStore } from '$lib/stores/conversations.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
@@ -32,13 +31,13 @@
   import {
     AlertCircle,
     ArrowLeft,
+    Braces,
     Circle,
     Code2,
     Diamond,
     Download,
     FileCode2,
     FileText,
-    Gem,
     GitBranch,
     Grid2x2,
     Hand,
@@ -239,7 +238,6 @@
 
   // Modal states
   let isSettingsModalOpen = $state(false);
-  let isRefillGemsOpen = $state(false);
   let isShortcutsModalOpen = $state(false);
 
   // Canvas panel states
@@ -260,12 +258,8 @@
   let isRoughMode = $state(loadUIState('roughMode', false));
   let zoomLevel = $state(100);
 
-  // Structurizr engine state
-  let activeStructurizrFile = $state('workspace.dsl');
-
-  const isStructurizr = $derived(workspaceStore.workspace?.document?.engine === 'structurizr');
-
-  const structurizrFiles = $derived(workspaceStore.workspace?.document?.files ?? {});
+  const activeDiagramEngine = $derived(workspaceStore.workspace?.document?.engine ?? 'mermaid');
+  const isMermaidDiagram = $derived(activeDiagramEngine === 'mermaid');
   let isViewRendering = $state(false);
   let viewRenderError = $state('');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -409,10 +403,6 @@
       authStore.login();
     };
     window.addEventListener('open-auth-modal', handleOpenAuthModal);
-    const handleOpenRefillGems = () => {
-      isRefillGemsOpen = true;
-    };
-    window.addEventListener('open-refill-gems', handleOpenRefillGems);
 
     // Workspace-based: no need to auto-create files; workspace is loaded by /workspace/[id]
 
@@ -496,7 +486,6 @@
         handleConversationCreated as EventListener
       );
       window.removeEventListener('open-auth-modal', handleOpenAuthModal);
-      window.removeEventListener('open-refill-gems', handleOpenRefillGems);
     };
   });
 
@@ -641,37 +630,16 @@
 
   let isRenamingInNavbar = $state(false);
   let navbarRenameValue = $state('');
-
-  // Sync status indicator
-  let syncLastSaved = $state<number | null>(null);
-  let syncHasPending = $state(false);
-  let syncTick = $state(0);
-  let syncLabel = $derived.by(() => {
-    void syncTick; // read to trigger re-derivation on interval tick
-    if (syncHasPending) return 'Saving...';
-    if (!syncLastSaved) return '';
-    const secs = Math.floor((Date.now() - syncLastSaved) / 1000);
-    if (secs < 5) return 'All saved';
-    if (secs < 60) return `Saved ${secs}s ago`;
-    const mins = Math.floor(secs / 60);
-    return `Saved ${mins}m ago`;
-  });
-
-  // Refresh sync label every 10s
-  onMount(() => {
-    const syncInterval = setInterval(() => {
-      syncTick++;
-    }, 10000);
-    return () => {
-      clearInterval(syncInterval);
-    };
-  });
-
-  // Sync status is reactive via kv.$state properties
-  $effect(() => {
-    syncLastSaved = kv.lastSavedAt;
-    syncHasPending = kv.hasPending;
-  });
+  interface WorkspaceTab {
+    engine: DiagramEngine;
+    id: string;
+    title: string;
+  }
+  const workspaceTabs = $derived(workspaceStore.diagrams as WorkspaceTab[]);
+  const activeWorkspaceId = $derived(workspaceStore.activeDiagramId || '');
+  const activeDiagramTitle = $derived(
+    workspaceTabs.find((tab) => tab.id === activeWorkspaceId)?.title || 'Untitled'
+  );
 
   $effect(() => {
     const name = workspaceStore.workspace?.title || 'Untitled';
@@ -679,7 +647,8 @@
   });
 
   function startNavbarRename() {
-    navbarRenameValue = workspaceStore.workspace?.title || 'Untitled';
+    navbarRenameValue =
+      workspaceTabs.find((tab) => tab.id === activeWorkspaceId)?.title || 'Untitled';
     isRenamingInNavbar = true;
   }
 
@@ -688,38 +657,25 @@
       isRenamingInNavbar = false;
       return;
     }
-    await workspaceStore.updateMeta({ title: navbarRenameValue.trim() });
+    if (activeWorkspaceId) {
+      workspaceStore.renameDiagram(activeWorkspaceId, navbarRenameValue.trim());
+    }
     isRenamingInNavbar = false;
   }
 
-  // Structurizr file management handlers
-  function handleFileSelect(filename: string) {
-    activeStructurizrFile = filename;
-  }
-  function handleFileCreate(filename: string) {
-    workspaceStore.updateFile(filename, '');
-    activeStructurizrFile = filename;
-  }
-  function handleFileDelete(filename: string) {
-    workspaceStore.deleteFile(filename);
-    if (activeStructurizrFile === filename) activeStructurizrFile = 'workspace.dsl';
-  }
-  function handleFileRename(oldName: string, newName: string) {
-    workspaceStore.renameFile(oldName, newName);
-    if (activeStructurizrFile === oldName) activeStructurizrFile = newName;
+  async function handleNewWorkspace(engine: DiagramEngine, title: string) {
+    workspaceStore.addDiagram(engine, title);
   }
 
-  // Sync active Structurizr file content into editor.
-  // Set updateDiagram: false so the Mermaid renderer doesn't try to parse DSL code.
-  $effect(() => {
-    if (isStructurizr && structurizrFiles[activeStructurizrFile] !== undefined) {
-      inputStateStore.update((s) => ({
-        ...s,
-        code: structurizrFiles[activeStructurizrFile],
-        updateDiagram: false
-      }));
-    }
-  });
+  function handleSwitchTab(tab: WorkspaceTab) {
+    if (tab.id === activeWorkspaceId) return;
+    workspaceStore.switchDiagram(tab.id);
+  }
+
+  function handleCloseTab(event: Event, tabId: string) {
+    event.stopPropagation();
+    workspaceStore.closeDiagram(tabId);
+  }
 </script>
 
 {#if !authStore.isInitialized || authStore.isLoading || wsLoading}
@@ -750,78 +706,112 @@
 {:else if authStore.isLoggedIn}
   <div class="flex h-screen flex-col overflow-hidden bg-background" bind:clientWidth={width}>
     <!-- ═══ TOP HEADER BAR ═══ -->
-    <header class="flex h-12 items-center justify-between border-b border-border bg-card px-4">
-      <!-- Left: Logo + file name -->
-      <div class="flex items-center gap-4">
-        <div class="flex items-center gap-2.5">
+    <header class="flex h-12 items-center border-b border-border bg-card pr-3">
+      <div class="flex h-full min-w-0 flex-1 items-center">
+        <div class="flex h-full w-14 shrink-0 items-center justify-center border-r border-border">
           <img src="/brand/logo.png" alt="Graphini" class="size-7" />
         </div>
-        <div class="divider-v mx-1 hidden sm:block"></div>
-        <div class="hidden items-center gap-2 sm:flex">
-          <FileCode2 class="size-4 text-muted-foreground" />
-          {#if isRenamingInNavbar}
-            <input
-              type="text"
-              bind:value={navbarRenameValue}
-              class="h-7 w-40 rounded-md border border-border bg-background px-2 text-[13px] text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none"
-              onkeydown={(e) => {
-                if (e.key === 'Enter') saveNavbarRename();
-                if (e.key === 'Escape') isRenamingInNavbar = false;
-              }}
-              onblur={() => saveNavbarRename()} />
-          {:else}
-            <button
-              type="button"
-              class="group flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[13px] text-foreground transition-colors hover:bg-muted/60"
-              onclick={() => startNavbarRename()}
-              title="Click to rename">
-              <span class="max-w-[200px] truncate"
-                >{workspaceStore.workspace?.title || 'Untitled'}</span>
-              <Pencil
-                class="size-3 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
-            </button>
-          {/if}
-          {#if syncLabel}
-            <span class="hidden text-[10px] text-muted-foreground/60 sm:inline"
-              >{syncHasPending ? '⟳' : '✓'} {syncLabel}</span>
-          {/if}
-        </div>
-      </div>
 
-      <!-- Center: Panel toggle buttons (draggable to reorder) -->
-      <div class="flex items-center gap-0.5 rounded-lg border border-border bg-muted/30 p-0.5">
-        {#each panels.order as panelId (panelId)}
-          {@const Icon = panelIcons[panelId]}
-          {@const panelConfig = panels.panels}
-          {@const isActive = panelConfig[panelId].visible}
-          {@const label = panelConfig[panelId].label}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="flex items-center rounded-md transition-all duration-150
-            {dragOverPanelId === panelId && dragPanelId !== panelId ? 'ring-2 ring-primary/40' : ''}
-            {dragPanelId === panelId ? 'opacity-40' : ''}"
-            draggable="true"
-            ondragstart={(e) => handlePanelDragStart(e, panelId)}
-            ondragover={(e) => handlePanelDragOver(e, panelId)}
-            ondrop={(e) => handlePanelDrop(e, panelId)}
-            ondragend={handlePanelDragEnd}>
-            <button
-              type="button"
-              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150
-              {isActive
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground'}"
-              title="{label} (drag to reorder)"
-              onclick={() => panels.toggle(panelId)}>
-              <Icon class="size-3.5" />
-              <span class="hidden md:inline">{label}</span>
-            </button>
-          </div>
-        {/each}
+        <div class="tab-switcher">
+          {#each workspaceTabs as tab (tab.id)}
+            {@const isActiveTab = tab.id === activeWorkspaceId}
+            {#if isActiveTab && isRenamingInNavbar}
+              <input
+                type="text"
+                bind:value={navbarRenameValue}
+                class="mx-1 h-8 w-52 rounded-md border border-border bg-background px-2.5 text-[11px] font-medium text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none"
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') saveNavbarRename();
+                  if (e.key === 'Escape') isRenamingInNavbar = false;
+                }}
+                onblur={() => saveNavbarRename()} />
+            {:else}
+              <button
+                type="button"
+                class="workspace-tab {isActiveTab ? 'active' : ''}"
+                onclick={() => (isActiveTab ? startNavbarRename() : handleSwitchTab(tab))}
+                title={isActiveTab ? 'Click to rename' : `Open ${tab.title}`}>
+                {#if tab.engine === 'json'}
+                  <Braces class="size-3.5" />
+                {:else if tab.engine === 'yaml'}
+                  <FileCode2 class="size-3.5" />
+                {:else}
+                  <Workflow class="size-3.5" />
+                {/if}
+                <span class="tab-title max-w-[160px] truncate">{tab.title}</span>
+                <span
+                  role="button"
+                  tabindex="0"
+                  class="tab-close"
+                  aria-label="Close {tab.title}"
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') handleCloseTab(e, tab.id);
+                  }}
+                  onclick={(e) => handleCloseTab(e, tab.id)}>
+                  <X class="size-3.5" />
+                </span>
+              </button>
+            {/if}
+          {/each}
+
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger class="workspace-tab plus-tab" title="New diagram">
+              <Plus class="size-4" />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="start" class="w-48">
+              <DropdownMenu.Label>New diagram</DropdownMenu.Label>
+              <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid', 'Untitled Mermaid')}>
+                <Workflow class="size-4" />
+                <span>Mermaid</span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onclick={() => handleNewWorkspace('json', 'Untitled JSON')}>
+                <Braces class="size-4" />
+                <span>JSON</span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onclick={() => handleNewWorkspace('yaml', 'Untitled YAML')}>
+                <FileCode2 class="size-4" />
+                <span>YAML</span>
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        </div>
       </div>
 
       <!-- Right: Actions -->
       <div class="flex items-center gap-1">
+        <div
+          class="mr-1 hidden items-center gap-0.5 rounded-lg border border-border bg-muted/30 p-0.5 lg:flex">
+          {#each panels.order as panelId (panelId)}
+            {@const Icon = panelIcons[panelId]}
+            {@const panelConfig = panels.panels}
+            {@const isActive = panelConfig[panelId].visible}
+            {@const label = panelConfig[panelId].label}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="flex items-center rounded-md transition-all duration-150
+              {dragOverPanelId === panelId && dragPanelId !== panelId
+                ? 'ring-2 ring-primary/40'
+                : ''}
+              {dragPanelId === panelId ? 'opacity-40' : ''}"
+              draggable="true"
+              ondragstart={(e) => handlePanelDragStart(e, panelId)}
+              ondragover={(e) => handlePanelDragOver(e, panelId)}
+              ondrop={(e) => handlePanelDrop(e, panelId)}
+              ondragend={handlePanelDragEnd}>
+              <button
+                type="button"
+                class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150
+                {isActive
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground'}"
+                title="{label} (drag to reorder)"
+                onclick={() => panels.toggle(panelId)}>
+                <Icon class="size-3.5" />
+                <span class="hidden xl:inline">{label}</span>
+              </button>
+            </div>
+          {/each}
+        </div>
         <Button
           variant="ghost"
           size="icon"
@@ -840,23 +830,6 @@
           }}>
           <Settings class="size-4" />
         </Button>
-
-        <!-- Gems -->
-        <button
-          type="button"
-          class="flex h-8 items-center gap-1.5 rounded-full border border-border px-3.5 text-muted-foreground transition-colors duration-150 hover:border-foreground/20 hover:text-foreground"
-          title={authStore.isLoggedIn
-            ? `Gems: ${authStore.credits?.balance ?? 0}`
-            : 'Sign in to view gems'}
-          onclick={() => {
-            if (authStore.isLoggedIn) isRefillGemsOpen = true;
-            else authStore.login();
-          }}>
-          <Gem class="size-3.5" />
-          <span class="text-[11px] font-bold tracking-wide tabular-nums">
-            {#if authStore.isLoggedIn && authStore.credits}{authStore.credits.balance}{:else}0{/if}
-          </span>
-        </button>
 
         <!-- User Auth -->
         {#if authStore.isLoggedIn}
@@ -877,15 +850,6 @@
                 <span class="text-xs font-normal text-muted-foreground"
                   >{authStore.user?.email}</span>
               </DropdownMenu.Label>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item
-                class="gap-2"
-                onclick={() => {
-                  isRefillGemsOpen = true;
-                }}>
-                <Gem class="size-4 text-purple-500" />
-                <span>Gems: {authStore.credits?.balance ?? 0}</span>
-              </DropdownMenu.Item>
               <DropdownMenu.Separator />
               <DropdownMenu.Item
                 class="gap-2 text-red-500 focus:text-red-500"
@@ -912,249 +876,292 @@
         {#if panels.panels[panelId].visible || panelId === 'chat'}
           {#if panelId === 'canvas'}
             <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-              <!-- Floating Vertical Canvas Toolbar (Mermaid only) -->
-              {#if !isStructurizr}
-              <div
-                class="absolute top-1/2 left-3 z-30 flex -translate-y-1/2 flex-col gap-1 rounded-xl border border-border bg-card p-1.5 shadow-sm">
-                <!-- Plus button with shape dropdown -->
-                <div class="relative">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Add Node (N)"
-                    onclick={() => {
-                      showShapeDropdown = !showShapeDropdown;
-                      showLayoutDropdown = false;
-                    }}><Plus class="size-4" /></Button>
-                  {#if showShapeDropdown}
-                    <div
-                      class="absolute top-0 left-full z-50 ml-1.5 w-[200px] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-sm">
-                      <div class="mb-1 flex items-center justify-between px-1.5 py-0.5">
-                        <span class="text-[10px] font-medium text-muted-foreground">Add Node</span>
-                        <button
-                          type="button"
-                          class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                          onclick={() => (showShapeDropdown = false)}>
-                          <X class="size-3" />
-                        </button>
-                      </div>
-                      <div class="grid grid-cols-5 gap-1">
-                        {#each shapeOptions as shape (shape.label)}
+              <!-- Floating Vertical Canvas Toolbar -->
+              {#if isMermaidDiagram}
+                <div
+                  class="absolute top-1/2 left-3 z-30 flex -translate-y-1/2 flex-col gap-1 rounded-xl border border-border bg-card p-1.5 shadow-sm">
+                  <!-- Plus button with shape dropdown -->
+                  <div class="relative">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="toolbar-btn size-8"
+                      title="Add Node (N)"
+                      onclick={() => {
+                        showShapeDropdown = !showShapeDropdown;
+                        showLayoutDropdown = false;
+                      }}><Plus class="size-4" /></Button>
+                    {#if showShapeDropdown}
+                      <div
+                        class="absolute top-0 left-full z-50 ml-1.5 w-[200px] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-sm">
+                        <div class="mb-1 flex items-center justify-between px-1.5 py-0.5">
+                          <span class="text-[10px] font-medium text-muted-foreground"
+                            >Add Node</span>
                           <button
                             type="button"
-                            class="flex flex-col items-center justify-center gap-0.5 rounded-lg p-1.5 transition-colors hover:bg-accent"
-                            title={shape.label}
-                            onclick={() => handleAddNode(shape.syntax)}>
-                            {#if shape.id === 'rect'}
-                              <RectangleHorizontal class="size-4 text-muted-foreground" />
-                            {:else if shape.id === 'rounded'}
-                              <Square class="size-4 text-muted-foreground" />
-                            {:else if shape.id === 'circle'}
-                              <Circle class="size-4 text-muted-foreground" />
-                            {:else if shape.id === 'rhombus'}
-                              <Diamond class="size-4 text-muted-foreground" />
-                            {:else if shape.id === 'hexagon'}
-                              <Hexagon class="size-4 text-muted-foreground" />
-                            {:else if shape.id === 'trapezoid'}
-                              <Triangle class="size-4 text-muted-foreground" />
-                            {:else}
-                              <span class="font-mono text-[9px] leading-none text-muted-foreground"
-                                >{shape.syntax[0]}{shape.syntax[1]}</span>
-                            {/if}
-                            <span class="text-[7px] leading-none font-medium text-muted-foreground"
-                              >{shape.label}</span>
+                            class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            onclick={() => (showShapeDropdown = false)}>
+                            <X class="size-3" />
                           </button>
-                        {/each}
+                        </div>
+                        <div class="grid grid-cols-5 gap-1">
+                          {#each shapeOptions as shape (shape.label)}
+                            <button
+                              type="button"
+                              class="flex flex-col items-center justify-center gap-0.5 rounded-lg p-1.5 transition-colors hover:bg-accent"
+                              title={shape.label}
+                              onclick={() => handleAddNode(shape.syntax)}>
+                              {#if shape.id === 'rect'}
+                                <RectangleHorizontal class="size-4 text-muted-foreground" />
+                              {:else if shape.id === 'rounded'}
+                                <Square class="size-4 text-muted-foreground" />
+                              {:else if shape.id === 'circle'}
+                                <Circle class="size-4 text-muted-foreground" />
+                              {:else if shape.id === 'rhombus'}
+                                <Diamond class="size-4 text-muted-foreground" />
+                              {:else if shape.id === 'hexagon'}
+                                <Hexagon class="size-4 text-muted-foreground" />
+                              {:else if shape.id === 'trapezoid'}
+                                <Triangle class="size-4 text-muted-foreground" />
+                              {:else}
+                                <span
+                                  class="font-mono text-[9px] leading-none text-muted-foreground"
+                                  >{shape.syntax[0]}{shape.syntax[1]}</span>
+                              {/if}
+                              <span
+                                class="text-[7px] leading-none font-medium text-muted-foreground"
+                                >{shape.label}</span>
+                            </button>
+                          {/each}
+                        </div>
                       </div>
-                    </div>
-                  {/if}
-                </div>
-                <div class="mx-1 h-px bg-border"></div>
-
-                {#if documentationURL.key}
-                  <a
-                    href={documentationURL.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="toolbar-btn size-8"
-                    title="View {documentationURL.key} docs">
-                    <FileCode2 class="size-4" />
-                  </a>
+                    {/if}
+                  </div>
                   <div class="mx-1 h-px bg-border"></div>
-                {/if}
 
-                <!-- Tool selection buttons -->
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8 {activeTool === 'select' ? 'active' : ''}"
-                  title="Select (V)"
-                  onclick={() => handleToolSelect('select')}
-                  ><MousePointer2 class="size-4" /></Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8 {activeTool === 'pan' ? 'active' : ''}"
-                  title="Pan (H)"
-                  onclick={() => handleToolSelect('pan')}><Hand class="size-4" /></Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8 {activeTool === 'draw' ? 'active' : ''}"
-                  title="Draw (D)"
-                  onclick={() => handleToolSelect('draw')}><Pencil class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border"></div>
+                  {#if documentationURL.key}
+                    <a
+                      href={documentationURL.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="toolbar-btn size-8"
+                      title="View {documentationURL.key} docs">
+                      <FileCode2 class="size-4" />
+                    </a>
+                    <div class="mx-1 h-px bg-border"></div>
+                  {/if}
 
-                <!-- History controls -->
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8"
-                  title="Undo (Ctrl+Z)"
-                  onclick={handleUndo}><Undo2 class="size-4" /></Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8"
-                  title="Redo (Ctrl+Y)"
-                  onclick={handleRedo}><Redo2 class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border"></div>
-
-                <!-- Style and display options -->
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8 {isRoughMode ? 'active' : ''}"
-                  title="Hand-Drawn (R)"
-                  onclick={toggleRoughMode}><PenTool class="size-4" /></Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
-                  title="Grid (G)"
-                  onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border"></div>
-
-                <!-- Layout dropdown -->
-                <div class="relative">
+                  <!-- Tool selection buttons -->
                   <Button
                     variant="ghost"
                     size="icon"
-                    class="toolbar-btn size-8 {currentLayout === 'dagre' || currentLayout === 'elk'
-                      ? 'active'
-                      : ''}"
-                    title="Layout Options"
-                    onclick={() => {
-                      showLayoutDropdown = !showLayoutDropdown;
-                      showShapeDropdown = false;
-                    }}>
-                    <Workflow class="size-4" />
-                  </Button>
-                  {#if showLayoutDropdown}
-                    <div
-                      class="absolute top-0 left-full z-50 ml-1.5 w-32 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-sm">
-                      <div class="mb-0.5 flex items-center justify-between px-2 py-1">
-                        <span class="text-[10px] font-medium text-muted-foreground">Layout</span>
+                    class="toolbar-btn size-8 {activeTool === 'select' ? 'active' : ''}"
+                    title="Select (V)"
+                    onclick={() => handleToolSelect('select')}
+                    ><MousePointer2 class="size-4" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8 {activeTool === 'pan' ? 'active' : ''}"
+                    title="Pan (H)"
+                    onclick={() => handleToolSelect('pan')}><Hand class="size-4" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8 {activeTool === 'draw' ? 'active' : ''}"
+                    title="Draw (D)"
+                    onclick={() => handleToolSelect('draw')}><Pencil class="size-4" /></Button>
+                  <div class="mx-1 h-px bg-border"></div>
+
+                  <!-- History controls -->
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Undo (Ctrl+Z)"
+                    onclick={handleUndo}><Undo2 class="size-4" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Redo (Ctrl+Y)"
+                    onclick={handleRedo}><Redo2 class="size-4" /></Button>
+                  <div class="mx-1 h-px bg-border"></div>
+
+                  <!-- Style and display options -->
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8 {isRoughMode ? 'active' : ''}"
+                    title="Hand-Drawn (R)"
+                    onclick={toggleRoughMode}><PenTool class="size-4" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
+                    title="Grid (G)"
+                    onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
+                  <div class="mx-1 h-px bg-border"></div>
+
+                  <!-- Layout dropdown -->
+                  <div class="relative">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="toolbar-btn size-8 {currentLayout === 'dagre' ||
+                      currentLayout === 'elk'
+                        ? 'active'
+                        : ''}"
+                      title="Layout Options"
+                      onclick={() => {
+                        showLayoutDropdown = !showLayoutDropdown;
+                        showShapeDropdown = false;
+                      }}>
+                      <Workflow class="size-4" />
+                    </Button>
+                    {#if showLayoutDropdown}
+                      <div
+                        class="absolute top-0 left-full z-50 ml-1.5 w-32 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-sm">
+                        <div class="mb-0.5 flex items-center justify-between px-2 py-1">
+                          <span class="text-[10px] font-medium text-muted-foreground">Layout</span>
+                          <button
+                            type="button"
+                            class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            onclick={() => (showLayoutDropdown = false)}>
+                            <X class="size-3" />
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                          onclick={() => (showLayoutDropdown = false)}>
-                          <X class="size-3" />
+                          class={cn(
+                            'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
+                            currentLayout === 'dagre'
+                              ? 'bg-accent font-medium text-foreground'
+                              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          )}
+                          onclick={() => handleLayoutChange('dagre')}>
+                          <GitBranch class="size-3" />
+                          Dagre
+                        </button>
+                        <button
+                          type="button"
+                          class={cn(
+                            'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
+                            currentLayout === 'elk'
+                              ? 'bg-accent font-medium text-foreground'
+                              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          )}
+                          onclick={() => handleLayoutChange('elk')}>
+                          <Network class="size-3" />
+                          ELK
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        class={cn(
-                          'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
-                          currentLayout === 'dagre'
-                            ? 'bg-accent font-medium text-foreground'
-                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        )}
-                        onclick={() => handleLayoutChange('dagre')}>
-                        <GitBranch class="size-3" />
-                        Dagre
-                      </button>
-                      <button
-                        type="button"
-                        class={cn(
-                          'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
-                          currentLayout === 'elk'
-                            ? 'bg-accent font-medium text-foreground'
-                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        )}
-                        onclick={() => handleLayoutChange('elk')}>
-                        <Network class="size-3" />
-                        ELK
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-                <div class="mx-1 h-px bg-border"></div>
+                    {/if}
+                  </div>
+                  <div class="mx-1 h-px bg-border"></div>
 
-                <!-- Export -->
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8"
-                  title="Export SVG (Ctrl+S)"
-                  onclick={handleExport}><Download class="size-4" /></Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8"
-                  title="Fullscreen"
-                  onclick={() => {
-                    if (document.fullscreenElement) document.exitFullscreen();
-                    else document.documentElement.requestFullscreen();
-                  }}><Maximize2 class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border"></div>
+                  <!-- Export -->
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Export SVG (Ctrl+S)"
+                    onclick={handleExport}><Download class="size-4" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Fullscreen"
+                    onclick={() => {
+                      if (document.fullscreenElement) document.exitFullscreen();
+                      else document.documentElement.requestFullscreen();
+                    }}><Maximize2 class="size-4" /></Button>
+                  <div class="mx-1 h-px bg-border"></div>
 
-                <!-- Zoom controls at bottom -->
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8"
-                  title="Zoom In"
-                  onclick={() => {
-                    panZoomState.zoomIn();
-                    zoomLevel = Math.min(400, zoomLevel + 10);
-                  }}><ZoomIn class="size-4" /></Button>
-                <div
-                  class="flex size-8 items-center justify-center rounded-[5px] text-[10px] font-medium text-muted-foreground tabular-nums">
-                  {zoomLevel}%
+                  <!-- Zoom controls at bottom -->
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Zoom In"
+                    onclick={() => {
+                      panZoomState.zoomIn();
+                      zoomLevel = Math.min(400, zoomLevel + 10);
+                    }}><ZoomIn class="size-4" /></Button>
+                  <div
+                    class="flex size-8 items-center justify-center rounded-[5px] text-[10px] font-medium text-muted-foreground tabular-nums">
+                    {zoomLevel}%
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Zoom Out"
+                    onclick={() => {
+                      panZoomState.zoomOut();
+                      zoomLevel = Math.max(25, zoomLevel - 10);
+                    }}><ZoomOut class="size-4" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Reset View"
+                    onclick={() => {
+                      panZoomState.reset();
+                      zoomLevel = 100;
+                    }}><Scan class="size-4" /></Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8"
-                  title="Zoom Out"
-                  onclick={() => {
-                    panZoomState.zoomOut();
-                    zoomLevel = Math.max(25, zoomLevel - 10);
-                  }}><ZoomOut class="size-4" /></Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="toolbar-btn size-8"
-                  title="Reset View"
-                  onclick={() => {
-                    panZoomState.reset();
-                    zoomLevel = 100;
-                  }}><Scan class="size-4" /></Button>
-              </div>
               {/if}
 
               <!-- Diagram View -->
               <div class="relative flex-1 overflow-hidden">
-                {#if isStructurizr}
-                  <StructurizrView files={structurizrFiles} gridEnabled={$inputStateStore.grid} />
-                {:else}
+                {#if isMermaidDiagram}
                   <View
                     {panZoomState}
                     shouldShowGrid={$stateStore.grid}
                     bind:isRendering={isViewRendering}
                     bind:renderError={viewRenderError} />
+                {:else}
+                  <StructuredGraphView
+                    engine={activeDiagramEngine}
+                    {panZoomState}
+                    title={activeDiagramTitle}
+                    source={$inputStateStore.code || ''} />
+                  <div
+                    class="absolute bottom-8 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-sm">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="toolbar-btn size-8"
+                      title="Zoom Out"
+                      onclick={() => {
+                        panZoomState.zoomOut();
+                        zoomLevel = Math.max(25, zoomLevel - 10);
+                      }}><ZoomOut class="size-4" /></Button>
+                    <div
+                      class="flex h-8 min-w-10 items-center justify-center rounded-[5px] px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+                      {zoomLevel}%
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="toolbar-btn size-8"
+                      title="Zoom In"
+                      onclick={() => {
+                        panZoomState.zoomIn();
+                        zoomLevel = Math.min(400, zoomLevel + 10);
+                      }}><ZoomIn class="size-4" /></Button>
+                    <div class="mx-1 h-5 w-px bg-border"></div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="toolbar-btn size-8"
+                      title="Reset View"
+                      onclick={() => {
+                        panZoomState.reset();
+                        zoomLevel = 100;
+                      }}><Scan class="size-4" /></Button>
+                  </div>
                 {/if}
                 <ColorPanel bind:open={isColorPanelOpen} />
                 <IconPanel bind:open={isIconPanelOpen} />
@@ -1162,7 +1169,7 @@
 
                 <!-- Minimal render status indicator (top-right) -->
                 <div class="absolute top-3 right-3 z-20">
-                  {#if !isStructurizr && viewRenderError}
+                  {#if isMermaidDiagram && viewRenderError}
                     <button
                       type="button"
                       class="flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 transition-colors hover:bg-red-500/25"
@@ -1215,23 +1222,20 @@
                 position="left"
                 onResize={(delta) => handlePanelResize('code', delta)} />
               <div class="flex h-full flex-col bg-card">
-                {#if isStructurizr}
-                  <FileTabs
-                    files={structurizrFiles}
-                    activeFile={activeStructurizrFile}
-                    onSelect={handleFileSelect}
-                    onCreate={handleFileCreate}
-                    onDelete={handleFileDelete}
-                    onRename={handleFileRename} />
-                {:else}
-                  <div
-                    class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
-                    <div class="flex items-center gap-1.5">
-                      <Code2 class="size-4 text-muted-foreground" />
-                      <span class="text-xs font-semibold text-foreground">Code</span>
-                      <span class="text-[10px] text-muted-foreground"
-                        >{$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}</span>
-                    </div>
+                <div
+                  class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
+                  <div class="flex items-center gap-1.5">
+                    <Code2 class="size-4 text-muted-foreground" />
+                    <span class="text-xs font-semibold text-foreground">Code</span>
+                    <span class="text-[10px] text-muted-foreground">
+                      {#if !isMermaidDiagram}
+                        {activeDiagramEngine}
+                      {:else}
+                        {$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}
+                      {/if}
+                    </span>
+                  </div>
+                  {#if isMermaidDiagram}
                     <div class="flex items-center gap-1">
                       <button
                         type="button"
@@ -1245,20 +1249,17 @@
                         {$stateStore.editorMode === 'code' ? 'Config' : 'Code'}
                       </button>
                     </div>
-                  </div>
-                {/if}
+                  {/if}
+                </div>
                 <div class="flex-1 overflow-hidden text-[12px]">
                   <Editor
                     onUpdate={(code) => {
-                      if (isStructurizr) {
-                        workspaceStore.updateFile(activeStructurizrFile, code);
-                      } else {
-                        updateCodeStore({ code });
-                      }
+                      updateCodeStore({ code });
                       ensureFileExists();
                       workspaceStore.markDirty();
                     }}
-                    {isStructurizr}
+                    language={activeDiagramEngine}
+                    showMermaidError={isMermaidDiagram}
                     isMobile={width < 768}
                     sendChatMessage={handleSendChatMessage} />
                 </div>
@@ -1267,9 +1268,8 @@
           {:else if panelId === 'chat'}
             <div
               class="relative min-w-0 overflow-hidden border-l border-border"
-              style="{!panels.panels.chat.visible
-                ? 'display: none;'
-                : ''}{panels.panels.canvas.visible
+              style="{!panels.panels.chat.visible ? 'display: none;' : ''}{panels.panels.canvas
+                .visible
                 ? `width: ${panels.panels.chat.width}px;`
                 : ''} min-width: {panels.panels.chat.minWidth}px; flex: {!panels.panels.canvas
                 .visible
@@ -1296,11 +1296,7 @@
   </div>
 
   <!-- Modals -->
-  <SettingsModal
-    bind:open={isSettingsModalOpen}
-    onOpenChange={(v) => (isSettingsModalOpen = v)} /><RefillGemsModal
-    open={isRefillGemsOpen}
-    onClose={() => (isRefillGemsOpen = false)} />
+  <SettingsModal bind:open={isSettingsModalOpen} onOpenChange={(v) => (isSettingsModalOpen = v)} />
 
   <!-- Keyboard Shortcuts Modal -->
   {#if isShortcutsModalOpen}
@@ -1392,3 +1388,49 @@
     </div>
   {/if}
 {/if}
+
+<style>
+  @reference "../../../app.css";
+
+  .tab-switcher {
+    @apply ml-2 flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto rounded-lg border border-transparent bg-muted/30 p-0.5;
+  }
+
+  .workspace-tab {
+    @apply flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-left text-[11px] font-medium transition-all duration-150;
+    @apply text-muted-foreground hover:bg-muted/40 hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:outline-none;
+  }
+
+  .workspace-tab.active {
+    @apply min-w-0 bg-background text-foreground shadow-sm;
+  }
+
+  .workspace-tab.plus-tab {
+    @apply ml-auto size-8 justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground shadow-none;
+    @apply hover:border-border hover:bg-background hover:text-foreground hover:shadow-sm;
+  }
+
+  .tab-title {
+    @apply text-[11px] font-medium tracking-normal text-current;
+  }
+
+  .tab-close {
+    @apply -mr-1 flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-all duration-150;
+    @apply pointer-events-none hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 focus-visible:outline-none;
+  }
+
+  .workspace-tab:hover .tab-close,
+  .workspace-tab:focus-within .tab-close {
+    @apply pointer-events-auto opacity-100;
+  }
+
+  @media (max-width: 767px) {
+    .workspace-tab {
+      @apply px-2;
+    }
+
+    .tab-title {
+      @apply text-[11px];
+    }
+  }
+</style>

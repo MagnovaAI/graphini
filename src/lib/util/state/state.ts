@@ -109,12 +109,8 @@ const processState = async (state: State) => {
   // No changes should be done to fields part of `state`.
   try {
     processed.serialized = serializeState({ ...state, code: sanitizedCode });
-    // Skip Mermaid parsing when the code is Structurizr DSL (starts with "workspace")
-    const isStructurizrDSL = /^\s*workspace\s*[{"]/m.test(sanitizedCode);
-    if (!isStructurizrDSL) {
-      const { diagramType } = await parse(sanitizedCode);
-      processed.diagramType = diagramType;
-    }
+    const { diagramType } = await parse(sanitizedCode);
+    processed.diagramType = diagramType;
     JSON.parse(state.mermaid);
   } catch (error) {
     processed.error = error as Error;

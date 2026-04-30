@@ -66,8 +66,9 @@
 
   // Per-file chat state: each file gets its own conversation
   function getCurrentFileId(): string {
-    const file = workspaceStore.workspace;
-    return file?.id || '_default';
+    const workspaceId = workspaceStore.workspace?.id;
+    const diagramId = workspaceStore.activeDiagramId;
+    return workspaceId && diagramId ? `${workspaceId}:${diagramId}` : workspaceId || '_default';
   }
 
   // Track current file to detect switches
@@ -162,7 +163,7 @@
         // Persist active conversation ID so it survives refresh
         if (newConvId) {
           try {
-            kv.set('chat', 'activeConversationId', newConvId);
+            kv.set('chat', chatKey('activeConversationId'), newConvId);
           } catch {
             /* ignore */
           }
@@ -293,7 +294,7 @@
       }
       if (authStore.isLoggedIn) {
         // Check if there's a saved active conversation ID (from switching conversations)
-        const savedActiveConvId = kv.get<string | null>('chat', 'activeConversationId');
+        const savedActiveConvId = kv.get<string | null>('chat', chatKey('activeConversationId'));
         if (savedActiveConvId) {
           // Load the specific conversation the user was viewing
           setDbConversationId(savedActiveConvId);
@@ -320,7 +321,7 @@
           kv.delete('chat', chatKey('reasoning'));
           kv.delete('chat', chatKey('checkpoints'));
           kv.delete('chat', chatKey('diagramCode'));
-          kv.set('chat', 'activeConversationId', null);
+          kv.set('chat', chatKey('activeConversationId'), null);
         } catch {
           /* ignore */
         }
@@ -353,7 +354,7 @@
           kv.delete('chat', chatKey('reasoning'));
           kv.delete('chat', chatKey('checkpoints'));
           kv.delete('chat', chatKey('diagramCode'));
-          kv.set('chat', 'activeConversationId', null);
+          kv.set('chat', chatKey('activeConversationId'), null);
           kv.flush();
         } catch {
           /* ignore */
@@ -831,7 +832,7 @@
     try {
       // Save messages (include attachments for user messages)
       const simpleMessages = messages.map((m: Record<string, unknown>) => {
-        const msg: Record<string, unknown> = { role: m.role, content: m.content };
+        const msg: Record<string, unknown> = { id: m.id, role: m.role, content: m.content };
         if ((m.attachments as Record<string, unknown>[] | undefined)?.length) {
           msg.attachments = (m.attachments as Record<string, unknown>[]).map(
             (a: Record<string, unknown>) => ({
@@ -849,6 +850,15 @@
         return msg;
       });
       kv.set('chat', chatKey('messages'), simpleMessages);
+      workspaceStore.setActiveDiagramChatMessages(
+        simpleMessages.map((message: Record<string, unknown>) => ({
+          content: String(message.content ?? ''),
+          id: String(message.id ?? uuidv4()),
+          model_used: message.model_used as string | undefined,
+          role: (message.role as 'user' | 'assistant' | 'system') ?? 'user',
+          timestamp: String(message.timestamp ?? new Date().toISOString())
+        }))
+      );
       // Save all message parts (including artifact refs and reasoning refs)
       const allParts: Record<number, ContentPart[]> = {};
       for (const [idx, parts] of Object.entries(messageParts)) {
@@ -1027,7 +1037,7 @@
     }
     // Persist the active conversation ID as null (new chat)
     try {
-      kv.set('chat', 'activeConversationId', null);
+      kv.set('chat', chatKey('activeConversationId'), null);
     } catch {
       /* ignore */
     }
@@ -1061,7 +1071,7 @@
     setDbConversationId(convId);
     // Persist active conversation ID so it survives refresh
     try {
-      kv.set('chat', 'activeConversationId', convId);
+      kv.set('chat', chatKey('activeConversationId'), convId);
     } catch {
       /* ignore */
     }

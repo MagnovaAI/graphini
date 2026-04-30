@@ -1,7 +1,6 @@
 import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
-import { DEFAULT_STRUCTURIZR_DOCUMENT } from '$lib/types/workspace';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
@@ -46,7 +45,7 @@ const createWorkspaceSchema = z.object({
     .optional()
     .nullable(),
   document: z.record(z.string(), z.unknown()).optional(),
-  engine: z.enum(['mermaid', 'structurizr']).default('mermaid')
+  engine: z.enum(['mermaid', 'json', 'yaml']).default('mermaid')
 });
 
 /** POST /api/workspaces — create a new diagram workspace */
@@ -69,12 +68,10 @@ export const POST: RequestHandler = async ({ request }) => {
   try {
     const db = getDb();
     const engine = parsed.data.engine;
-    const document =
-      parsed.data.document ?? (engine === 'structurizr' ? DEFAULT_STRUCTURIZR_DOCUMENT : undefined);
 
     const workspace = await db.createDiagramWorkspace({
       description: parsed.data.description ?? undefined,
-      document,
+      document: parsed.data.document,
       engine,
       title: parsed.data.title,
       user_id: user.id
