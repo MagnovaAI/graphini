@@ -2259,7 +2259,7 @@
                             ? `Assembled ${output.integrationPlan.length} agent output(s)`
                             : 'Agent work assembled',
                           subagentFanout: output.assignments
-                            ? `Spawned ${output.assignments.length} subagent(s)`
+                            ? `Ran ${output.assignments.length} subagent(s)`
                             : 'Subagents spawned',
                           tableAnalytics: output.summary || 'Analysis complete'
                         };
@@ -2329,6 +2329,19 @@
                                       ? ` [${agent.ownedPaths.join(', ')}]`
                                       : ''
                                   }`
+                              )
+                            );
+                          }
+                          if (output.outputs?.length) {
+                            toolDetails.push(
+                              ...output.outputs.map(
+                                (agentOutput: {
+                                  agentId: string;
+                                  output: string;
+                                  role: string;
+                                  status: string;
+                                }) =>
+                                  `${agentOutput.agentId} output (${agentOutput.status}): ${agentOutput.output.slice(0, 220)}${agentOutput.output.length > 220 ? '…' : ''}`
                               )
                             );
                           }

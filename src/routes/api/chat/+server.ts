@@ -5,7 +5,7 @@ import { stateManager } from '$lib/server/state-manager';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { error, json } from '@sveltejs/kit';
-import { streamText, tool } from 'ai';
+import { generateText, streamText, tool } from 'ai';
 import { execFile } from 'child_process';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -476,8 +476,34 @@ function shouldExposePlanningTool(toolName: string, message: string): boolean {
   }
 }
 
+function instructionsForSubagent(role: string): string {
+  const base =
+    'You are one specialist subagent in Graphini. Return concise, concrete output for your assignment. Do not claim you changed files or tools. Do not include hidden reasoning.';
+
+  switch (role) {
+    case 'planner':
+      return `${base} Focus on decomposition, risks, and execution order.`;
+    case 'diagram-engineer':
+      return `${base} Focus on Mermaid architecture, entities, flows, and syntax risks.`;
+    case 'visual-polish':
+      return `${base} Focus on layout, grouping, labels, colors, and icon/readability improvements.`;
+    case 'research-agent':
+      return `${base} Focus on factual assumptions and missing technical context.`;
+    case 'document-agent':
+      return `${base} Focus on concise documentation and explanatory structure.`;
+    case 'data-agent':
+      return `${base} Focus on data inputs, analysis requirements, and chart opportunities.`;
+    case 'critic':
+      return `${base} Focus on correctness gaps, missing components, and failure modes.`;
+    case 'code-agent':
+      return `${base} Focus on JSON/YAML/code artifacts and integration constraints.`;
+    default:
+      return base;
+  }
+}
+
 // AI SDK Tool Definitions for Multi-Step Calling
-const createDiagramTools = (sessionId: string) => ({
+const createDiagramTools = (sessionId: string, modelId?: string) => ({
   actionItemExtractor: tool({
     description:
       'Extract action items, tasks, KPIs, risks, and key entities from the current document or a provided text. Returns structured data that can be used to create diagrams or task lists. Use when the user asks to "extract action items", "find tasks", "identify risks", or "summarize key points".',
@@ -2359,7 +2385,7 @@ WHEN TO USE:
 
   subagentFanout: tool({
     description:
-      'Plan a multi-agent fanout for complex work. Creates bounded subagent assignments with ownership, allowed tools, expected outputs, and file/path guardrails. This plans work only; it does not spawn external processes or mutate files.',
+      'Run a bounded multi-agent fanout for complex work. Creates specialist assignments, executes lightweight parallel specialist LLM calls, and returns concrete subagent outputs for assembly. This does not mutate files.',
     inputSchema: z.object({
       agents: z
         .array(
@@ -2394,12 +2420,62 @@ WHEN TO USE:
         ],
         status: 'planned'
       }));
-      subagentStore.set(`subagents_${sessionId}_${runId}`, JSON.stringify({ assignments, task }));
+
+      const agentOutputs = await Promise.all(
+        assignments.map(async (agent) => {
+          if (!modelId) {
+            return {
+              agentId: agent.id,
+              output: 'No model was available for specialist execution.',
+              role: agent.role,
+              status: 'failed'
+            };
+          }
+
+          try {
+            const result = await generateText({
+              maxOutputTokens: 900,
+              model: openrouterFastChat(modelId),
+              prompt: [
+                `Task: ${task}`,
+                `Specialist objective: ${agent.objective}`,
+                agent.ownedPaths?.length ? `Owned paths: ${agent.ownedPaths.join(', ')}` : '',
+                agent.allowedTools?.length ? `Allowed tools: ${agent.allowedTools.join(', ')}` : '',
+                'Return: concise findings, proposed concrete output, and any blocker.'
+              ]
+                .filter(Boolean)
+                .join('\n'),
+              system: instructionsForSubagent(agent.role),
+              temperature: 0.45
+            });
+
+            return {
+              agentId: agent.id,
+              output: result.text,
+              role: agent.role,
+              status: 'completed'
+            };
+          } catch (e) {
+            return {
+              agentId: agent.id,
+              output: e instanceof Error ? e.message : 'Subagent execution failed',
+              role: agent.role,
+              status: 'failed'
+            };
+          }
+        })
+      );
+
+      subagentStore.set(
+        `subagents_${sessionId}_${runId}`,
+        JSON.stringify({ assignments, outputs: agentOutputs, task })
+      );
 
       return {
         assignments,
         nextRequiredAction:
-          'Continue after fanout: either run the assigned specialist work with available tools, call subagentAssemble with concrete outputs, or ask the user for confirmation if file mutation is required.',
+          'Continue after fanout: use the completed specialist outputs to perform the concrete next tool step, call subagentAssemble, or ask one blocking question.',
+        outputs: agentOutputs,
         runId,
         success: true,
         task
@@ -2648,7 +2724,7 @@ TOOLS:
 - planWithProgress(operation, title?, steps?, stepId?, status?, message?) — Create and track visible plans. Use only for long multi-step tasks where visible progress helps.
 - sequentialThinking(thought, thoughtNumber, totalThoughts, nextAction?) — Think through hard trade-offs visibly. Use only when the user explicitly asks for deep reasoning or when the task is genuinely ambiguous/high-risk.
 - gitGuard(operation, paths?, reason?) — Check git safety before repository file/docs mutation planning. Use before any codebase modification plan. It reports dirty/protected paths and never modifies files.
-- subagentFanout(task, agents) — Plan bounded subagent assignments for complex work. Use when the task needs parallel planning, research, code, docs, or review agents. It plans only and does not mutate files.
+- subagentFanout(task, agents) — Run bounded specialist subagents in parallel for complex work. Use when the task needs parallel planning, research, code, docs, diagram, or review agents. It returns concrete specialist outputs but does not mutate files.
 - subagentAssemble(runId, outputs, verification?) — Assemble subagent outputs into one integration plan with conflict notes and verification steps. It plans only and does not mutate files.
 
 THINK HARDER / DEEP THINKING:
@@ -2705,16 +2781,16 @@ WORKFLOW (for JSON/YAML/code artifacts):
 WORKFLOW (for multi-agent repository work planning):
 1. Call gitGuard(operation="preflight", paths, reason)
 2. Call subagentFanout with explicit roles, objectives, ownedPaths, and allowedTools
-3. Continue the work after fanout. subagentFanout is NOT a final answer. It is a planning step.
-4. Use available concrete tools for each assignment where possible (codeWrite/codePatch for code artifacts, markdownWrite for docs, diagramWrite/diagramPatch for Mermaid, webSearch/fileManager/dataAnalyzer for research/data)
-5. Call subagentAssemble after concrete outputs are known
+3. Continue the work after fanout. subagentFanout returns specialist outputs but is NOT a final answer.
+4. Use available concrete tools to apply the assembled direction where possible (codeWrite/codePatch for code artifacts, markdownWrite for docs, diagramWrite/diagramPatch for Mermaid, webSearch/fileManager/dataAnalyzer for research/data)
+5. Call subagentAssemble with the fanout outputs when an integration plan helps
 6. Provide verification steps and note any dirty/protected paths
 7. Do NOT say files were modified unless a repository-writing tool actually modified them
 
 IMPORTANT MULTI-AGENT CONTINUATION RULE:
 - Use subagentFanout only when the user explicitly asks for subagents OR when the task naturally has 2+ independent workstreams.
 - Never stop immediately after subagentFanout unless the tool result says user confirmation is required or the user explicitly asked only for a plan.
-- After subagentFanout, either execute the next concrete tool step, call subagentAssemble with outputs, or ask one concise blocking question.
+- After subagentFanout, read the returned specialist outputs, then execute the next concrete tool step, call subagentAssemble with outputs, or ask one concise blocking question.
 - After subagentAssemble, summarize the assembled result and continue to the next requested action if one remains.
 
 RULES:
@@ -2937,7 +3013,7 @@ export const POST: RequestHandler = async ({ request }) => {
     ];
 
     // Create tools and filter based on enabled tools from client
-    let allTools = createDiagramTools(diagramSessionId);
+    let allTools = createDiagramTools(diagramSessionId, actualModelId);
     if (enabledTools && Array.isArray(enabledTools)) {
       const enabledSet = new Set(enabledTools as string[]);
       const filtered: Partial<typeof allTools> = {};
