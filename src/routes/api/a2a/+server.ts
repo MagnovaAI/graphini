@@ -8,11 +8,11 @@ import {
   type A2AMessage,
   type A2ATask
 } from '$lib/server/agents/a2a';
-import { listMcpTools } from '$lib/server/agents/tool-catalog';
+import { listMcpToolsForAgent, type GraphiniAgentId } from '$lib/server/agents/tool-catalog';
 import type { RequestHandler } from './$types';
 
 interface AgentRoute {
-  agentId: string;
+  agentId: GraphiniAgentId;
   reason: string;
 }
 
@@ -81,9 +81,7 @@ function createRoutingTask(userMessage: A2AMessage): A2ATask {
       {
         data: {
           agentId: route.agentId,
-          mcpTools: listMcpTools()
-            .filter((tool) => toolsForAgent(route.agentId).includes(tool.name))
-            .map((tool) => tool.name),
+          mcpTools: listMcpToolsForAgent(route.agentId).map((tool) => tool.name),
           reason: route.reason
         },
         kind: 'data'
@@ -119,32 +117,6 @@ function createRoutingTask(userMessage: A2AMessage): A2ATask {
       timestamp: now
     }
   };
-}
-
-function toolsForAgent(agentId: string): string[] {
-  switch (agentId) {
-    case 'planner':
-      return ['planner'];
-    case 'diagram-engineer':
-      return ['diagramRead', 'diagramWrite', 'diagramPatch', 'diagramDelete', 'errorChecker'];
-    case 'visual-polish':
-      return [
-        'diagramRead',
-        'diagramWrite',
-        'diagramPatch',
-        'autoStyler',
-        'iconifier',
-        'errorChecker'
-      ];
-    case 'document-agent':
-      return ['markdownRead', 'markdownWrite', 'fileManager'];
-    case 'data-agent':
-      return ['fileManager', 'tableAnalytics'];
-    case 'critic':
-      return ['diagramRead', 'markdownRead', 'selfCritique', 'errorChecker'];
-    default:
-      return [];
-  }
 }
 
 export const POST: RequestHandler = async ({ request }) => {

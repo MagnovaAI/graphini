@@ -6,7 +6,61 @@ const lineRangeInput = z.object({
   startLine: z.number().int().min(1).optional()
 });
 
+export type GraphiniAgentId =
+  | 'orchestrator'
+  | 'planner'
+  | 'diagram-engineer'
+  | 'visual-polish'
+  | 'research-agent'
+  | 'document-agent'
+  | 'data-agent'
+  | 'critic';
+
 export const graphiniMcpTools = [
+  {
+    annotations: { readOnlyHint: true, title: 'Action Item Extractor' },
+    description:
+      'Extract action items, risks, KPIs, entities, decisions, and deadlines from document text or provided text.',
+    inputSchema: objectSchema(
+      z.object({
+        extractTypes: z
+          .array(z.enum(['actions', 'risks', 'kpis', 'entities', 'decisions', 'deadlines']))
+          .optional(),
+        source: z.enum(['document', 'text']),
+        text: z.string().optional()
+      })
+    ),
+    name: 'actionItemExtractor',
+    title: 'Action Item Extractor'
+  },
+  {
+    annotations: { readOnlyHint: true, title: 'Ask Questions' },
+    description:
+      'Ask the user multiple-choice or multi-select clarification questions before tool execution.',
+    inputSchema: objectSchema(
+      z.object({
+        context: z.string().min(1),
+        questions: z.array(
+          z.object({
+            id: z.string().min(1),
+            options: z
+              .array(
+                z.object({
+                  id: z.string().min(1),
+                  label: z.string().min(1)
+                })
+              )
+              .min(2)
+              .max(6),
+            text: z.string().min(1),
+            type: z.enum(['single', 'multi'])
+          })
+        )
+      })
+    ),
+    name: 'askQuestions',
+    title: 'Ask Questions'
+  },
   {
     annotations: { readOnlyHint: true, title: 'Diagram Read' },
     description: 'Read the current Mermaid diagram content, optionally limited to a line range.',
@@ -37,6 +91,35 @@ export const graphiniMcpTools = [
     ),
     name: 'diagramPatch',
     title: 'Diagram Patch'
+  },
+  {
+    annotations: { readOnlyHint: true, title: 'Data Analyzer' },
+    description:
+      'Perform computational analysis on uploaded CSV or tabular files: frequencies, grouping, filters, top values, crosstabs, and correlations.',
+    inputSchema: objectSchema(
+      z.object({
+        aggregation: z.enum(['sum', 'count', 'avg', 'min', 'max']).optional(),
+        ascending: z.boolean().optional(),
+        column: z.string().optional(),
+        column2: z.string().optional(),
+        columns: z.array(z.string()).optional(),
+        fileId: z.string().min(1),
+        filterOp: z.enum(['equals', 'contains', 'gt', 'lt', 'gte', 'lte', 'notEquals']).optional(),
+        filterValue: z.string().optional(),
+        n: z.number().int().min(1).optional(),
+        operation: z.enum([
+          'frequency',
+          'groupBy',
+          'filter',
+          'topN',
+          'crossTab',
+          'valueCounts',
+          'correlate'
+        ])
+      })
+    ),
+    name: 'dataAnalyzer',
+    title: 'Data Analyzer'
   },
   {
     annotations: { destructiveHint: true, idempotentHint: true, title: 'Diagram Delete' },
@@ -80,6 +163,21 @@ export const graphiniMcpTools = [
     title: 'Iconifier'
   },
   {
+    annotations: { title: 'Long Term Memory' },
+    description:
+      'Store, retrieve, list, delete, or search persistent user/project memories for the current workspace.',
+    inputSchema: objectSchema(
+      z.object({
+        key: z.string().optional(),
+        operation: z.enum(['save', 'get', 'list', 'delete', 'search']),
+        query: z.string().optional(),
+        value: z.string().optional()
+      })
+    ),
+    name: 'longTermMemory',
+    title: 'Long Term Memory'
+  },
+  {
     annotations: { readOnlyHint: true, title: 'Markdown Read' },
     description: 'Read the document panel markdown content.',
     inputSchema: emptyObjectSchema(),
@@ -110,6 +208,30 @@ export const graphiniMcpTools = [
     ),
     name: 'webSearch',
     title: 'Web Search'
+  },
+  {
+    annotations: { title: 'Plan With Progress' },
+    description: 'Create and update a visible checklist-style execution plan for complex tasks.',
+    inputSchema: objectSchema(
+      z.object({
+        message: z.string().optional(),
+        operation: z.enum(['create', 'update', 'get']),
+        status: z.enum(['pending', 'in_progress', 'done', 'skipped']).optional(),
+        stepId: z.string().optional(),
+        steps: z
+          .array(
+            z.object({
+              description: z.string().optional(),
+              id: z.string().min(1),
+              title: z.string().min(1)
+            })
+          )
+          .optional(),
+        title: z.string().optional()
+      })
+    ),
+    name: 'planWithProgress',
+    title: 'Plan With Progress'
   },
   {
     annotations: { readOnlyHint: true, title: 'Planner' },
@@ -153,14 +275,31 @@ export const graphiniMcpTools = [
     title: 'File Manager'
   },
   {
+    annotations: { readOnlyHint: true, title: 'Sequential Thinking' },
+    description:
+      'Record step-by-step reasoning for complex architecture, debugging, or trade-off analysis.',
+    inputSchema: objectSchema(
+      z.object({
+        nextAction: z.string().optional(),
+        thought: z.string().min(1),
+        thoughtNumber: z.number().int().min(1),
+        totalThoughts: z.number().int().min(1)
+      })
+    ),
+    name: 'sequentialThinking',
+    title: 'Sequential Thinking'
+  },
+  {
     annotations: { readOnlyHint: true, title: 'Table Analytics' },
     description:
       'Analyze tabular data and suggest statistics, trends, outliers, or Mermaid charts.',
     inputSchema: objectSchema(
       z.object({
         data: z.string().optional(),
-        operations: z.array(z.string()).optional(),
-        source: z.enum(['uploaded-file', 'inline-data', 'current-document'])
+        operations: z
+          .array(z.enum(['summary', 'statistics', 'trends', 'outliers', 'chart-suggestion']))
+          .optional(),
+        source: z.enum(['document', 'text'])
       })
     ),
     name: 'tableAnalytics',
@@ -168,10 +307,45 @@ export const graphiniMcpTools = [
   }
 ] satisfies McpToolDescriptor[];
 
+export const agentToolNames = {
+  critic: ['diagramRead', 'markdownRead', 'selfCritique', 'errorChecker'],
+  'data-agent': ['fileManager', 'tableAnalytics', 'dataAnalyzer'],
+  'diagram-engineer': [
+    'diagramRead',
+    'diagramWrite',
+    'diagramPatch',
+    'diagramDelete',
+    'errorChecker'
+  ],
+  'document-agent': ['markdownRead', 'markdownWrite', 'fileManager', 'actionItemExtractor'],
+  orchestrator: [
+    'askQuestions',
+    'planner',
+    'planWithProgress',
+    'sequentialThinking',
+    'longTermMemory'
+  ],
+  planner: ['planner', 'planWithProgress', 'sequentialThinking'],
+  'research-agent': ['webSearch', 'fileManager'],
+  'visual-polish': [
+    'diagramRead',
+    'diagramWrite',
+    'diagramPatch',
+    'autoStyler',
+    'iconifier',
+    'errorChecker'
+  ]
+} satisfies Record<GraphiniAgentId, string[]>;
+
 export function listMcpTools(): McpToolDescriptor[] {
   return graphiniMcpTools;
 }
 
 export function getMcpTool(name: string): McpToolDescriptor | undefined {
   return graphiniMcpTools.find((tool) => tool.name === name);
+}
+
+export function listMcpToolsForAgent(agentId: GraphiniAgentId): McpToolDescriptor[] {
+  const allowed = new Set(agentToolNames[agentId]);
+  return graphiniMcpTools.filter((tool) => allowed.has(tool.name));
 }
