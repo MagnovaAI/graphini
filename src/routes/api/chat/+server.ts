@@ -25,6 +25,17 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY
 });
 
+function openrouterFastChat(modelId: string) {
+  return openrouter.chat(modelId, {
+    includeReasoning: false,
+    reasoning: {
+      enabled: false,
+      effort: 'low',
+      exclude: true
+    }
+  });
+}
+
 // In-memory diagram store for multi-step tool calling
 // In production, use Redis or database
 const diagramStore = new Map<string, string>();
@@ -424,6 +435,45 @@ function validateCodeArtifact(
   }
 
   return { valid: true };
+}
+
+function wantsSubagents(message: string): boolean {
+  return /\b(subagents?|multi[-\s]?agent|fan\s*out|parallel agents?|specialist agents?)\b/i.test(
+    message
+  );
+}
+
+function wantsDeepThinking(message: string): boolean {
+  return /\b(think harder|think deeply|deep thinking|reason through|step by step|trade-?offs?|analy[sz]e deeply)\b/i.test(
+    message
+  );
+}
+
+function wantsRepoPlanning(message: string): boolean {
+  return /\b(modify|edit|write|patch|change|refactor|commit|repo|repository|codebase|file|docs?)\b/i.test(
+    message
+  );
+}
+
+function shouldExposePlanningTool(toolName: string, message: string): boolean {
+  const subagentRequested = wantsSubagents(message);
+  const deepThinkingRequested = wantsDeepThinking(message);
+  const repoPlanningRequested = wantsRepoPlanning(message);
+
+  switch (toolName) {
+    case 'subagentFanout':
+    case 'subagentAssemble':
+      return subagentRequested || repoPlanningRequested;
+    case 'sequentialThinking':
+      return deepThinkingRequested;
+    case 'planner':
+    case 'planWithProgress':
+      return deepThinkingRequested || subagentRequested || repoPlanningRequested;
+    case 'gitGuard':
+      return repoPlanningRequested;
+    default:
+      return true;
+  }
 }
 
 // AI SDK Tool Definitions for Multi-Step Calling
@@ -2892,19 +2942,29 @@ export const POST: RequestHandler = async ({ request }) => {
       const enabledSet = new Set(enabledTools as string[]);
       const filtered: Partial<typeof allTools> = {};
       for (const [key, value] of Object.entries(allTools)) {
-        if (enabledSet.has(key)) {
+        if (enabledSet.has(key) && shouldExposePlanningTool(key, message)) {
+          (filtered as Record<string, typeof value>)[key] = value;
+        }
+      }
+      allTools = filtered as typeof allTools;
+    } else {
+      const filtered: Partial<typeof allTools> = {};
+      for (const [key, value] of Object.entries(allTools)) {
+        if (shouldExposePlanningTool(key, message)) {
           (filtered as Record<string, typeof value>)[key] = value;
         }
       }
       allTools = filtered as typeof allTools;
     }
 
+    const stepLimit = wantsDeepThinking(message) || wantsSubagents(message) ? 4 : 3;
+
     // Convert to AI SDK format and stream with multi-step tool calling
     const result = streamText({
       messages: messages,
-      model: openrouter.chat(actualModelId),
-      stopWhen: stepCountIs(5),
-      temperature: 0.7,
+      model: openrouterFastChat(actualModelId),
+      stopWhen: stepCountIs(stepLimit),
+      temperature: 0.35,
       tools: allTools
     });
 
@@ -3191,9 +3251,9 @@ async function _runDiagramAgent(
         for (let i = 0; i < 5; i++) {
           // Call LLM with ALL messages (Cursor-correct - include tool results)
           const result = await streamText({
-            model: openrouter.chat(modelId),
+            model: openrouterFastChat(modelId),
             messages: messages,
-            temperature: 0.7
+            temperature: 0.35
           });
 
           let fullOutput = '';
