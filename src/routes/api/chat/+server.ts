@@ -639,6 +639,18 @@ function shouldExposePlanningTool(toolName: string, message: string): boolean {
   }
 }
 
+function hasRecentSubagentFanout(uiMessages: unknown): boolean {
+  if (!Array.isArray(uiMessages)) return false;
+
+  return uiMessages
+    .slice(-8)
+    .some((message) =>
+      /subagentFanout|Ran \d+ subagent|specialist output|Continue after fanout/i.test(
+        JSON.stringify(message)
+      )
+    );
+}
+
 function instructionsForSubagent(role: string): string {
   const base =
     'You are one specialist subagent in Graphini. Return concise, concrete output for your assignment. Do not claim you changed files or tools. Do not include hidden reasoning.';
@@ -2700,7 +2712,7 @@ WHEN TO USE:
         completedAt: runCompletedAt.toISOString(),
         durationMs: runCompletedAt.getTime() - runStartedAt.getTime(),
         nextRequiredAction:
-          'Continue after fanout: use the completed specialist outputs to perform the concrete next tool step, call subagentAssemble, or ask one blocking question.',
+          'Continue after fanout: DO NOT call subagentFanout again. Use the completed specialist outputs to perform the concrete next tool step, call subagentAssemble, or ask one blocking question.',
         outputs: agentOutputs,
         runId,
         startedAt: runStartedAt.toISOString(),
@@ -3019,7 +3031,7 @@ WORKFLOW (for multi-agent repository work planning):
 IMPORTANT MULTI-AGENT CONTINUATION RULE:
 - Use subagentFanout only when the user explicitly asks for subagents OR when the task naturally has 2+ independent workstreams.
 - Never stop immediately after subagentFanout unless the tool result says user confirmation is required or the user explicitly asked only for a plan.
-- After subagentFanout, read the returned specialist outputs, then execute the next concrete tool step, call subagentAssemble with outputs, or ask one concise blocking question.
+- After subagentFanout, read the returned specialist outputs, then execute the next concrete tool step in the SAME response. For diagram requests, call diagramWrite next. Use subagentAssemble only when outputs conflict or need synthesis. Do NOT call subagentFanout twice for the same request.
 - After subagentAssemble, summarize the assembled result and continue to the next requested action if one remains.
 
 RULES:
@@ -3235,8 +3247,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
     const systemPrompt = buildMultiStepSystemPrompt();
 
+    const continuingAfterFanout = hasRecentSubagentFanout(uiMessages);
+    const continuationPrompt = continuingAfterFanout
+      ? 'A subagent fanout already completed in the recent conversation. Do NOT call subagentFanout again for this continuation. Read the existing specialist outputs in history, then call subagentAssemble if synthesis helps, or immediately perform the concrete next tool step such as diagramWrite, markdownWrite, or errorChecker.'
+      : '';
+
     const messages: Record<string, unknown>[] = [
       { role: 'system', content: systemPrompt },
+      ...(continuationPrompt ? [{ role: 'system', content: continuationPrompt }] : []),
       ...(uiMessages || []),
       { role: 'user', content: userContent }
     ];
@@ -3247,6 +3265,7 @@ export const POST: RequestHandler = async ({ request }) => {
       const enabledSet = new Set(enabledTools as string[]);
       const filtered: Partial<typeof allTools> = {};
       for (const [key, value] of Object.entries(allTools)) {
+        if (continuingAfterFanout && key === 'subagentFanout') continue;
         if (enabledSet.has(key) && shouldExposePlanningTool(key, message)) {
           (filtered as Record<string, typeof value>)[key] = value;
         }
@@ -3255,6 +3274,7 @@ export const POST: RequestHandler = async ({ request }) => {
     } else {
       const filtered: Partial<typeof allTools> = {};
       for (const [key, value] of Object.entries(allTools)) {
+        if (continuingAfterFanout && key === 'subagentFanout') continue;
         if (shouldExposePlanningTool(key, message)) {
           (filtered as Record<string, typeof value>)[key] = value;
         }
