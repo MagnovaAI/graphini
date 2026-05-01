@@ -3,6 +3,15 @@
   import { Button } from '$lib/components/ui/button';
   import * as Dialog from '$lib/components/ui/dialog';
   import { Input } from '$lib/components/ui/input';
+  import {
+    adminFetch,
+    adminPost,
+    buildOpenRouterImportPayload,
+    ensureGeminiProvider,
+    mapProviderSettings,
+    normalizeModelId,
+    type ProviderOption
+  } from '$lib/components/settings/model-admin';
   import { aiSettings, TOOL_CATEGORIES, toolsStore } from '$lib/stores';
   import { kv } from '$lib/stores/kvStore.svelte';
   import {
@@ -12,7 +21,6 @@
     modelsLoadingStore,
     selectedChatModelsStore
   } from '$lib/stores/modelStore.svelte';
-  import type { ToolConfig } from '$lib/stores/toolsStore.svelte';
   import { downloadAppState } from '$lib/util/serialization/exportState';
   import {
     BookOpen,
@@ -98,15 +106,7 @@
 
   // Use new three-tier model system
   // allModels, favoriteModels, selectedChatModels, loadingProviders are derived from stores below
-  let providers = $state<
-    Array<{
-      id: string;
-      label: string;
-      baseUrl: string;
-      requiresApiKey: boolean;
-      description: string;
-    }>
-  >([]);
+  let providers = $state<ProviderOption[]>([]);
   let enabledModels = $state<Record<string, any>[]>([]);
   let enabledModelsLoading = $state(false);
   let openRouterModels = $state<Record<string, any>[]>([]);
@@ -122,13 +122,6 @@
       apiKeyInput = (aiSettings.value as any)[keyField] ?? '';
     }
   });
-
-  // Critical fix: Model ID normalization function
-  function normalizeModelId(provider: string, model: string): string {
-    if (model.includes('/')) return model; // already full
-    if (model.includes(':')) return model.replace(':', '/'); // fix legacy
-    return `${provider}/${model}`;
-  }
 
   // Critical fix: Missing toggle favorite function
   function toggleFavoriteModel(modelId: string) {
@@ -163,52 +156,13 @@
       const providersRes = await fetch('/api/admin?action=providers');
       const providersData = await providersRes.json();
       if (providersData.success) {
-        providers = providersData.data.map((p: any) => ({
-          id: p.key,
-          label: p.value.label,
-          baseUrl: p.value.baseUrl,
-          requiresApiKey: p.value.requiresApiKey,
-          description: p.value.description
-        }));
+        providers = mapProviderSettings(providersData.data);
       }
     } catch (error) {
       console.error('Failed to load providers:', error);
     }
 
-    // Add hardcoded Gemini provider for testing
-    if (!providers.find((p) => p.id === 'gemini')) {
-      providers.push({
-        id: 'gemini',
-        label: 'Google Gemini',
-        baseUrl: '',
-        requiresApiKey: true,
-        description: "Google's Gemini AI models with function calling support"
-      });
-    }
-  }
-
-  async function adminFetch(action: string, params: Record<string, string> = {}) {
-    const search = new URLSearchParams({ action, ...params });
-    const res = await fetch(`/api/admin?${search}`, { credentials: 'include' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) {
-      throw new Error(data.error || `Failed to load ${action}`);
-    }
-    return data.data;
-  }
-
-  async function adminPost(body: Record<string, unknown>) {
-    const res = await fetch('/api/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(body)
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) {
-      throw new Error(data.error || 'Admin action failed');
-    }
-    return data.data;
+    providers = ensureGeminiProvider(providers);
   }
 
   async function loadEnabledModels() {
@@ -268,17 +222,8 @@
       await adminPost({
         action: 'importOpenRouterModel',
         modelData: {
-          category: model.architecture?.modality || 'General',
-          description: (model.description || '').slice(0, 120),
-          gems_per_message:
-            model.pricing?.prompt === '0' && model.pricing?.completion === '0' ? 1 : 2,
-          is_free: model.pricing?.prompt === '0' && model.pricing?.completion === '0',
-          max_tokens: model.context_length || 4000,
-          metadata: { openrouter_id: model.id, pricing: model.pricing },
-          model_id: fullId,
-          model_name: model.name || model.id,
-          provider: 'openrouter',
-          tool_support: true
+          ...buildOpenRouterImportPayload(model),
+          model_id: fullId
         }
       });
       modelAdminNotice = `Imported ${model.name || model.id}`;
