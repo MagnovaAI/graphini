@@ -103,6 +103,7 @@
 
   // Local state for API key input
   let apiKeyInput = $state('');
+  let openRouterApiKeyInput = $state('');
 
   // Use new three-tier model system
   // allModels, favoriteModels, selectedChatModels, loadingProviders are derived from stores below
@@ -114,6 +115,7 @@
   let openRouterSearch = $state('');
   let modelAdminError = $state('');
   let modelAdminNotice = $state('');
+  let apiKeySaving = $state(false);
 
   // Critical fix: Sync API key input when provider changes
   $effect(() => {
@@ -238,6 +240,28 @@
     return enabledModels.some((model) => model.model_id === `openrouter/${modelId}`);
   }
 
+  async function saveOpenRouterApiKey() {
+    const apiKey = openRouterApiKeyInput.trim();
+    if (!apiKey) {
+      modelAdminError = 'Enter an OpenRouter API key first';
+      return;
+    }
+    apiKeySaving = true;
+    modelAdminError = '';
+    modelAdminNotice = '';
+    try {
+      await adminPost({ action: 'setOpenRouterApiKey', apiKey });
+      updateApiKey('openrouter', apiKey);
+      modelAdminNotice = 'OpenRouter API key saved';
+      openRouterApiKeyInput = '';
+    } catch (error) {
+      modelAdminError =
+        error instanceof Error ? error.message : 'Failed to save OpenRouter API key';
+    } finally {
+      apiKeySaving = false;
+    }
+  }
+
   onMount(() => {
     // Load providers and models
     loadProvidersAndModels();
@@ -346,6 +370,45 @@
               onclick={loadEnabledModels}>
               <RefreshCw class="size-3 {enabledModelsLoading ? 'animate-spin' : ''}" />
               Refresh
+            </Button>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-border/40 bg-background/80 p-3">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <div>
+              <div class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                OpenRouter API Key
+              </div>
+              <p class="text-[10px] text-muted-foreground/60">
+                Used by server-side chat and AI tools.
+              </p>
+            </div>
+            <Badge variant="outline" class="text-[8px]">
+              {aiSettings.value.openrouterApiKey ? 'Saved locally' : 'Not set locally'}
+            </Badge>
+          </div>
+          <div class="flex gap-2">
+            <Input
+              class="h-8 font-mono text-[11px]"
+              type="password"
+              autocomplete="off"
+              placeholder="sk-or-v1-..."
+              bind:value={openRouterApiKeyInput}
+              onkeydown={(event) => {
+                if (event.key === 'Enter') saveOpenRouterApiKey();
+              }} />
+            <Button
+              size="sm"
+              class="h-8 shrink-0 gap-1 text-[10px]"
+              disabled={apiKeySaving || !openRouterApiKeyInput.trim()}
+              onclick={saveOpenRouterApiKey}>
+              {#if apiKeySaving}
+                <RefreshCw class="size-3 animate-spin" />
+              {:else}
+                <Save class="size-3" />
+              {/if}
+              Save Key
             </Button>
           </div>
         </div>

@@ -31,7 +31,7 @@
 
   let searchQuery = $state('');
   let allIcons = $state<IconEntry[]>([]);
-  let expandedCategories = new SvelteSet<string>();
+  const expandedCategories = new SvelteSet<string>();
   let loading = $state(false);
   let selectedIcon = $state<string | null>(null);
   let selectedNodeId = $state<string | null>(null);
@@ -144,10 +144,11 @@
 
   function toggleAllCategories() {
     if (allExpanded) {
-      expandedCategories = new SvelteSet();
+      expandedCategories.clear();
       allExpanded = false;
     } else {
-      expandedCategories = new SvelteSet(CATEGORY_ORDER);
+      expandedCategories.clear();
+      for (const category of CATEGORY_ORDER) expandedCategories.add(category);
       allExpanded = true;
     }
   }
@@ -239,7 +240,8 @@
       allIcons = [];
     }
     loading = false;
-    expandedCategories = new SvelteSet(CATEGORY_ORDER);
+    expandedCategories.clear();
+    for (const category of CATEGORY_ORDER) expandedCategories.add(category);
     allExpanded = true;
   }
 

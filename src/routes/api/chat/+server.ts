@@ -2,7 +2,7 @@ import { validateSession } from '$lib/server/auth';
 import { createDiagramTools } from '$lib/server/chat/tools';
 import { diagramStore, markdownStore } from '$lib/server/chat/state';
 import { hasRecentSubagentFanout, shouldExposePlanningTool } from '$lib/server/chat/tool-gating';
-import { openrouterFastChat } from '$lib/server/chat/model';
+import { loadOpenRouterApiKey, openrouterFastChat } from '$lib/server/chat/model';
 import { getDb } from '$lib/server/db';
 import { stateManager } from '$lib/server/state-manager';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
@@ -329,6 +329,7 @@ export const POST: RequestHandler = async ({ request }) => {
     } else if (actualModelId.startsWith('openrouter:')) {
       actualModelId = actualModelId.slice('openrouter:'.length);
     }
+    await loadOpenRouterApiKey();
 
     // Store current diagram and markdown in session store
     if (currentDiagram !== undefined) {

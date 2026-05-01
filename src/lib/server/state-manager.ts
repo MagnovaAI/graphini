@@ -101,12 +101,7 @@ function getDrizzle() {
 // ============================================================================
 
 export const settingsManager = {
-  async get<T>(
-    userId: string | null,
-    category: string,
-    key: string,
-    defaultValue?: T
-  ): Promise<T> {
+  async get<T>(userId: string | null, category: string, key: string, defaultValue?: T): Promise<T> {
     const cached = await settingsCache.getSetting<T>(userId, category, key);
     if (cached !== null) return cached;
 
@@ -123,6 +118,30 @@ export const settingsManager = {
       if (userId) {
         return this.get(null, category, key, defaultValue);
       }
+
+      const drizzle = getDrizzle();
+      if (drizzle) {
+        const [row] = await drizzle
+          .select({ value: schema.appSettings.value })
+          .from(schema.appSettings)
+          .where(
+            and(
+              sql`${schema.appSettings.user_id} is null`,
+              eq(schema.appSettings.category, category),
+              eq(schema.appSettings.key, key)
+            )
+          )
+          .orderBy(desc(schema.appSettings.updated_at))
+          .limit(1);
+
+        if (row) {
+          const raw = row.value as Record<string, unknown>;
+          const value = raw && typeof raw === 'object' && '__kv' in raw ? raw.__kv : raw;
+          await settingsCache.setSetting(userId, category, key, value);
+          return value as T;
+        }
+      }
+
       return defaultValue as T;
     } catch {
       return defaultValue as T;
@@ -139,6 +158,31 @@ export const settingsManager = {
     try {
       if (userId) {
         await getDb().kvSet(userId, category, key, value);
+      } else {
+        const drizzle = getDrizzle();
+        if (!drizzle) return;
+        const jsonbValue =
+          value !== null && typeof value === 'object' && !Array.isArray(value)
+            ? value
+            : { __kv: value };
+
+        await drizzle
+          .delete(schema.appSettings)
+          .where(
+            and(
+              sql`${schema.appSettings.user_id} is null`,
+              eq(schema.appSettings.category, category),
+              eq(schema.appSettings.key, key)
+            )
+          );
+        await drizzle.insert(schema.appSettings).values({
+          category,
+          description: _options?.description,
+          is_sensitive: _options?.isSensitive ?? false,
+          key,
+          user_id: null,
+          value: jsonbValue as Record<string, unknown>
+        });
       }
       await settingsCache.invalidateUser(userId);
     } catch (e) {
@@ -374,9 +418,7 @@ export const analyticsManager = {
     if (!drizzle) return {};
 
     try {
-      const conditions = since
-        ? gte(schema.analyticsEvents.created_at, since)
-        : undefined;
+      const conditions = since ? gte(schema.analyticsEvents.created_at, since) : undefined;
 
       const rows = await drizzle
         .select({ event_type: schema.analyticsEvents.event_type })

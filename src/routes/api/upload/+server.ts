@@ -1,4 +1,5 @@
 import { storeFile } from '$lib/server/file-store';
+import { loadOpenRouterApiKey } from '$lib/server/chat/model';
 import { error, json } from '@sveltejs/kit';
 import dotenv from 'dotenv';
 import * as XLSX from 'xlsx';
@@ -19,7 +20,7 @@ dotenv.config();
  */
 
 async function describeImageWithVision(base64DataUrl: string, filename: string): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = await loadOpenRouterApiKey();
   if (!apiKey) return `[Image: ${filename} — vision processing unavailable (no API key)]`;
 
   try {

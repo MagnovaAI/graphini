@@ -4,6 +4,7 @@
  */
 
 import { getDb } from '$lib/server/db';
+import { loadOpenRouterApiKey } from '$lib/server/chat/model';
 import { stateManager } from '$lib/server/state-manager';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import dotenv from 'dotenv';
@@ -12,7 +13,6 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const GEMINI_MODEL = 'gemini-2.0-flash-lite';
 
 // Auto-register internal models so they appear in admin panel
@@ -101,14 +101,15 @@ async function transcribeWithOpenRouter(
   base64Audio: string,
   mimeType: string
 ): Promise<string | null> {
-  if (!OPENROUTER_API_KEY) return null;
+  const openRouterApiKey = await loadOpenRouterApiKey();
+  if (!openRouterApiKey) return null;
   try {
     const dataUri = `data:${mimeType};base64,${base64Audio}`;
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`
+        Authorization: `Bearer ${openRouterApiKey}`
       },
       body: JSON.stringify({
         model: 'google/gemini-2.0-flash-001',
@@ -151,7 +152,7 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'No audio file provided' }, { status: 400 });
     }
 
-    if (!GEMINI_API_KEY && !OPENROUTER_API_KEY) {
+    if (!GEMINI_API_KEY && !(await loadOpenRouterApiKey())) {
       return json({ error: 'No transcription API key configured' }, { status: 500 });
     }
 

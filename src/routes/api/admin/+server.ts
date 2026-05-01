@@ -6,8 +6,14 @@
 import { requireAdmin } from '$lib/server/admin/auth';
 import { handleAdminGet } from '$lib/server/admin/get-actions';
 import { getCache } from '$lib/server/cache';
+import { setRuntimeOpenRouterApiKey } from '$lib/server/chat/model';
 import { getDb } from '$lib/server/db';
-import { adminDashboard, analyticsManager, settingsManager, stateManager } from '$lib/server/state-manager';
+import {
+  adminDashboard,
+  analyticsManager,
+  settingsManager,
+  stateManager
+} from '$lib/server/state-manager';
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 // ============================================================================
@@ -439,6 +445,20 @@ export const POST: RequestHandler = async ({ request }) => {
           tool_support: orModelData.tool_support ?? true
         });
         await adminDashboard.logAction(null, 'import_model', 'enabled_model', orModelData.model_id);
+        return json({ success: true });
+      }
+
+      case 'setOpenRouterApiKey': {
+        const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+        if (!apiKey) {
+          return json({ success: false, error: 'apiKey required' }, { status: 400 });
+        }
+        await settingsManager.set(null, 'ai_provider', 'openrouter_api_key', apiKey, {
+          description: 'OpenRouter API key used for server-side AI requests',
+          isSensitive: true
+        });
+        setRuntimeOpenRouterApiKey(apiKey);
+        await adminDashboard.logAction(null, 'set_openrouter_api_key', 'setting', 'ai_provider');
         return json({ success: true });
       }
 
