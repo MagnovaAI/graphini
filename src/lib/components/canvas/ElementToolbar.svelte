@@ -197,7 +197,7 @@
     const def = findNodeDefinition(code, nodeName);
     if (!def) return;
 
-    const labelMatch = def.line.match(/[[({<>]+(.+?)[])}>]+/);
+    const labelMatch = def.line.match(/(?:\[|\(|\{|<)+(.+?)(?:\]|\)|\}|>)+/);
     const currentLabel = labelMatch ? labelMatch[1] : nodeName;
 
     const lines = code.split('\n');
