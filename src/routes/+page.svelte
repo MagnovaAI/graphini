@@ -176,9 +176,9 @@
           icon: Presentation
         },
         {
-          title: 'C4 / Structurizr mode',
+          title: 'Architecture handoff',
           description:
-            'Create architecture workspaces with Structurizr DSL, multiple files, and selectable views.',
+            'Export diagrams and notes as clean artifacts for documentation, reviews, and presentations.',
           icon: ShieldCheck
         }
       ]

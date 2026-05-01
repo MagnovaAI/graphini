@@ -3,11 +3,8 @@
     
     Imports the FontAwesome CSS file.
 
-    Needed, since the `@sveltejs/adapter-node` plugin doesn't seem to support
-    lazy-importing CSS, even though `@sveltejs/adapter-vercel` is fine with it!
-
-    However, making a `.svelte` file that imports the CSS file, and then
-    lazy-loading the `.svelte` file works.
+    Keep the CSS import behind a lazily loaded Svelte component so FontAwesome
+    is only loaded for diagrams that actually contain FontAwesome classes.
 -->
 <script lang="ts">
   import '@fortawesome/fontawesome-free/css/all.css';
