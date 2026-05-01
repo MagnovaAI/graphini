@@ -55,7 +55,6 @@
 
   // Edge toolbar state
   let edgeLabel = $state('');
-  let edgeLabelSize = $state<'sm' | 'md' | 'lg'>('md');
   let edgeColor = $state('#6366f1');
   let edgeTextColor = $state('#1e293b');
   let edgeFont = $state<'sans' | 'serif' | 'mono'>('sans');
@@ -93,7 +92,6 @@
     '#8b5cf6',
     '#a855f7',
     '#d946ef',
-    '#6366f1',
     '#f43f5e',
     '#78716c',
     '#475569',
@@ -114,7 +112,6 @@
     '#8b5cf6',
     '#a855f7',
     '#d946ef',
-    '#6366f1',
     '#f43f5e',
     '#78716c',
     '#475569',
@@ -135,7 +132,6 @@
     '#8b5cf6',
     '#a855f7',
     '#d946ef',
-    '#6366f1',
     '#f43f5e',
     '#78716c',
     '#475569',
@@ -201,7 +197,7 @@
     const def = findNodeDefinition(code, nodeName);
     if (!def) return;
 
-    const labelMatch = def.line.match(/[\[\(\{<>]+(.+?)[\]\)\}>]+/);
+    const labelMatch = def.line.match(/[[({<>]+(.+?)[])}>]+/);
     const currentLabel = labelMatch ? labelMatch[1] : nodeName;
 
     const lines = code.split('\n');
@@ -446,11 +442,6 @@
     updateCodeStore({ code });
     edgeArrowType = arrow;
     edgeIsDashed = arrow === '-.->';
-  }
-
-  function applyEdgeLabelSize(size: 'sm' | 'md' | 'lg') {
-    // Mermaid linkStyle doesn't support font-size — update local state only
-    edgeLabelSize = size;
   }
 
   function applyEdgeFont(font: 'sans' | 'serif' | 'mono') {
@@ -734,16 +725,16 @@
 
   // Shape icon map for the grid dropdown
   const shapeIconMap: Record<string, { icon: typeof RectangleHorizontal | null; text?: string }> = {
+    circle: { icon: Circle },
+    cylinder: { icon: null, text: '[(])' },
+    flag: { icon: null, text: '> ]' },
+    hexagon: { icon: Hexagon },
     rect: { icon: RectangleHorizontal },
+    rhombus: { icon: Diamond },
     rounded: { icon: Square },
     stadium: { icon: null, text: '([])' },
     subroutine: { icon: null, text: '[[]]' },
-    cylinder: { icon: null, text: '[(])' },
-    circle: { icon: Circle },
-    rhombus: { icon: Diamond },
-    hexagon: { icon: Hexagon },
-    trapezoid: { icon: Triangle },
-    flag: { icon: null, text: '> ]' }
+    trapezoid: { icon: Triangle }
   };
 </script>
 
@@ -775,7 +766,7 @@
         </button>
       </div>
       <div class="grid grid-cols-9 gap-1">
-        {#each type === 'fill' ? fillColors : type === 'subgraph' ? subgraphColors : colors as color}
+        {#each type === 'fill' ? fillColors : type === 'subgraph' ? subgraphColors : colors as color (color)}
           <button
             type="button"
             class="size-5 rounded-full border border-border transition-all hover:scale-110 hover:ring-2 hover:ring-foreground/20"
@@ -803,9 +794,7 @@
     <div
       class="absolute bottom-full left-1/2 z-50 mb-2.5 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
       <div class="mb-1.5 flex items-center justify-between">
-        <span class="text-[10px] font-medium text-muted-foreground">
-          Icon Color
-        </span>
+        <span class="text-[10px] font-medium text-muted-foreground"> Icon Color </span>
         <button
           type="button"
           class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -814,7 +803,7 @@
         </button>
       </div>
       <div class="grid grid-cols-9 gap-1">
-        {#each colors as color}
+        {#each colors as color (color)}
           <button
             type="button"
             class="size-5 rounded-full border border-border transition-all hover:scale-110 hover:ring-2 hover:ring-foreground/20"
@@ -836,8 +825,7 @@
     <div
       class="absolute bottom-full left-1/2 z-50 mb-2.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
       <div class="mb-1 flex items-center justify-between px-1">
-        <span class="text-[10px] font-medium text-muted-foreground"
-          >Font</span>
+        <span class="text-[10px] font-medium text-muted-foreground">Font</span>
         <button
           type="button"
           class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -845,7 +833,7 @@
           <X class="size-3" />
         </button>
       </div>
-      {#each fonts as font}
+      {#each fonts as font (font.id)}
         {@const currentFont =
           target === 'node' ? nodeFont : target === 'edge' ? edgeFont : subgraphFont}
         <button
@@ -920,16 +908,14 @@
             <div
               class="absolute bottom-full left-1/2 z-50 mb-2.5 w-72 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
               <div class="mb-1.5 flex items-center justify-between">
-                <span
-                  class="text-[10px] font-medium text-muted-foreground"
-                  >Shape</span>
+                <span class="text-[10px] font-medium text-muted-foreground">Shape</span>
                 <button
                   type="button"
                   class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   onclick={() => (showShapePicker = false)}><X class="size-3" /></button>
               </div>
               <div class="grid grid-cols-5 gap-1">
-                {#each shapes as shape}
+                {#each shapes as shape (shape.id)}
                   <button
                     type="button"
                     class={cn(
@@ -992,7 +978,10 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'fill';
             }}>
-            <div class="size-3.5 rounded-full border border-border/50" style="background-color: {nodeFillColor}"></div>
+            <div
+              class="size-3.5 rounded-full border border-border/50"
+              style="background-color: {nodeFillColor}">
+            </div>
           </button>
           {@render colorGrid('fill')}
         </div>
@@ -1008,7 +997,8 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'border';
             }}>
-            <div class="size-3.5 rounded-full border-2" style="border-color: {nodeBorderColor}"></div>
+            <div class="size-3.5 rounded-full border-2" style="border-color: {nodeBorderColor}">
+            </div>
           </button>
           {@render colorGrid('border')}
         </div>
@@ -1033,7 +1023,7 @@
 
         <!-- Text size S/M/L -->
         <div class="flex items-center gap-0.5">
-          {#each ['sm', 'md', 'lg'] as const as size}
+          {#each ['sm', 'md', 'lg'] as const as size (size)}
             <button
               type="button"
               class={cn(
@@ -1151,7 +1141,7 @@
 
         <!-- Edge thickness (3 sizes) -->
         <div class="flex items-center gap-0.5">
-          {#each ['thin', 'normal', 'thick'] as const as t}
+          {#each ['thin', 'normal', 'thick'] as const as t (t)}
             <button
               type="button"
               class={cn(
@@ -1200,15 +1190,13 @@
             <div
               class="absolute bottom-full left-1/2 z-50 mb-2.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
               <div class="mb-1 flex items-center justify-between px-1">
-                <span
-                  class="text-[10px] font-medium text-muted-foreground"
-                  >Arrow</span>
+                <span class="text-[10px] font-medium text-muted-foreground">Arrow</span>
                 <button
                   type="button"
                   class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   onclick={() => (showArrowPicker = false)}><X class="size-3" /></button>
               </div>
-              {#each arrowTypes as arrow}
+              {#each arrowTypes as arrow (arrow.id)}
                 <button
                   type="button"
                   class={cn(
@@ -1259,7 +1247,10 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'edge';
             }}>
-            <div class="size-3.5 rounded-full border border-border/50" style="background-color: {edgeColor}"></div>
+            <div
+              class="size-3.5 rounded-full border border-border/50"
+              style="background-color: {edgeColor}">
+            </div>
           </button>
           {@render colorGrid('edge')}
         </div>
@@ -1290,13 +1281,11 @@
             );
           }}>
           {#if iconSrc}
-            <div
-              class="flex size-7 items-center justify-center rounded-md bg-muted/50">
+            <div class="flex size-7 items-center justify-center rounded-md bg-muted/50">
               <img src={iconSrc} alt="icon" class="size-5 object-contain" />
             </div>
           {:else}
-            <div
-              class="flex size-7 items-center justify-center rounded-md bg-muted/50">
+            <div class="flex size-7 items-center justify-center rounded-md bg-muted/50">
               <ImageIcon class="size-4 text-muted-foreground" />
             </div>
           {/if}
@@ -1365,7 +1354,10 @@
                 closeAllDropdowns();
                 if (!was) activeColorPicker = 'iconColor';
               }}>
-              <div class="size-4 rounded-full border border-border" style="background-color: {iconColor}"></div>
+              <div
+                class="size-4 rounded-full border border-border"
+                style="background-color: {iconColor}">
+              </div>
             </button>
             {@render iconColorGrid()}
           </div>
@@ -1426,7 +1418,10 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'subgraph';
             }}>
-            <div class="size-3.5 rounded-full border border-border/50" style="background-color: {subgraphFillColor}"></div>
+            <div
+              class="size-3.5 rounded-full border border-border/50"
+              style="background-color: {subgraphFillColor}">
+            </div>
           </button>
           {@render colorGrid('subgraph')}
         </div>
@@ -1463,7 +1458,7 @@
 
         <!-- Text size S/M/L -->
         <div class="flex items-center gap-0.5">
-          {#each ['sm', 'md', 'lg'] as const as size}
+          {#each ['sm', 'md', 'lg'] as const as size (size)}
             <button
               type="button"
               class={cn(

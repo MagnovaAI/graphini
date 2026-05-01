@@ -48,18 +48,14 @@
   let codeContainer: HTMLDivElement | undefined = $state();
   let applied = $state(false);
   let wasStreaming = $state(false);
+  let collapseInitialized = false;
 
-  // Derived default collapsed state from props
-  let defaultCollapsedState = $derived(defaultCollapsed ?? operation === 'read');
-
-  // Initialize isCollapsed based on derived value
+  // Initialize once from props, then preserve user toggles except for streaming completion.
   $effect(() => {
-    isCollapsed = defaultCollapsedState;
-  });
-
-  // Auto-collapse when streaming finishes (transition from streaming → done)
-  $effect(() => {
-    if (wasStreaming && !isStreaming) {
+    if (!collapseInitialized) {
+      isCollapsed = defaultCollapsed ?? operation === 'read';
+      collapseInitialized = true;
+    } else if (wasStreaming && !isStreaming) {
       isCollapsed = true;
     }
     wasStreaming = isStreaming;
@@ -72,11 +68,13 @@
 
   // Diff: compute added/removed lines vs previousCode
   let prevLines = $derived(previousCode ? previousCode.split('\n') : []);
-  let prevSet = $derived(new Set(prevLines.map((l) => l.trim())));
-  let curSet = $derived(new Set(lines.map((l) => l.trim())));
-  let addedCount = $derived(previousCode ? lines.filter((l) => !prevSet.has(l.trim())).length : 0);
+  let prevTrimmed = $derived(prevLines.map((l) => l.trim()));
+  let curTrimmed = $derived(lines.map((l) => l.trim()));
+  let addedCount = $derived(
+    previousCode ? lines.filter((l) => !prevTrimmed.includes(l.trim())).length : 0
+  );
   let removedCount = $derived(
-    previousCode ? prevLines.filter((l) => !curSet.has(l.trim())).length : 0
+    previousCode ? prevLines.filter((l) => !curTrimmed.includes(l.trim())).length : 0
   );
   let hasDiff = $derived(previousCode.length > 0 && (addedCount > 0 || removedCount > 0));
 
@@ -127,21 +125,21 @@
 
     // Filter to show only changed regions with 1 line of context
     const CONTEXT = 1;
-    const changedIndices = new Set<number>();
+    const changedIndices: number[] = [];
     ops.forEach((op, idx) => {
-      if (op.type !== 'context') changedIndices.add(idx);
+      if (op.type !== 'context') changedIndices.push(idx);
     });
-    const visibleIndices = new Set<number>();
+    const visibleIndices: number[] = [];
     for (const idx of changedIndices) {
       for (let c = Math.max(0, idx - CONTEXT); c <= Math.min(ops.length - 1, idx + CONTEXT); c++) {
-        visibleIndices.add(c);
+        if (!visibleIndices.includes(c)) visibleIndices.push(c);
       }
     }
 
     const result: DiffLine[] = [];
     let lastVisible = -2;
     for (let idx = 0; idx < ops.length; idx++) {
-      if (!visibleIndices.has(idx)) continue;
+      if (!visibleIndices.includes(idx)) continue;
       if (idx > lastVisible + 1 && lastVisible >= 0) {
         result.push({ text: '', type: 'separator' });
       }
@@ -166,18 +164,10 @@
   // Operation labels
   const operationLabel: Record<string, string> = {
     create: 'Writing',
-    update: 'Updating',
-    patch: 'Patching',
     delete: 'Clearing',
-    read: 'Checking'
-  };
-
-  const completedLabel: Record<string, string> = {
-    create: 'Written',
-    update: 'Updated',
-    patch: 'Patched',
-    delete: 'Cleared',
-    read: 'Checked'
+    patch: 'Patching',
+    read: 'Checking',
+    update: 'Updating'
   };
 
   // Syntax highlighting for mermaid — uses placeholder tokens to avoid regex cascading
@@ -224,16 +214,18 @@
 </script>
 
 <div
-  class="artifact-container my-1.5 overflow-hidden rounded-lg border shadow-sm transition-all duration-200
-    {isError
-    ? 'border-red-500/30 bg-red-500/[0.03] dark:border-red-400/20 dark:bg-red-500/[0.04]'
-    : isRead
-      ? 'border-amber-500/25 bg-card dark:bg-card'
-      : isStreaming
-        ? 'border-primary/30 bg-card'
-        : 'border-border/40 bg-card'}"
-  class:artifact-streaming={isStreaming && !isRead}
-  class:artifact-complete={!isStreaming && code.length > 0 && !isRead}>
+  class={[
+    'artifact-container my-1.5 overflow-hidden rounded-lg border shadow-sm transition-all duration-200',
+    isError
+      ? 'border-red-500/30 bg-red-500/[0.03] dark:border-red-400/20 dark:bg-red-500/[0.04]'
+      : isRead
+        ? 'border-amber-500/25 bg-card dark:bg-card'
+        : isStreaming
+          ? 'border-primary/30 bg-card'
+          : 'border-border/40 bg-card',
+    isStreaming && !isRead && 'artifact-streaming',
+    !isStreaming && code.length > 0 && !isRead && 'artifact-complete'
+  ]}>
   <!-- Header -->
   <button
     type="button"
@@ -273,7 +265,7 @@
       {:else if isError}
         {errors.length} error{errors.length !== 1 ? 's' : ''} found
       {:else}
-        {title} · {lineCount}L
+        {title} · {language.toUpperCase()} · {lineCount}L
       {/if}
       {#if isRead && readFrom && readTo}
         <span
@@ -313,7 +305,7 @@
   <!-- Error banner -->
   {#if isError && !isCollapsed && errors.length > 0}
     <div class="border-t border-red-500/20 bg-red-500/[0.05] px-3 py-1.5 dark:bg-red-500/[0.08]">
-      {#each errors as err}
+      {#each errors as err (err)}
         <p class="text-[11px] leading-relaxed text-red-600 dark:text-red-400">{err}</p>
       {/each}
     </div>
@@ -329,7 +321,7 @@
         <!-- Diff-only view: show only changed regions -->
         <table class="w-full border-collapse font-mono text-[11.5px] leading-[1.65]">
           <tbody>
-            {#each diffLines as dl, i (i)}
+            {#each diffLines as dl, i (`${dl.type}:${dl.lineNum ?? 'gap'}:${dl.text}:${i}`)}
               {#if dl.type === 'separator'}
                 <tr>
                   <td
@@ -362,6 +354,7 @@
                     {dl.type === 'removed'
                       ? 'text-red-700/80 line-through dark:text-red-400/80'
                       : 'text-foreground/90'}">
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
                     {@html highlightLine(dl.text)}
                   </td>
                 </tr>
@@ -373,10 +366,12 @@
         <!-- Full code view -->
         <table class="w-full border-collapse font-mono text-[11.5px] leading-[1.65]">
           <tbody>
-            {#each lines as line, i (i)}
+            {#each lines as line, i (`${i}:${line}`)}
               <tr
-                class="artifact-line group transition-colors duration-75 hover:bg-muted/30"
-                class:artifact-line-new={isStreaming && i >= lineCount - 3}>
+                class={[
+                  'artifact-line group transition-colors duration-75 hover:bg-muted/30',
+                  isStreaming && i >= lineCount - 3 && 'artifact-line-new'
+                ]}>
                 <td
                   class="artifact-ln border-r border-border/30 px-3 text-right align-top text-muted-foreground/40 select-none"
                   style="width: {lineCount > 99 ? '3.5rem' : '2.75rem'}; min-width: {lineCount > 99
@@ -385,6 +380,7 @@
                   {i + 1}
                 </td>
                 <td class="artifact-code px-4 align-top whitespace-pre text-foreground/90">
+                  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
                   {@html highlightLine(line)}{#if isStreaming && i === lineCount - 1}<span
                       class="artifact-cursor"></span
                     >{/if}

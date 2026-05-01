@@ -1,7 +1,11 @@
 <script lang="ts">
   import { inputStateStore, updateCodeStore } from '$/util/state/state';
   import { Button } from '$lib/components/ui/button';
-  import { injectEdgeStyle, injectNodeStyle, svgIdToNodeName } from '$lib/util/diagram/diagramMapper';
+  import {
+    injectEdgeStyle,
+    injectNodeStyle,
+    svgIdToNodeName
+  } from '$lib/util/diagram/diagramMapper';
   import { Image, Loader2, Pipette, X } from 'lucide-svelte';
   import { mode } from 'mode-watcher';
   import { onDestroy, onMount } from 'svelte';
@@ -33,7 +37,6 @@
     '#8b5cf6',
     '#a855f7',
     '#d946ef',
-    '#6366f1',
     '#f43f5e',
     '#78716c',
     '#475569',
@@ -221,7 +224,7 @@
           <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
             >Fill</span>
           <div class="flex flex-wrap gap-0.5">
-            {#each $fillColors as color}
+            {#each $fillColors as color (color)}
               <button
                 type="button"
                 class="size-[18px] rounded border transition-all hover:scale-125 {selectedBgColor ===
@@ -245,7 +248,7 @@
           <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
             >Border</span>
           <div class="flex flex-wrap gap-0.5">
-            {#each strokeColors as color}
+            {#each strokeColors as color (color)}
               <button
                 type="button"
                 class="size-[18px] rounded border transition-all hover:scale-125 {selectedBorderColor ===
@@ -269,7 +272,7 @@
           <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
             >Text</span>
           <div class="flex flex-wrap gap-0.5">
-            {#each strokeColors as color}
+            {#each strokeColors as color (color)}
               <button
                 type="button"
                 class="size-[18px] rounded border transition-all hover:scale-125 {selectedColor ===
@@ -293,7 +296,7 @@
           <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
             >Stroke</span>
           <div class="flex flex-wrap gap-0.5">
-            {#each strokeColors as color}
+            {#each strokeColors as color (color)}
               <button
                 type="button"
                 class="size-[18px] rounded border transition-all hover:scale-125 {selectedColor ===

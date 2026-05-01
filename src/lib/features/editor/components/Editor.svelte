@@ -4,19 +4,30 @@
   import { stateStore, updateCode, updateConfig } from '$lib/util/state/state';
   import { debounce } from 'lodash-es';
   import { Wrench } from 'lucide-svelte';
+  import { onDestroy } from 'svelte';
   import ExclamationCircleIcon from '~icons/material-symbols/error-outline-rounded';
   import DesktopEditor from './DesktopEditor.svelte';
   import MobileEditor from './MobileEditor.svelte';
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
-  export let onUpdate: (code: string) => void = () => {};
-  export let isMobile = false;
-  export let language: 'mermaid' | 'json' | 'yaml' = 'mermaid';
-  export let showMermaidError = true;
-  export let sendChatMessage: (
-    message: string,
-    options?: { isRepair?: boolean }
-  ) => Promise<boolean> = async () => false;
+  interface Props {
+    isMobile?: boolean;
+    language?: 'mermaid' | 'json' | 'yaml';
+    onUpdate?: (code: string) => void;
+    sendChatMessage?: (message: string, options?: { isRepair?: boolean }) => Promise<boolean>;
+    showMermaidError?: boolean;
+  }
+
+  const noopUpdate = (code: string) => {
+    void code;
+  };
+
+  let {
+    onUpdate = noopUpdate,
+    isMobile = false,
+    language = 'mermaid',
+    showMermaidError = true,
+    sendChatMessage = async () => false
+  }: Props = $props();
 
   const handleUpdate = (text: string) => {
     if ($stateStore.editorMode === 'code') {
@@ -27,7 +38,7 @@
     onUpdate(text);
   };
 
-  let showError = false;
+  let showError = $state(false);
 
   const showErrorDebounced = debounce(() => {
     showError = true;
@@ -36,19 +47,27 @@
   // Track previous validation error to avoid duplicate panels
   let previousValidationError: string | undefined;
 
-  $: if ($stateStore.error) {
-    showErrorDebounced();
-  } else {
-    showErrorDebounced.cancel();
-    showError = false;
-  }
+  $effect(() => {
+    if ($stateStore.error) {
+      showErrorDebounced();
+    } else {
+      showErrorDebounced.cancel();
+      showError = false;
+    }
+  });
 
   // Update validation error state for panel display
-  $: if ($stateStore.validationError && $stateStore.validationError !== previousValidationError) {
-    previousValidationError = $stateStore.validationError;
-  } else if (!$stateStore.validationError) {
-    previousValidationError = undefined;
-  }
+  $effect(() => {
+    if ($stateStore.validationError && $stateStore.validationError !== previousValidationError) {
+      previousValidationError = $stateStore.validationError;
+    } else if (!$stateStore.validationError) {
+      previousValidationError = undefined;
+    }
+  });
+
+  onDestroy(() => {
+    showErrorDebounced.cancel();
+  });
 
   async function handleFixValidationError() {
     const hasValidationError = !!$stateStore.validationError;

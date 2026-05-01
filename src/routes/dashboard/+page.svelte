@@ -5,6 +5,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
   import type { DiagramWorkspaceSummary } from '$lib/types/workspace';
+  import { cn } from '$lib/util';
   import {
     Plus,
     Search,
@@ -208,13 +209,13 @@
     return `${prefix} ${i}`;
   }
 
-  async function handleNewWorkspace(engine: 'mermaid' | 'structurizr' = 'mermaid') {
+  async function handleNewWorkspace() {
     if (!authStore.isLoggedIn) {
       authStore.login();
       return;
     }
     creating = true;
-    const ws = await workspaceStore.create(nextUntitledName(), engine);
+    const ws = await workspaceStore.create(nextUntitledName(), 'mermaid');
     creating = false;
     if (ws) goto(resolve(`/workspace/${ws.id}`));
   }
@@ -300,8 +301,7 @@
           {#each sidebarItems as item (item.id)}
             {@const Icon = item.icon}
             <button
-              class="sidebar-nav-item"
-              class:active={activeFilter === item.id}
+              class={cn('sidebar-nav-item', activeFilter === item.id && 'active')}
               onclick={() => (activeFilter = item.id)}
               aria-label="{item.label} filter">
               <Icon class="size-[15px]" />
@@ -361,8 +361,7 @@
     <div class="mobile-filters md:hidden">
       {#each sidebarItems as item (item.id)}
         <button
-          class="mobile-filter-btn"
-          class:active={activeFilter === item.id}
+          class={cn('mobile-filter-btn', activeFilter === item.id && 'active')}
           onclick={() => (activeFilter = item.id)}>
           {item.label}
         </button>
@@ -386,7 +385,7 @@
             </div>
 
             <div class="flex items-center gap-3">
-              <div class="search-wrapper" class:focused={searchFocused}>
+              <div class={cn('search-wrapper', searchFocused && 'focused')}>
                 <Search class="search-icon" />
                 <input
                   type="text"
@@ -400,28 +399,14 @@
                   <Command class="size-2.5" />K
                 </kbd>
               </div>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  <button class="new-btn" disabled={creating}>
-                    {#if creating}
-                      <Loader2 class="size-4 animate-spin" />
-                    {:else}
-                      <Plus class="size-4" />
-                    {/if}
-                    New
-                  </button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end" class="min-w-[200px]">
-                  <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid')}>
-                    <Workflow class="mr-2 size-4" />
-                    Mermaid Diagram
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Item onclick={() => handleNewWorkspace('structurizr')}>
-                    <Network class="mr-2 size-4" />
-                    C4 Architecture
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
+              <button class="new-btn" disabled={creating} onclick={handleNewWorkspace}>
+                {#if creating}
+                  <Loader2 class="size-4 animate-spin" />
+                {:else}
+                  <Plus class="size-4" />
+                {/if}
+                New
+              </button>
             </div>
           </div>
         {/if}
@@ -516,13 +501,7 @@
                   {/if}
 
                   <div class="ws-meta">
-                    {#if ws.engine === 'structurizr'}
-                      <span
-                        class="ws-type-badge"
-                        style="color: #1168BD; background: rgba(17,104,189,0.08); border-color: rgba(17,104,189,0.15);">
-                        C4
-                      </span>
-                    {:else if ws.engine === 'mermaid'}
+                    {#if ws.engine === 'mermaid'}
                       <span
                         class="ws-type-badge"
                         style="color: #ff3670; background: rgba(255,54,112,0.08); border-color: rgba(255,54,112,0.15);">
@@ -561,23 +540,9 @@
                 : 'Create your first diagram to get started. Describe it in plain English or write Mermaid DSL directly.'}
             </p>
             {#if !searchQuery}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  <button class="new-btn mt-6" disabled={creating}>
-                    <Plus class="size-4" />Create your first diagram
-                  </button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="center" class="min-w-[200px]">
-                  <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid')}>
-                    <Workflow class="mr-2 size-4" />
-                    Mermaid Diagram
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Item onclick={() => handleNewWorkspace('structurizr')}>
-                    <Network class="mr-2 size-4" />
-                    C4 Architecture
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
+              <button class="new-btn mt-6" disabled={creating} onclick={handleNewWorkspace}>
+                <Plus class="size-4" />Create your first diagram
+              </button>
             {/if}
           </div>
         {/if}

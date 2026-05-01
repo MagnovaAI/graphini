@@ -75,7 +75,7 @@
   let currentFileId = getCurrentFileId();
   let fileEffectInitialized = false;
 
-  // React to file changes (replaces old fileSystemStore.subscribe)
+  // React to workspace switches.
   $effect(() => {
     const newFileId = workspaceStore.workspace?.id || '_default';
     if (!fileEffectInitialized) {
@@ -590,6 +590,26 @@
         lines: number;
         isStreaming?: boolean;
       };
+
+  function messageKey(message: Record<string, unknown>, index: number) {
+    return String(message.id ?? `${message.role ?? 'message'}:${message.timestamp ?? index}`);
+  }
+
+  function attachmentKey(attachment: Record<string, unknown>, index: number) {
+    return String(
+      attachment.fileId ??
+        attachment.url ??
+        `${attachment.filename ?? 'file'}:${attachment.size ?? ''}:${index}`
+    );
+  }
+
+  function contentPartKey(part: ContentPart, index: number) {
+    if (part.type === 'artifact') return part.artifactId;
+    if ('id' in part) return part.id;
+    if (part.type === 'text') return `text:${part.text.slice(0, 40)}:${index}`;
+    if (part.type === 'error') return `error:${part.error}:${index}`;
+    return `part:${index}`;
+  }
 
   interface QuestionnaireQuestion {
     id: string;
@@ -1393,8 +1413,9 @@
     if (!authStore.isLoggedIn) {
       messages = [
         ...messages,
-        { role: 'user', content: text },
+        { id: uuidv4(), role: 'user', content: text },
         {
+          id: uuidv4(),
           role: 'assistant',
           content:
             '🔒 **Please sign in to continue.** You need to be logged in to use the AI assistant. Click the user icon in the top-right to sign in or create an account.'
@@ -1410,8 +1431,9 @@
     if (balance <= 0 && !isRepair) {
       messages = [
         ...messages,
-        { role: 'user', content: text },
+        { id: uuidv4(), role: 'user', content: text },
         {
+          id: uuidv4(),
           role: 'assistant',
           content:
             "💎 **You're out of gems!** You need gems to use the AI assistant. Click the button below or the gems icon in the toolbar to refill."
@@ -1454,6 +1476,7 @@
     };
 
     const userMessage: Record<string, unknown> = {
+      id: uuidv4(),
       role: 'user',
       content: text || '',
       timestamp: Date.now()
@@ -1496,7 +1519,7 @@
     currentReasoningId = null;
     scrollToBottom();
 
-    const assistantMessage = { role: 'assistant', content: '' };
+    const assistantMessage = { id: uuidv4(), role: 'assistant', content: '' };
     messages = [...messages, assistantMessage];
     const assistantIndex = messages.length - 1;
     messageParts[assistantIndex] = [];
@@ -2805,7 +2828,7 @@
     {:else}
       <!-- All Messages -->
       <div class="mx-auto max-w-3xl space-y-5 px-4 py-4 sm:px-6 sm:py-5">
-        {#each messages as message, i (i)}
+        {#each messages as message, i (messageKey(message, i))}
           {#if message.role === 'user'}
             <!-- User Bubble (right-aligned) with checkpoint undo -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -2825,7 +2848,7 @@
               <div class="flex max-w-[92%] flex-col items-end gap-1.5">
                 {#if message.attachments?.length > 0}
                   <div class="flex flex-wrap justify-end gap-1.5">
-                    {#each message.attachments as att, attIdx (attIdx)}
+                    {#each message.attachments as att, attIdx (attachmentKey(att, attIdx))}
                       {#if att.mediaType?.startsWith('image/') && att.url}
                         <div
                           class="h-[56px] w-[56px] overflow-hidden rounded-xl border border-border">
@@ -2903,7 +2926,7 @@
             <div>
               <div class="max-w-[95%] space-y-3">
                 {#if messageParts[i] && messageParts[i].length > 0}
-                  {#each messageParts[i] as part, pi (pi)}
+                  {#each messageParts[i] as part, pi (contentPartKey(part, pi))}
                     {#if part.type === 'text' && part.text}
                       <div class="pl-3 text-[13px] leading-relaxed text-foreground/90">
                         <Response content={part.text} />
@@ -3171,7 +3194,7 @@
                                     {#if agent.events?.length}
                                       <div
                                         class="mt-1.5 space-y-0.5 border-l border-cyan-500/20 pl-2">
-                                        {#each agent.events as event, eventIndex (eventIndex)}
+                                        {#each agent.events as event (`${event.at}:${event.label}`)}
                                           <div class="text-[10px] text-muted-foreground/70">
                                             {event.label}
                                           </div>
@@ -3204,7 +3227,7 @@
                               {#if part.details && part.status === 'done'}
                                 <div class="mt-2 border-t border-border/70 pt-2">
                                   <div class="space-y-1">
-                                    {#each part.details as detail, dIdx (dIdx)}
+                                    {#each part.details as detail, dIdx (`${detail}:${dIdx}`)}
                                       <div class="flex items-start gap-1.5 text-[11px]">
                                         <span class="mt-0.5 shrink-0 text-muted-foreground/50"
                                           >·</span>
@@ -3256,7 +3279,7 @@
                                 </p>
                               {/if}
                               <div class="space-y-1">
-                                {#each part.searchResults as result, rIdx (rIdx)}
+                                {#each part.searchResults as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
                                   <div class="text-[11px]">
                                     <span class="font-medium text-foreground/70"
                                       >{result.title}</span>
@@ -3269,7 +3292,7 @@
                               </div>
                             {:else if part.details && part.details.length > 0}
                               <div class="space-y-1">
-                                {#each part.details as detail, dIdx (dIdx)}
+                                {#each part.details as detail, dIdx (`${detail}:${dIdx}`)}
                                   <div class="flex items-start gap-1.5 text-[11px]">
                                     <span class="mt-0.5 shrink-0 text-muted-foreground/50">·</span>
                                     <span class="leading-relaxed text-foreground/70">{detail}</span>

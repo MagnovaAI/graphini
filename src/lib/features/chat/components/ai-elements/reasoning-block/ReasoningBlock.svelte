@@ -9,7 +9,9 @@
 
   let { content, isStreaming = false, durationMs }: Props = $props();
 
-  let isCollapsed = $derived(!isStreaming);
+  let isCollapsed = $state(false);
+  let collapseInitialized = false;
+  let wasStreaming = false;
   let contentEl: HTMLDivElement | undefined = $state();
 
   // Clean content: strip markdown artifacts for display
@@ -32,11 +34,18 @@
     return `${s}s`;
   });
 
-  // Auto-collapse when streaming finishes
+  // Keep streaming thoughts open, then collapse once the final content arrives.
   $effect(() => {
-    if (!isStreaming && content.length > 0) {
+    if (!collapseInitialized) {
+      isCollapsed = !isStreaming;
+      wasStreaming = isStreaming;
+      collapseInitialized = true;
+    } else if (isStreaming && !wasStreaming) {
+      isCollapsed = false;
+    } else if (wasStreaming && !isStreaming && content.length > 0) {
       isCollapsed = true;
     }
+    wasStreaming = isStreaming;
   });
 
   // Auto-scroll during streaming

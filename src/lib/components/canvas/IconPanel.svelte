@@ -17,6 +17,7 @@
     X
   } from 'lucide-svelte';
   import { onDestroy, onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -30,7 +31,7 @@
 
   let searchQuery = $state('');
   let allIcons = $state<IconEntry[]>([]);
-  let expandedCategories = $state<Set<string>>(new Set());
+  let expandedCategories = new SvelteSet<string>();
   let loading = $state(false);
   let selectedIcon = $state<string | null>(null);
   let selectedNodeId = $state<string | null>(null);
@@ -108,15 +109,15 @@
   const CATEGORY_LABELS: Record<string, string> = {
     aws: 'Amazon Web Services',
     azure: 'Microsoft Azure',
-    gcp: 'Google Cloud',
     cisco: 'Cisco',
-    k8s: 'Kubernetes',
-    fabric: 'Microsoft Fabric',
     d365: 'Dynamics 365',
-    power: 'Power Platform',
+    fabric: 'Microsoft Fabric',
+    gcp: 'Google Cloud',
+    general: 'General & Brands',
+    k8s: 'Kubernetes',
     oci: 'Oracle Cloud',
-    ui: 'UI Elements',
-    general: 'General & Brands'
+    power: 'Power Platform',
+    ui: 'UI Elements'
   };
 
   const CATEGORY_ORDER = [
@@ -143,10 +144,10 @@
 
   function toggleAllCategories() {
     if (allExpanded) {
-      expandedCategories = new Set();
+      expandedCategories = new SvelteSet();
       allExpanded = false;
     } else {
-      expandedCategories = new Set(CATEGORY_ORDER);
+      expandedCategories = new SvelteSet(CATEGORY_ORDER);
       allExpanded = true;
     }
   }
@@ -165,7 +166,7 @@
     applyImgIcon(icon.path, icon.id);
   }
 
-  function applyImgIcon(imgUrl: string, _label: string) {
+  function applyImgIcon(imgUrl: string) {
     if (!selectedNodeId) {
       const syntax = `@{ img: "${imgUrl}", pos: "b", w: 60, h: 60, constraint: "on" }`;
       navigator.clipboard?.writeText(syntax);
@@ -238,7 +239,7 @@
       allIcons = [];
     }
     loading = false;
-    expandedCategories = new Set(CATEGORY_ORDER);
+    expandedCategories = new SvelteSet(CATEGORY_ORDER);
     allExpanded = true;
   }
 
@@ -286,7 +287,6 @@
     } else {
       expandedCategories.add(cat);
     }
-    expandedCategories = new Set(expandedCategories);
     allExpanded = expandedCategories.size === CATEGORY_ORDER.length;
   }
 
@@ -402,7 +402,7 @@
           onclick={() => (activeCategory = null)}>
           All
         </button>
-        {#each categoryList as cat}
+        {#each categoryList as cat (cat.id)}
           <button
             type="button"
             class="shrink-0 rounded-md px-2 py-0.5 text-[9px] font-medium transition-all {activeCategory ===
@@ -429,7 +429,7 @@
             <p class="text-[11px] text-muted-foreground">No icons found for "{searchQuery}"</p>
           </div>
         {:else}
-          {#each CATEGORY_ORDER as catId}
+          {#each CATEGORY_ORDER as catId (catId)}
             {#if groupedIcons[catId]?.length}
               <div class="mb-1">
                 <button
@@ -448,7 +448,7 @@
 
                 {#if expandedCategories.has(catId)}
                   <div class="grid grid-cols-5 gap-1 px-1 py-1">
-                    {#each groupedIcons[catId] as icon}
+                    {#each groupedIcons[catId] as icon (icon.id)}
                       <button
                         type="button"
                         class="group flex flex-col items-center gap-0.5 rounded-lg border border-transparent p-1 transition-all hover:border-border hover:bg-accent/50 {selectedIcon ===
@@ -518,7 +518,7 @@
           </div>
         {:else}
           <div class="grid grid-cols-5 gap-1">
-            {#each webResults as icon}
+            {#each webResults as icon (icon.id)}
               <button
                 type="button"
                 class="group flex flex-col items-center gap-0.5 rounded-lg border border-transparent p-1 transition-all hover:border-border hover:bg-accent/50 {selectedIcon ===
