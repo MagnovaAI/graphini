@@ -5,7 +5,7 @@
 <h1 align="center">Graphini</h1>
 
 <p align="center">
-  <b>AI-powered diagram editor where every diagram is code — describe it, render it, version it, self-host it.</b>
+  <b>AI-powered diagram editor where every diagram is code — describe it, render it, version it, ship it on Vercel.</b>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <img src="https://img.shields.io/badge/Supabase-auth-3ecf8e?logo=supabase&logoColor=white" alt="Supabase" />
   <img src="https://img.shields.io/badge/Drizzle-ORM-c5f74f" alt="Drizzle" />
   <img src="https://img.shields.io/badge/Tailwind-v4-38bdf8?logo=tailwindcss&logoColor=white" alt="Tailwind v4" />
-  <img src="https://img.shields.io/badge/Docker-self--host-2496ed?logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/Vercel-deploy-000?logo=vercel&logoColor=white" alt="Vercel" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -41,13 +41,13 @@
 
 ## ✨ Why Graphini?
 
-Every AI diagramming tool hits the same wall: the output is a _picture_. You can't diff it, you can't version it, you can't regenerate it from the source of truth. Graphini is different because **every diagram is a Mermaid / Structurizr text artifact** — so it lives in git, diffs in PRs, and renders deterministically every time.
+Every AI diagramming tool hits the same wall: the output is a _picture_. You can't diff it, you can't version it, you can't regenerate it from the source of truth. Graphini is different because **every diagram is a Mermaid text artifact** — so it lives in git, diffs in PRs, and renders deterministically every time.
 
-- **Diagrams-as-code, not canvas blobs.** Output is Mermaid (flowchart, sequence, ER, state, class, gitgraph…) or Structurizr DSL — plain text you can check in.
+- **Diagrams-as-code, not canvas blobs.** Output is Mermaid (flowchart, sequence, ER, state, class, gitgraph…) — plain text you can check in.
 - **Real multi-provider AI.** Built on the Vercel AI SDK with OpenAI, Anthropic, OpenRouter, and Gemini. Swap providers without code changes.
 - **Cloud architecture, done right.** AWS icon pack is built into the bundle via a pre-build script, so your architecture diagrams use real service icons — not generic boxes.
 - **Memory that sticks.** User memories let Graphini learn your naming conventions, preferred diagram style, and domain vocabulary across sessions.
-- **Self-hostable.** Docker, Node adapter, static adapter, or Vercel — pick your deployment. No lock-in.
+- **Vercel-ready.** SvelteKit's Vercel adapter keeps deployment simple: connect the repo, set environment variables, and ship.
 
 > Unlike canvas-based AI tools like Excalidraw-plus-plugins or closed-format drag-drop editors, **Graphini produces text-first diagrams you own, version, and re-render forever** — with a workspace, file persistence, and a proper API on top.
 
@@ -64,7 +64,7 @@ Every AI diagramming tool hits the same wall: the output is a _picture_. You can
 - [🧰 Tech Stack](#-tech-stack)
 - [🏗 Architecture](#-architecture)
 - [🚀 Quick Start](#-quick-start)
-- [🐳 Docker](#-docker)
+- [▲ Vercel Deploy](#-vercel-deploy)
 - [🔑 Configuration](#-configuration)
 - [🌐 API Reference](#-api-reference)
 - [📁 Project Structure](#-project-structure)
@@ -82,33 +82,31 @@ Every AI diagramming tool hits the same wall: the output is a _picture_. You can
 
 There are plenty of ways to make a diagram with AI. None of them do the job Graphini does, because each was built for a different workflow:
 
-| Tool                                     | What it answers                                                                                | Where Graphini differs                                                                                     |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Mermaid Live Editor**                  | "I already wrote Mermaid, render it"                                                           | No AI — you write the DSL by hand. Graphini generates and iterates it for you.                             |
-| **ChatGPT / Claude "make me a diagram"** | "One-shot, throwaway diagram"                                                                  | No persistence, no memories, no workspace, no files, no Structurizr, no AWS icons, no API.                 |
-| **Excalidraw + AI plugins**              | "Sketch it out visually"                                                                       | Canvas-blob output — not text, not versionable, not regeneratable from source.                             |
-| **draw.io / Lucidchart**                 | "Drag-and-drop corporate diagrams"                                                             | Manual, closed-format, no AI-native editing loop.                                                          |
-| **Eraser.io**                            | "Paid hosted AI diagrams"                                                                      | Closed-source, closed-format, single-provider. Graphini is **open-source, self-hostable, multi-provider**. |
-| **Structurizr Lite**                     | "C4 architecture diagrams from DSL"                                                            | No AI authoring, no chat loop. Graphini **speaks Structurizr _and_ Mermaid** in the same workspace.        |
-| **Graphini** (this project)              | _"Describe what I want → get versionable diagram code → iterate it with AI → ship it in git."_ | Diagrams-as-code · multi-provider AI · memories · workspace · files · AWS icons · Structurizr · self-host  |
+| Tool                                     | What it answers                                                                                | Where Graphini differs                                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Plain Mermaid renderers**              | "I already wrote Mermaid, render it"                                                           | No AI — you write the DSL by hand. Graphini generates and iterates it for you.                            |
+| **ChatGPT / Claude "make me a diagram"** | "One-shot, throwaway diagram"                                                                  | No persistence, no memories, no workspace, no files, no AWS icons, no API.                                |
+| **Excalidraw + AI plugins**              | "Sketch it out visually"                                                                       | Canvas-blob output — not text, not versionable, not regeneratable from source.                            |
+| **draw.io / Lucidchart**                 | "Drag-and-drop corporate diagrams"                                                             | Manual, closed-format, no AI-native editing loop.                                                         |
+| **Eraser.io**                            | "Paid hosted AI diagrams"                                                                      | Closed-source, closed-format, single-provider. Graphini is **open-source, Vercel-ready, multi-provider**. |
+| **Graphini** (this project)              | _"Describe what I want → get versionable diagram code → iterate it with AI → ship it in git."_ | Diagrams-as-code · multi-provider AI · memories · workspace · files · AWS icons · Vercel deploy           |
 
 ### Why a generic "AI + Mermaid" wrapper would miss the point
 
-You could glue GPT to Mermaid Live Editor in an afternoon. Graphini does seven things on top that a wrapper does not:
+You could glue GPT to a basic Mermaid renderer in an afternoon. Graphini does six things on top that a wrapper does not:
 
-1. **Multi-DSL, not just Mermaid.** The [`structurizr`](src/lib/features/structurizr) feature adds full C4 model support — so architects get real C1/C2/C3 diagrams, not just flowcharts with rounded corners.
-2. **AWS icon pack baked into the build.** [`scripts/build-aws-icon-pack.mjs`](scripts/build-aws-icon-pack.mjs) runs on `predev` / `prebuild` and ships real AWS service icons into the bundle. Your "architecture" diagrams look like architecture.
-3. **Persistent files, not ephemeral chats.** Projects have real files (see `add-files-persistence.sql`), so a single diagram can grow across sessions instead of getting lost when a chat resets.
-4. **User memories.** The `user_memories` table lets the AI remember your naming conventions, preferred layout direction, and domain vocabulary — so you don't re-explain "we always use `svc_*` for services" every session.
-5. **Workspace + admin panel.** Multi-user workspace, admin settings, app settings — it's a product, not a demo. See [`src/routes/workspace`](src/routes/workspace) and [`src/routes/admin`](src/routes/admin).
-6. **A real, documented API.** [`api/openapi.yaml`](api/openapi.yaml) spec. Build your own integrations or drive Graphini from CI.
-7. **Provider-agnostic via Vercel AI SDK.** Swap OpenAI → Anthropic → OpenRouter → Gemini in settings. No hard-coded provider, no vendor lock-in.
+1. **AWS icon pack baked into the build.** [`scripts/build-aws-icon-pack.mjs`](scripts/build-aws-icon-pack.mjs) runs on `predev` / `prebuild` and ships real AWS service icons into the bundle. Your "architecture" diagrams look like architecture.
+2. **Persistent files, not ephemeral chats.** Projects have real files (see `add-files-persistence.sql`), so a single diagram can grow across sessions instead of getting lost when a chat resets.
+3. **User memories.** The `user_memories` table lets the AI remember your naming conventions, preferred layout direction, and domain vocabulary — so you don't re-explain "we always use `svc_*` for services" every session.
+4. **Workspace + admin settings.** Multi-user workspace, admin settings, app settings — it's a product, not a demo. See [`src/routes/workspace`](src/routes/workspace).
+5. **A real, documented API.** [`api/openapi.yaml`](api/openapi.yaml) spec. Build your own integrations or drive Graphini from CI.
+6. **Provider-agnostic via Vercel AI SDK.** Swap OpenAI → Anthropic → OpenRouter → Gemini in settings. No hard-coded provider, no vendor lock-in.
 
 ### Honest trade-offs
 
-**Graphini is not a free-form whiteboard.** If you want pixel-perfect hand-drawn canvases with stickies and arrows-that-bend-where-you-want, use **Excalidraw**. If you want a corporate visio-style drag-drop environment with a thousand stencils, use **Lucidchart** or **draw.io**. If you just need to render Mermaid you already wrote, use **Mermaid Live Editor**.
+**Graphini is not a free-form whiteboard.** If you want pixel-perfect hand-drawn canvases with stickies and arrows-that-bend-where-you-want, use **Excalidraw**. If you want a corporate visio-style drag-drop environment with a thousand stencils, use **Lucidchart** or **draw.io**. If you just need to render Mermaid you already wrote, a basic Mermaid renderer is enough.
 
-Use **Graphini** when you want your diagrams to live in **git** — versionable, diffable, AI-editable, and rebuildable — with real cloud icons, real C4 support, and a real API around them.
+Use **Graphini** when you want your diagrams to live in **git** — versionable, diffable, AI-editable, and rebuildable — with real cloud icons and a real API around them.
 
 ---
 
@@ -116,14 +114,13 @@ Use **Graphini** when you want your diagrams to live in **git** — versionable,
 
 ### 🗣 Natural Language → Diagrams
 
-- **Plain-English prompts** turn into Mermaid or Structurizr DSL
+- **Plain-English prompts** turn into Mermaid DSL
 - **AI-powered editing** — modify, expand, restyle, or refactor with chat commands
 - **Real-time preview** — diagram updates as the code streams
 
 ### 📝 Diagrams as Code
 
 - **Mermaid** — flowcharts, sequence, class, state, ER, gitgraph, C4, mindmap, timeline, and more
-- **Structurizr DSL** — full C4 model support for software architecture
 - **Text-first output** — every diagram is a plain-text artifact you can version-control
 
 ### ☁️ Cloud Architecture
@@ -144,7 +141,7 @@ Use **Graphini** when you want your diagrams to live in **git** — versionable,
 
 ### 🔌 Multi-Provider AI
 
-- Built on the **Vercel AI SDK** (`ai`, `@ai-sdk/anthropic`, `@ai-sdk/openai`)
+- Built on the **Vercel AI SDK** (`ai`) with OpenRouter provider routing
 - Supports **OpenAI · Anthropic · OpenRouter · Gemini**
 - Swap providers in settings — no code change, no redeploy
 
@@ -154,12 +151,11 @@ Use **Graphini** when you want your diagrams to live in **git** — versionable,
 - **Drizzle ORM** with PostgreSQL — typed migrations, checked-in schemas
 - **Performance indexes** SQL shipped in [`database/`](database/)
 
-### 🌐 API & Self-Hosting
+### 🌐 API & Deployment
 
 - **Documented API** via [`api/openapi.yaml`](api/openapi.yaml)
-- **Docker + docker-compose** self-hosting
-- **Node adapter**, **static adapter**, or **Vercel adapter** — pick your deployment
-- **Nginx** reverse-proxy config included
+- **Vercel adapter** for production deployment
+- **OpenAPI spec** for integrations, automation, and CI workflows
 
 ### 🧪 Testing
 
@@ -171,18 +167,18 @@ Use **Graphini** when you want your diagrams to live in **git** — versionable,
 
 ## 🧰 Tech Stack
 
-| Layer               | Technology                                                                 |
-| ------------------- | -------------------------------------------------------------------------- |
-| **Framework**       | SvelteKit 2 · Vite · TypeScript 5                                          |
-| **Styling**         | Tailwind CSS v4 · `bits-ui` · `@tailwindcss/typography`                    |
-| **Icons**           | Lucide · Iconify · Material Symbols · MDI · AWS icon pack                  |
-| **Diagram Engines** | Mermaid.js · Structurizr DSL                                               |
-| **AI Gateway**      | Vercel AI SDK — OpenAI · Anthropic · OpenRouter · Gemini                   |
-| **Auth**            | Supabase Authentication                                                    |
-| **Database**        | PostgreSQL via Drizzle ORM                                                 |
-| **Testing**         | Vitest · Playwright                                                        |
-| **Linting**         | ESLint 9 · Prettier · `eslint-plugin-svelte` · `eslint-plugin-tailwindcss` |
-| **Deployment**      | Vercel · Node adapter · Static adapter · Docker · Netlify · Nginx          |
+| Layer              | Technology                                                                 |
+| ------------------ | -------------------------------------------------------------------------- |
+| **Framework**      | SvelteKit 2 · Vite · TypeScript 5                                          |
+| **Styling**        | Tailwind CSS v4 · `bits-ui` · `@tailwindcss/typography`                    |
+| **Icons**          | Lucide · Iconify · Material Symbols · MDI · AWS icon pack                  |
+| **Diagram Engine** | Mermaid.js                                                                 |
+| **AI Gateway**     | Vercel AI SDK — OpenAI · Anthropic · OpenRouter · Gemini                   |
+| **Auth**           | Supabase Authentication                                                    |
+| **Database**       | PostgreSQL via Drizzle ORM                                                 |
+| **Testing**        | Vitest · Playwright                                                        |
+| **Linting**        | ESLint 9 · Prettier · `eslint-plugin-svelte` · `eslint-plugin-tailwindcss` |
+| **Deployment**     | Vercel                                                                     |
 
 ---
 
@@ -196,9 +192,9 @@ Use **Graphini** when you want your diagrams to live in **git** — versionable,
 │            admin · api                                       │
 │                                                              │
 │   Features:                                                  │
-│     ┌────────┐ ┌────────┐ ┌─────────────┐ ┌─────────┐       │
-│     │  chat  │ │diagram │ │ structurizr │ │ editor  │       │
-│     └────────┘ └────────┘ └─────────────┘ └─────────┘       │
+│     ┌────────┐ ┌────────┐ ┌─────────┐                       │
+│     │  chat  │ │diagram │ │ editor  │                       │
+│     └────────┘ └────────┘ └─────────┘                       │
 │                                                              │
 └──────────────────────────┬──────────────────────────────────┘
                            │
@@ -217,12 +213,11 @@ Use **Graphini** when you want your diagrams to live in **git** — versionable,
 
 **Key design decisions**
 
-- 📝 **Text artifacts, not canvas blobs.** Diagrams are Mermaid/Structurizr strings end-to-end — they round-trip through git cleanly.
-- 🧱 **Feature-scoped modules.** `src/lib/features/{chat,diagram,editor,structurizr,history,icons}` — each feature owns its stores, components, and types.
-- 🎨 **Design tokens in code.** `src/lib/design-tokens.ts` and `src/lib/themes/` — swappable at runtime.
+- 📝 **Text artifacts, not canvas blobs.** Diagrams are Mermaid strings end-to-end — they round-trip through git cleanly.
+- 🧱 **Feature-scoped modules.** `src/lib/features/{chat,diagram,editor,history,icons}` — each feature owns its stores, components, and types.
 - 🔌 **Vercel AI SDK as the single LLM surface.** Provider swap = settings change, not refactor.
 - 🧪 **Serious test posture.** Vitest for units, Playwright for E2E, coverage gates in CI.
-- 🐳 **Multi-adapter deployment.** Node for self-hosters, static for CDN, Vercel for zero-config, Docker for everything else.
+- ▲ **Vercel-first deployment.** The production path is intentionally small: SvelteKit adapter, environment variables, and hosted PostgreSQL.
 
 ---
 
@@ -230,8 +225,8 @@ Use **Graphini** when you want your diagrams to live in **git** — versionable,
 
 ### Prerequisites
 
-- **Node.js** 20+
-- **pnpm** 9+
+- **Node.js** 24+
+- **pnpm** 10+
 - **PostgreSQL** database (local or hosted)
 - _(optional)_ **Supabase** project for auth
 
@@ -247,7 +242,6 @@ pnpm install
 
 ```bash
 pnpm dev            # Vite dev server
-pnpm dev:node       # With Node adapter (self-host preview)
 pnpm build          # Production build
 pnpm preview        # Preview production build
 ```
@@ -272,13 +266,16 @@ psql "$DATABASE_URL" -f database/performance-indexes.sql
 
 ---
 
-## 🐳 Docker
+## ▲ Vercel Deploy
 
 ```bash
-docker-compose up --build
+vercel link
+vercel env pull .env.local
+pnpm build
+vercel deploy
 ```
 
-A `Dockerfile`, `docker-compose.yml`, and `nginx.conf` are shipped in the repo — self-host on any VPS in under five minutes.
+Set the same environment variables listed below in Vercel Project Settings. Use a hosted PostgreSQL provider such as Supabase, Neon, or Vercel Postgres for `DATABASE_URL`.
 
 ---
 
@@ -336,13 +333,10 @@ graphini/
 │   │   │   ├── chat/               # AI chat loop
 │   │   │   ├── diagram/             # Mermaid rendering + store
 │   │   │   ├── editor/              # Code editor surface
-│   │   │   ├── structurizr/         # C4 model / Structurizr DSL
 │   │   │   ├── history/             # Per-file history
 │   │   │   └── icons/               # Icon pack loaders
 │   │   ├── server/                  # Server-only utilities
 │   │   ├── stores/                  # Svelte stores
-│   │   ├── themes/                  # Theming
-│   │   ├── design-tokens.ts
 │   │   ├── constants.ts
 │   │   └── util/
 │   ├── routes/
@@ -356,10 +350,6 @@ graphini/
 │   └── types/
 ├── static/                          # Logo, demo images, favicons, brand, AWS icons
 ├── tests/                           # E2E test suites
-├── Dockerfile
-├── docker-compose.yml
-├── netlify.toml
-├── nginx.conf
 ├── svelte.config.js
 ├── vite.config.js
 ├── drizzle.config.ts
@@ -386,14 +376,13 @@ pnpm test:e2e:debug    # Playwright debug
 ## 🗺 Roadmap
 
 - [x] Mermaid diagram generation from natural language
-- [x] Structurizr DSL / C4 model support
 - [x] AWS icon pack
 - [x] Multi-provider AI (OpenAI · Anthropic · OpenRouter · Gemini)
 - [x] User memories across sessions
 - [x] File persistence + workspace
 - [x] Admin panel
 - [x] Public OpenAPI spec
-- [x] Docker self-host
+- [x] Vercel deployment
 - [ ] Realtime multi-user collaboration on a single diagram
 - [ ] Azure + GCP icon packs
 - [ ] Export to PNG / SVG / PDF with one click
@@ -428,7 +417,6 @@ Contributions are what make open source amazing. **Any contribution you make is 
 ## 🙏 Acknowledgments
 
 - [**Mermaid.js**](https://mermaid.js.org) — the text-first diagramming engine that makes this possible
-- [**Structurizr**](https://structurizr.com) — for the C4 model and DSL
 - [**SvelteKit**](https://kit.svelte.dev) — the framework
 - [**Vercel AI SDK**](https://sdk.vercel.ai) — unified LLM gateway
 - [**Supabase**](https://supabase.com) — auth

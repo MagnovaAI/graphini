@@ -1,7 +1,10 @@
-name: 'Mermaid CodeQL config'
+name: 'Graphini CodeQL config'
 
 paths:
   - src
 paths-ignore:
   - node_modules
   - '**/*.spec.js'
+  - '**/*.test.js'
+  - '**/*.spec.ts'
+  - '**/*.test.ts'

@@ -5,8 +5,8 @@
       xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
             http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
 <url>
-  <loc>https://mermaid.live/</loc>
-  <loc>https://mermaid.live/edit</loc>
+  <loc>https://graphini.magnova.ai/</loc>
+  <loc>https://graphini.magnova.ai/dashboard</loc>
 </url>
 
 

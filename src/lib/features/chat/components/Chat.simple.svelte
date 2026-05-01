@@ -12,7 +12,6 @@
   } from '$lib/features/chat/components/ai-elements';
   import { CodeArtifact } from '$lib/features/chat/components/ai-elements/code-artifact';
   import type { PromptInputMessage } from '$lib/features/chat/components/ai-elements/prompt-input';
-  import { ReasoningBlock } from '$lib/features/chat/components/ai-elements/reasoning-block';
   import { Response } from '$lib/features/chat/components/ai-elements/response';
   import { parse as mermaidParse } from '$lib/features/diagram/mermaid';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -328,7 +327,6 @@
         messages = [];
         messageParts = {};
         artifactMap = {};
-        reasoningMap = {};
         conversationStarted = false;
         conversationTitle = null;
         // Reset diagram to empty
@@ -496,7 +494,7 @@
     // Remove this message and all subsequent messages
     messages = messages.slice(0, messageIndex);
 
-    // Clean up messageParts, artifactMap, reasoningMap for removed messages
+    // Clean up messageParts and artifactMap for removed messages
     const newParts: Record<number, ContentPart[]> = {};
     for (const [idx, parts] of Object.entries(messageParts)) {
       if (Number(idx) < messageIndex) {
@@ -550,6 +548,7 @@
   // Ordered content parts per assistant message: text, artifact refs, and reasoning in stream order
   type ContentPart =
     | { type: 'text'; text: string }
+    | { type: 'thinking'; id: string }
     | { type: 'artifact'; artifactId: string }
     | { type: 'reasoning'; id: string }
     | { type: 'error'; error: string; userMessage?: string }
@@ -611,6 +610,24 @@
     return `part:${index}`;
   }
 
+  function isInternalReasoningStreamPart(data: { type?: string }): boolean {
+    const type = data.type ?? '';
+    return (
+      type === 'reasoning' ||
+      type === 'reasoning-start' ||
+      type === 'reasoning-delta' ||
+      type === 'reasoning-end' ||
+      type === 'thinking' ||
+      type === 'thinking-start' ||
+      type === 'thinking-delta' ||
+      type === 'thinking-end'
+    );
+  }
+
+  function removeThinkingPart(parts: ContentPart[]): ContentPart[] {
+    return parts.filter((part) => part.type !== 'thinking');
+  }
+
   interface QuestionnaireQuestion {
     id: string;
     text: string;
@@ -648,42 +665,8 @@
     }
   }
 
-  function shouldShowReasoning(content: string): boolean {
-    const text = content.trim();
-    if (!text) return false;
-
-    const lower = text.toLowerCase();
-    const toolChoiceSignals = [
-      'according to the workflow',
-      'call diagram',
-      'call selfcritique',
-      'call subagent',
-      'call the tool',
-      'function call',
-      'need to call',
-      'produce a function',
-      'produce the call',
-      'tool call',
-      'use the tool',
-      'we need to call'
-    ];
-
-    return !toolChoiceSignals.some((signal) => lower.includes(signal));
-  }
-
   let questionnaireResponses = $state<Record<string, Record<string, string | string[]>>>({});
   let messageParts = $state<Record<number, ContentPart[]>>({});
-
-  // Reasoning blocks stored by ID
-  interface ReasoningData {
-    id: string;
-    content: string;
-    isStreaming: boolean;
-    startTime: number;
-    durationMs?: number;
-  }
-  let reasoningMap = $state<Record<string, ReasoningData>>({});
-  let currentReasoningId = $state<string | null>(null);
 
   // Tool streaming state
   let currentToolCallId = $state<string | null>(null);
@@ -951,16 +934,17 @@
           timestamp: String(message.timestamp ?? new Date().toISOString())
         }))
       );
-      // Save all message parts (including artifact refs and reasoning refs)
+      // Save message parts, excluding provider reasoning/internal thoughts.
       const allParts: Record<number, ContentPart[]> = {};
       for (const [idx, parts] of Object.entries(messageParts)) {
-        allParts[Number(idx)] = (parts as ContentPart[]).map((p: ContentPart) => {
-          if (p.type === 'text') return { type: 'text', text: p.text };
-          if (p.type === 'artifact') return { type: 'artifact', artifactId: p.artifactId };
-          if (p.type === 'reasoning') return { type: 'reasoning', id: p.id };
-          if (p.type === 'error') return { type: 'error', error: p.error };
-          return p;
-        });
+        allParts[Number(idx)] = (parts as ContentPart[])
+          .filter((p: ContentPart) => p.type !== 'reasoning' && p.type !== 'thinking')
+          .map((p: ContentPart) => {
+            if (p.type === 'text') return { type: 'text', text: p.text };
+            if (p.type === 'artifact') return { type: 'artifact', artifactId: p.artifactId };
+            if (p.type === 'error') return { type: 'error', error: p.error };
+            return p;
+          });
       }
       kv.set('chat', chatKey('parts'), allParts);
       // Save artifacts (only finalized, non-streaming)
@@ -971,14 +955,7 @@
         }
       }
       kv.set('chat', chatKey('artifacts'), savedArtifacts);
-      // Save reasoning blocks (only finalized)
-      const savedReasoning: Record<string, ReasoningData> = {};
-      for (const [id, r] of Object.entries(reasoningMap)) {
-        if (!r.isStreaming) {
-          savedReasoning[id] = { ...r, isStreaming: false };
-        }
-      }
-      kv.set('chat', chatKey('reasoning'), savedReasoning);
+      kv.delete('chat', chatKey('reasoning'));
       // Save checkpoints
       kv.set('chat', chatKey('checkpoints'), checkpoints);
       // Save current diagram code so it renders on refresh
@@ -1010,7 +987,6 @@
     messages = [];
     messageParts = {};
     artifactMap = {};
-    reasoningMap = {};
     checkpoints = [];
     conversationStarted = false;
     conversationTitle = null;
@@ -1018,12 +994,19 @@
       const savedMessages = kv.get<Record<string, unknown>[]>('chat', chatKey('messages'));
       const savedParts = kv.get<Record<number, ContentPart[]>>('chat', chatKey('parts'));
       const savedArtifacts = kv.get<Record<string, Artifact>>('chat', chatKey('artifacts'));
-      const savedReasoning = kv.get<Record<string, ReasoningData>>('chat', chatKey('reasoning'));
+      kv.delete('chat', chatKey('reasoning'));
       if (savedMessages && Array.isArray(savedMessages) && savedMessages.length > 0) {
         messages = savedMessages;
         conversationStarted = true;
         if (savedParts) {
-          messageParts = savedParts;
+          messageParts = Object.fromEntries(
+            Object.entries(savedParts).map(([idx, parts]) => [
+              idx,
+              (parts as ContentPart[]).filter(
+                (part) => part.type !== 'reasoning' && part.type !== 'thinking'
+              )
+            ])
+          );
         } else {
           // Rebuild simple text parts from messages
           const parts: Record<number, ContentPart[]> = {};
@@ -1037,10 +1020,6 @@
         // Restore artifacts
         if (savedArtifacts) {
           artifactMap = savedArtifacts;
-        }
-        // Restore reasoning blocks
-        if (savedReasoning) {
-          reasoningMap = savedReasoning;
         }
         // Restore checkpoints
         const savedCheckpoints = kv.get<Checkpoint[]>('chat', chatKey('checkpoints'));
@@ -1063,7 +1042,6 @@
     messages = [];
     messageParts = {};
     artifactMap = {};
-    reasoningMap = {};
     inputText = '';
     isLoading = false;
     abortController = null;
@@ -1103,7 +1081,6 @@
     messages = [];
     messageParts = {};
     artifactMap = {};
-    reasoningMap = {};
     inputText = '';
     isLoading = false;
     abortController = null;
@@ -1151,7 +1128,6 @@
     messages = [];
     messageParts = {};
     artifactMap = {};
-    reasoningMap = {};
     checkpoints = [];
     inputText = '';
     isLoading = false;
@@ -1516,13 +1492,12 @@
     currentToolInputJson = '';
     currentArtifactId = null;
     lastPartWasText = false;
-    currentReasoningId = null;
     scrollToBottom();
 
     const assistantMessage = { id: uuidv4(), role: 'assistant', content: '' };
     messages = [...messages, assistantMessage];
     const assistantIndex = messages.length - 1;
-    messageParts[assistantIndex] = [];
+    messageParts[assistantIndex] = [{ type: 'thinking', id: `thinking-${assistantMessage.id}` }];
 
     abortController = new AbortController();
 
@@ -1613,19 +1588,9 @@
                     (data.type === 'content' || data.type === 'text-delta') &&
                     (data.content || data.delta || data.textDelta)
                   ) {
-                    // Finalize any active reasoning block when text starts
-                    if (currentReasoningId && reasoningMap[currentReasoningId]) {
-                      reasoningMap[currentReasoningId] = {
-                        ...reasoningMap[currentReasoningId],
-                        isStreaming: false,
-                        durationMs: Date.now() - reasoningMap[currentReasoningId].startTime
-                      };
-                      reasoningMap = { ...reasoningMap };
-                      currentReasoningId = null;
-                    }
                     const content = data.content || data.delta || data.textDelta || '';
                     // Append to last text part, or create a new text part
-                    const parts = messageParts[assistantIndex] || [];
+                    const parts = removeThinkingPart(messageParts[assistantIndex] || []);
                     if (
                       lastPartWasText &&
                       parts.length > 0 &&
@@ -1646,44 +1611,13 @@
                       messages = messages;
                     }
                     scrollToBottom();
-                  } else if (data.type === 'reasoning-delta') {
-                    // Accumulate reasoning content
-                    const delta = data.delta || '';
-                    if (!currentReasoningId) {
-                      // Start a new reasoning block
-                      currentReasoningId = `reasoning-${Date.now()}`;
-                      reasoningMap[currentReasoningId] = {
-                        id: currentReasoningId,
-                        content: delta,
-                        isStreaming: true,
-                        startTime: Date.now()
-                      };
-                      reasoningMap = { ...reasoningMap };
-                      // Insert reasoning part in stream order
-                      const parts = messageParts[assistantIndex] || [];
-                      parts.push({ type: 'reasoning', id: currentReasoningId });
-                      messageParts[assistantIndex] = [...parts];
-                      lastPartWasText = false;
-                    } else {
-                      // Append to existing reasoning block
-                      reasoningMap[currentReasoningId] = {
-                        ...reasoningMap[currentReasoningId],
-                        content: reasoningMap[currentReasoningId].content + delta
-                      };
-                      reasoningMap = { ...reasoningMap };
-                    }
-                    scrollToBottom();
+                  } else if (isInternalReasoningStreamPart(data)) {
+                    // Provider reasoning is internal and must not be shown or persisted.
+                    lastPartWasText = false;
                   } else if (data.type === 'tool-input-start') {
-                    // Finalize any active reasoning block
-                    if (currentReasoningId && reasoningMap[currentReasoningId]) {
-                      reasoningMap[currentReasoningId] = {
-                        ...reasoningMap[currentReasoningId],
-                        isStreaming: false,
-                        durationMs: Date.now() - reasoningMap[currentReasoningId].startTime
-                      };
-                      reasoningMap = { ...reasoningMap };
-                      currentReasoningId = null;
-                    }
+                    messageParts[assistantIndex] = removeThinkingPart(
+                      messageParts[assistantIndex] || []
+                    );
                     currentToolCallId = data.toolCallId;
                     currentToolName = data.toolName || '';
                     currentToolInputJson = '';
@@ -2622,6 +2556,9 @@
                     currentToolInputJson = '';
                     currentArtifactId = null;
                   } else if (data.type === 'tool-call' && data.toolName === 'askQuestions') {
+                    messageParts[assistantIndex] = removeThinkingPart(
+                      messageParts[assistantIndex] || []
+                    );
                     // askQuestions has no execute — finalize the streaming questionnaire
                     try {
                       const args =
@@ -2651,20 +2588,13 @@
                       /* ignore parse errors */
                     }
                   } else if (data.type === 'done' || data.type === 'finish') {
+                    messageParts[assistantIndex] = removeThinkingPart(
+                      messageParts[assistantIndex] || []
+                    );
                     // Clear any pending canvas streaming timer
                     if (streamCanvasTimer) {
                       clearTimeout(streamCanvasTimer);
                       streamCanvasTimer = null;
-                    }
-                    // Finalize any active reasoning block
-                    if (currentReasoningId && reasoningMap[currentReasoningId]) {
-                      reasoningMap[currentReasoningId] = {
-                        ...reasoningMap[currentReasoningId],
-                        isStreaming: false,
-                        durationMs: Date.now() - reasoningMap[currentReasoningId].startTime
-                      };
-                      reasoningMap = { ...reasoningMap };
-                      currentReasoningId = null;
                     }
                     // Finalize any still-streaming artifacts
                     for (const key of Object.keys(artifactMap)) {
@@ -2698,7 +2628,7 @@
                     scrollToBottom();
                     return;
                   } else if (data.type === 'error') {
-                    const parts = messageParts[assistantIndex] || [];
+                    const parts = removeThinkingPart(messageParts[assistantIndex] || []);
                     parts.push({ type: 'error', error: data.error, userMessage: text });
                     messageParts[assistantIndex] = [...parts];
                     isLoading = false;
@@ -2717,12 +2647,13 @@
       .catch((err) => {
         if (err.name === 'AbortError') {
           // User cancelled - just stop
+          messageParts[assistantIndex] = removeThinkingPart(messageParts[assistantIndex] || []);
           isLoading = false;
           abortController = null;
           debouncedSaveChatState();
           return;
         }
-        const parts = messageParts[assistantIndex] || [];
+        const parts = removeThinkingPart(messageParts[assistantIndex] || []);
         parts.push({ type: 'error', error: err.message, userMessage: text });
         messageParts[assistantIndex] = [...parts];
         isLoading = false;
@@ -2730,16 +2661,7 @@
         debouncedSaveChatState();
       })
       .finally(() => {
-        // Finalize any active reasoning block
-        if (currentReasoningId && reasoningMap[currentReasoningId]) {
-          reasoningMap[currentReasoningId] = {
-            ...reasoningMap[currentReasoningId],
-            isStreaming: false,
-            durationMs: Date.now() - reasoningMap[currentReasoningId].startTime
-          };
-          reasoningMap = { ...reasoningMap };
-          currentReasoningId = null;
-        }
+        messageParts[assistantIndex] = removeThinkingPart(messageParts[assistantIndex] || []);
         for (const key of Object.keys(artifactMap)) {
           if (artifactMap[key].isStreaming) {
             artifactMap[key] = {
@@ -2931,12 +2853,12 @@
                       <div class="pl-3 text-[13px] leading-relaxed text-foreground/90">
                         <Response content={part.text} />
                       </div>
-                    {:else if part.type === 'reasoning' && reasoningMap[part.id] && shouldShowReasoning(reasoningMap[part.id].content)}
-                      {@const reasoning = reasoningMap[part.id]}
-                      <ReasoningBlock
-                        content={reasoning.content}
-                        isStreaming={reasoning.isStreaming}
-                        durationMs={reasoning.durationMs} />
+                    {:else if part.type === 'thinking'}
+                      <div class="flex items-center py-2 pl-3">
+                        <span
+                          class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60"
+                          >Thinking...</span>
+                      </div>
                     {:else if part.type === 'artifact' && artifactMap[part.artifactId]}
                       {@const artifact = artifactMap[part.artifactId]}
                       <CodeArtifact

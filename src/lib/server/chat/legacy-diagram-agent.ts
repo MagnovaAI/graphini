@@ -194,10 +194,7 @@ export async function runDiagramAgent(
   modelId: string
 ) {
   let diagram = initialDiagram;
-  const messages: Record<string, unknown>[] = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userMessage }
-  ];
+  const messages: Record<string, unknown>[] = [{ role: 'user', content: userMessage }];
 
   let hasRead = false;
 
@@ -211,6 +208,7 @@ export async function runDiagramAgent(
           const result = await streamText({
             model: openrouterFastChat(modelId),
             messages: messages as never,
+            system: systemPrompt,
             temperature: 0.55
           });
 

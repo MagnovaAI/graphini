@@ -1,27 +1,49 @@
+# macOS / editor noise
 .DS_Store
-.cache/
+Thumbs.db
+
+# Dependencies
+node_modules/
+
+# Environment files
 .env
-.env.local
-.npmrc
-/.svelte-kit
-/build
-/coverage
-/functions
-/node_modules
-/snapshots.js
-.vercel
-# Playwright
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
+.env.*
+!.env.example
 
-# File store (uploaded attachments)
+# SvelteKit / Vite output
+.svelte-kit/
+build/
+dist/
+functions/
+
+# Vercel
+.vercel/
+
+# Test and coverage output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+snapshots.js
+__snapshots__/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local caches and generated data
+.cache/
+.grepai/
 .file-store/
-
-# Snyk Security Extension - AI Rules (auto-generated)
-.windsurf/rules/snyk_rules.md
 
 # Database files
 *.db
-.grepai/
+*.sqlite
+*.sqlite3
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.windsurf/rules/snyk_rules.md

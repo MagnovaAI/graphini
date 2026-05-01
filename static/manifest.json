@@ -1,6 +1,6 @@
 {
-	"short_name": "Mermaid",
-	"name": "Mermaid Live Editor",
+	"short_name": "Graphini",
+	"name": "Graphini",
 	"icons": [
 		{
 			"src": "/favicons/favicon.png",
@@ -8,11 +8,11 @@
 			"sizes": "512x512"
 		}
 	],
-	"start_url": "/edit",
+	"start_url": "/",
 	"background_color": "#ff3670",
 	"display": "standalone",
-	"scope": "/edit",
+	"scope": "/",
 	"theme_color": "#ff3670",
-	"description": "FlowChart & Diagrams Editor.",
+	"description": "AI-powered diagrams-as-code editor.",
 	"orientation": "natural"
 }

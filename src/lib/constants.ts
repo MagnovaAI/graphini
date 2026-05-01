@@ -10,5 +10,5 @@ export const TID = {
 } as const;
 
 export const C = {
-  utmSource: 'mermaid_live_editor'
+  utmSource: 'graphini'
 } as const;

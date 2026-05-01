@@ -1,5 +1,5 @@
 -- ============================================================================
--- Mermaid Live Editor - Chat Database Schema
+-- Graphini - Chat Database Schema
 -- ============================================================================
 -- This schema supports server-side storage for chat conversations, messages,
 -- and diagram snapshots. Designed for PostgreSQL (Supabase recommended).

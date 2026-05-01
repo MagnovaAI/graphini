@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Live editor only has a single version, which will be maintained.
+Graphini has a single maintained version.
 
 | Version | Supported          |
 | ------- | ------------------ |

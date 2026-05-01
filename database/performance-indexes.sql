@@ -1,4 +1,4 @@
--- Performance Optimization Indexes for Mermaid Live Editor
+-- Performance Optimization Indexes for Graphini
 -- This migration adds critical indexes to improve query performance
 
 -- ============================================================================

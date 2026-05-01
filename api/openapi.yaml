@@ -1,82 +1,65 @@
 openapi: 3.0.3
 info:
   title: Graphini API
-  description: API for AI-powered diagram generation with natural language
-  version: 1.0.0
+  description: |
+    HTTP API for Graphini, an AI-powered diagrams-as-code workspace.
+
+    Most endpoints use the Graphini session cookie created by `/api/auth/login` or
+    `/api/auth/register`. Public endpoints are marked in their descriptions.
+  version: 2.0.0
   contact:
-    name: Graphini Team
-    email: support@graphini.magnova.ai
+    name: Graphini
+    url: https://github.com/omkarbhad/graphini
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
 
 servers:
   - url: https://graphini.magnova.ai/api
-    description: Production server
+    description: Production
   - url: http://localhost:5173/api
-    description: Development server
+    description: Local development
+
+tags:
+  - name: Auth
+  - name: Chat
+  - name: Conversations
+  - name: Workspaces
+  - name: Diagram
+  - name: Files
+  - name: Settings
+  - name: Credits
+  - name: Agents
+  - name: Admin
 
 paths:
-  /chat:
+  /auth/login:
+    get:
+      tags: [Auth]
+      summary: Start OAuth login
+      description: Redirects to the configured auth provider. If already authenticated, redirects to `returnTo`.
+      parameters:
+        - $ref: '#/components/parameters/ReturnTo'
+      responses:
+        '302':
+          description: Redirect to auth provider or app
     post:
-      tags:
-        - Chat
-      summary: Send a chat message and get AI response
-      description: |
-        Send a message to the AI assistant and receive a streaming response.
-        Supports both regular chat and diagram generation modes.
-      operationId: chat
+      tags: [Auth]
+      summary: Local login
+      description: Creates a signed `graphini_session` cookie for local/dev email-password login.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChatRequest'
-            examples:
-              simple_chat:
-                summary: Simple chat request
-                value:
-                  conversationId: '123e4567-e89b-12d3-a456-426614174000'
-                  message:
-                    role: 'user'
-                    content: 'Create a simple flowchart for user login'
-                    parts:
-                      - type: 'text'
-                        text: 'Create a simple flowchart for user login'
-                  currentDiagram: ''
-                  mode: 'create'
-                  model: 'gpt-5-mini'
-                  userId: 'user@example.com'
-              diagram_generation:
-                summary: Diagram generation request
-                value:
-                  conversationId: '123e4567-e89b-12d3-a456-426614174000'
-                  message:
-                    role: 'user'
-                    content: 'Create a detailed AWS architecture diagram'
-                    parts:
-                      - type: 'text'
-                        text: 'Create a detailed AWS architecture diagram'
-                  currentDiagram: "graph TD\nA[Start] --> B[End]"
-                  mode: 'create'
-                  model: 'gpt-5-mini'
-                  userId: 'user@example.com'
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Streaming response with AI-generated content
+          description: Logged in
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                description: Server-Sent Events stream
-              example: |
-                data: {"type":"text","content":"I'll create a flowchart for user login"}
-
-                data: {"type":"tool_call_start","id":"tool_123","name":"create_diagram"}
-
-                data: {"type":"tool_call_complete","id":"tool_123","name":"create_diagram","mermaid_code":"graph TD\nA[Start] --> B{Login?}\nB -->|Yes| C[Dashboard]\nB -->|No| D[Login Form]"}
-
-                data: {"type":"done"}
+                $ref: '#/components/schemas/AuthSessionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -85,41 +68,113 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '500':
           $ref: '#/components/responses/InternalServerError'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
 
-  /chat/conversations:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Local registration
+      description: Creates a local/dev account and session cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/me:
     get:
-      tags:
-        - Conversations
-      summary: List user conversations
-      description: Retrieve a paginated list of conversations for the authenticated user
-      operationId: listConversations
-      parameters:
-        - name: user_id
-          in: query
-          description: Filter by user ID
-          schema:
-            type: string
-            format: uuid
-        - name: limit
-          in: query
-          description: Maximum number of conversations to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 50
-        - name: offset
-          in: query
-          description: Number of conversations to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+      tags: [Auth]
+      summary: Get current session
       responses:
         '200':
-          description: List of conversations
+          description: Current user and credit balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/logout:
+    get:
+      tags: [Auth]
+      summary: OAuth logout redirect
+      responses:
+        '302':
+          description: Redirect to signout URL
+    post:
+      tags: [Auth]
+      summary: Clear local session
+      responses:
+        '302':
+          description: Session cookie cleared and redirected home
+
+  /chat:
+    post:
+      tags: [Chat]
+      summary: Stream AI chat response
+      description: |
+        Sends a message to the diagram assistant. The response is streamed by the Vercel AI SDK.
+        Uploaded images and documents should be pre-processed through `/api/upload`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Streaming AI response
+          content:
+            text/event-stream:
+              schema:
+                type: string
+            text/plain:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: List conversations
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Conversation list
           content:
             application/json:
               schema:
@@ -129,76 +184,24 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Conversation'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
-        '400':
-          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
-
     post:
-      tags:
-        - Conversations
-      summary: Create a new conversation
-      description: Create a new chat conversation with optional metadata
-      operationId: createConversation
+      tags: [Conversations]
+      summary: Create conversation
+      security:
+        - cookieAuth: []
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateConversationRequest'
       responses:
         '201':
-          description: Conversation created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Conversation'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /chat/conversations/{id}:
-    get:
-      tags:
-        - Conversations
-      summary: Get a specific conversation
-      description: Retrieve a conversation with its messages
-      operationId: getConversation
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Conversation ID
-          schema:
-            type: string
-            format: uuid
-        - name: include_messages
-          in: query
-          description: Whether to include messages in the response
-          schema:
-            type: boolean
-            default: true
-        - name: limit
-          in: query
-          description: Maximum number of messages to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 100
-        - name: offset
-          in: query
-          description: Number of messages to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-      responses:
-        '200':
-          description: Conversation details with messages
+          description: Created conversation
           content:
             application/json:
               schema:
@@ -206,68 +209,423 @@ paths:
                 properties:
                   conversation:
                     $ref: '#/components/schemas/Conversation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Conversations]
+      summary: Delete conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /conversations/messages:
+    get:
+      tags: [Conversations]
+      summary: List conversation messages
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversation_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Message list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
                   messages:
                     type: array
                     items:
                       $ref: '#/components/schemas/Message'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
-
-    patch:
-      tags:
-        - Conversations
-      summary: Update a conversation
-      description: Update conversation metadata like title
-      operationId: updateConversation
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Conversation ID
-          schema:
-            type: string
-            format: uuid
+    post:
+      tags: [Conversations]
+      summary: Sync conversation messages
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateConversationRequest'
+              $ref: '#/components/schemas/SyncMessagesRequest'
       responses:
-        '200':
-          description: Conversation updated successfully
+        '201':
+          description: Created messages
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Conversation'
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-    delete:
-      tags:
-        - Conversations
-      summary: Delete a conversation
-      description: Delete a conversation and all its messages
-      operationId: deleteConversation
+  /workspaces:
+    get:
+      tags: [Workspaces]
+      summary: List diagram workspaces
+      security:
+        - cookieAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Conversation ID
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: starred
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
           schema:
             type: string
-            format: uuid
       responses:
         '200':
-          description: Conversation deleted successfully
+          description: Workspace list with pagination metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      tags: [Workspaces]
+      summary: Create diagram workspace
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkspaceRequest'
+      responses:
+        '201':
+          description: Created workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workspaces/{id}:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    get:
+      tags: [Workspaces]
+      summary: Get workspace
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Workspace with document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Workspaces]
+      summary: Update workspace metadata
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkspaceRequest'
+      responses:
+        '200':
+          description: Updated workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Workspaces]
+      summary: Delete workspace
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/document:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    put:
+      tags: [Workspaces]
+      summary: Save workspace document
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveWorkspaceDocumentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      tags: [Workspaces]
+      summary: Save workspace document from beacon
+      description: Same behavior as PUT; used by `navigator.sendBeacon` on unload.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveWorkspaceDocumentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /workspaces/{id}/duplicate:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    post:
+      tags: [Workspaces]
+      summary: Duplicate workspace
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+      responses:
+        '201':
+          description: Duplicated workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /diagram/generate:
+    post:
+      tags: [Diagram]
+      summary: Generate diagram through Python backend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagramGenerateRequest'
+      responses:
+        '200':
+          description: Generated Mermaid diagram
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramGenerateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+
+  /diagram/generate-stream:
+    post:
+      tags: [Diagram]
+      summary: Stream diagram generation through Python backend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagramGenerateRequest'
+      responses:
+        '200':
+          description: Server-sent generation stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+
+  /diagram/health:
+    get:
+      tags: [Diagram]
+      summary: Check Python backend health
+      responses:
+        '200':
+          description: Backend available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramHealthResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /diagram/analyze-error:
+    post:
+      tags: [Diagram]
+      summary: Analyze a Mermaid/rendering error
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Error analysis
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /upload:
+    post:
+      tags: [Files]
+      summary: Upload and extract file context
+      description: Accepts `multipart/form-data` with a `file` field and optional `sessionId`. Images are analyzed with a vision model; text-like documents are extracted server-side.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                sessionId:
+                  type: string
+      responses:
+        '200':
+          description: Extracted file metadata and text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+
+  /audio:
+    post:
+      tags: [Files]
+      summary: Transcribe or process audio
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Audio processing result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /models:
+    get:
+      tags: [Settings]
+      summary: List enabled AI models
+      description: Public endpoint returning admin-enabled models.
+      responses:
+        '200':
+          description: Enabled models
           content:
             application/json:
               schema:
@@ -275,508 +633,952 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Conversation deleted'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Model'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /chat/conversations/{id}/messages:
+  /app-settings:
     get:
-      tags:
-        - Messages
-      summary: List conversation messages
-      description: Retrieve messages for a specific conversation
-      operationId: listMessages
+      tags: [Settings]
+      summary: Read public app settings
+      description: Public endpoint for whitelisted non-sensitive settings such as `prompt_enhancer.model`.
       parameters:
-        - name: id
-          in: path
+        - name: category
+          in: query
           required: true
-          description: Conversation ID
           schema:
             type: string
-            format: uuid
-        - name: limit
+            example: prompt_enhancer
+        - name: key
           in: query
-          description: Maximum number of messages to return
           schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 100
-        - name: offset
-          in: query
-          description: Number of messages to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+            type: string
+            example: model
       responses:
         '200':
-          description: List of messages
+          description: Public setting values
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  messages:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Message'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
-    post:
-      tags:
-        - Messages
-      summary: Create a message
-      description: Add a new message to a conversation
-      operationId: createMessage
+  /kv:
+    get:
+      tags: [Settings]
+      summary: Read user key-value settings
+      security:
+        - cookieAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Conversation ID
+        - name: category
+          in: query
           schema:
             type: string
-            format: uuid
+        - name: key
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Settings payload
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags: [Settings]
+      summary: Save user key-value settings
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateMessageRequest'
-      responses:
-        '201':
-          description: Message created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Message'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /chat/snapshots:
-    get:
-      tags:
-        - Snapshots
-      summary: List snapshots
-      description: Retrieve diagram snapshots for conversations
-      operationId: listSnapshots
-      parameters:
-        - name: conversation_id
-          in: query
-          required: true
-          description: Filter by conversation ID
-          schema:
-            type: string
-            format: uuid
+              type: object
+              additionalProperties: true
       responses:
         '200':
-          description: List of snapshots
+          $ref: '#/components/responses/Success'
+    delete:
+      tags: [Settings]
+      summary: Delete a user key-value setting
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: category
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /user/data:
+    get:
+      tags: [Settings]
+      summary: Load per-file user data
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: fileId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File auxiliary data
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  snapshots:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Snapshot'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    post:
-      tags:
-        - Snapshots
-      summary: Create a snapshot
-      description: Create a diagram state snapshot
-      operationId: createSnapshot
+                  data:
+                    type: object
+                    additionalProperties: true
+    put:
+      tags: [Settings]
+      summary: Save per-file user data
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateSnapshotRequest'
+              type: object
+              required: [fileId, data]
+              properties:
+                fileId:
+                  type: string
+                data:
+                  type: object
+                  additionalProperties: true
       responses:
-        '201':
-          description: Snapshot created successfully
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /user/preferences:
+    get:
+      tags: [Settings]
+      summary: Get user preferences
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User preferences
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Snapshot'
+                type: object
+                properties:
+                  preferences:
+                    type: object
+                    additionalProperties: true
+    put:
+      tags: [Settings]
+      summary: Save user preferences
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preferences]
+              properties:
+                preferences:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Saved preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /credits:
+    get:
+      tags: [Credits]
+      summary: Get credit balance, transactions, and pricing
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Credit account data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /credits/purchase:
+    post:
+      tags: [Credits]
+      summary: Purchase gems
+      description: Development purchase endpoint. Payment provider integration is TODO in the app.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id]
+              properties:
+                plan_id:
+                  type: string
+                  enum: [starter, pro, unlimited]
+      responses:
+        '200':
+          description: Purchase result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  gems_added:
+                    type: integer
+                  new_balance:
+                    type: integer
         '400':
           $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /collaborators:
+    get:
+      tags: [Workspaces]
+      summary: List workspace collaborators
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: workspace_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Collaborators
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags: [Workspaces]
+      summary: Invite collaborator
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CollaboratorRequest'
+      responses:
+        '200':
+          description: Created collaborator
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    patch:
+      tags: [Workspaces]
+      summary: Update collaborator role
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CollaboratorRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+    delete:
+      tags: [Workspaces]
+      summary: Remove collaborator
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspace_id, user_id]
+              properties:
+                workspace_id:
+                  type: string
+                user_id:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /mcp/tools:
+    get:
+      tags: [Agents]
+      summary: List available MCP-style tools
+      responses:
+        '200':
+          description: Tool catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+    post:
+      tags: [Agents]
+      summary: JSON-RPC tool list response
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: JSON-RPC response containing tools/list result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcResponse'
+
+  /a2a:
+    post:
+      tags: [Agents]
+      summary: Route an A2A JSON-RPC message to a Graphini specialist agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JsonRpcRequest'
+      responses:
+        '200':
+          description: JSON-RPC task or error response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcResponse'
+
+  /admin:
+    get:
+      tags: [Admin]
+      summary: Admin read actions
+      description: Admin-only endpoint controlled by the `action` query parameter.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Admin action result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin]
+      summary: Admin write actions
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Admin action result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
 
 components:
-  schemas:
-    ChatRequest:
-      type: object
-      required:
-        - conversationId
-        - message
-        - mode
-        - model
-      properties:
-        conversationId:
-          type: string
-          format: uuid
-          description: ID of the conversation
-        message:
-          $ref: '#/components/schemas/Message'
-        currentDiagram:
-          type: string
-          description: Current diagram code in the editor
-          maxLength: 20000
-        mode:
-          $ref: '#/components/schemas/PromptMode'
-        model:
-          $ref: '#/components/schemas/Model'
-        userId:
-          type: string
-          format: email
-          description: User identifier for personalization
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: graphini_session
 
-    Message:
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    ReturnTo:
+      name: returnTo
+      in: query
+      schema:
+        type: string
+        default: /
+    WorkspaceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    ErrorResponse:
       type: object
-      required:
-        - role
-        - content
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    User:
+      type: object
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique message identifier
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
         role:
           type: string
-          enum: [user, assistant, system, tool]
-          description: Message role
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreditBalance:
+      type: object
+      properties:
+        balance:
+          type: integer
+        lifetime_earned:
+          type: integer
+        lifetime_spent:
+          type: integer
+
+    AuthSessionResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    MeResponse:
+      type: object
+      properties:
+        user:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          nullable: true
+        credits:
+          allOf:
+            - $ref: '#/components/schemas/CreditBalance'
+          nullable: true
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        displayName:
+          type: string
+
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        id:
+          type: string
+          description: Optional chat or generation id.
+        conversationId:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+        currentDiagram:
+          type: string
+        diagram:
+          type: string
+        mode:
+          type: string
+          enum: [create, edit, chat]
+        model:
+          type: string
+        provider:
+          type: string
+        userId:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ChatMessage:
+      type: object
+      required: [role]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
         content:
           type: string
-          description: Message content
-          maxLength: 10000
         parts:
           type: array
           items:
-            $ref: '#/components/schemas/MessagePart'
-          description: Structured message parts
-        createdAt:
-          type: string
-          format: date-time
-          description: Message creation timestamp
+            type: object
+            additionalProperties: true
         metadata:
           type: object
-          description: Additional message metadata
-
-    MessagePart:
-      type: object
-      required:
-        - type
-      properties:
-        type:
-          type: string
-          description: Part type (text, tool_call, etc.)
-        text:
-          type: string
-          description: Text content for text parts
-        toolName:
-          type: string
-          description: Tool name for tool call parts
-        result:
-          description: Tool execution result
+          additionalProperties: true
 
     Conversation:
       type: object
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique conversation identifier
-        userId:
+        user_id:
           type: string
-          format: uuid
-          description: User who owns the conversation
         title:
           type: string
-          description: Conversation title
-          maxLength: 200
-        createdAt:
+        created_at:
           type: string
           format: date-time
-          description: Conversation creation timestamp
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
-          description: Last update timestamp
         metadata:
           type: object
-          description: Additional conversation metadata
+          additionalProperties: true
 
     CreateConversationRequest:
       type: object
       properties:
-        userId:
-          type: string
-          format: uuid
-          description: User ID
         title:
           type: string
-          description: Conversation title
-          maxLength: 200
-          default: 'New Chat'
+          default: New Chat
         metadata:
           type: object
-          description: Initial metadata
+          additionalProperties: true
 
-    UpdateConversationRequest:
+    Message:
+      allOf:
+        - $ref: '#/components/schemas/ChatMessage'
+        - type: object
+          properties:
+            conversation_id:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+
+    SyncMessagesRequest:
       type: object
+      required: [conversation_id, messages]
       properties:
+        conversation_id:
+          type: string
+        messages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+
+    Workspace:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
         title:
           type: string
-          description: New conversation title
-          maxLength: 200
-        metadata:
+        description:
+          type: string
+          nullable: true
+        document:
           type: object
-          description: Updated metadata
-
-    CreateMessageRequest:
-      type: object
-      required:
-        - role
-        - content
-      properties:
-        role:
+          additionalProperties: true
+        engine:
           type: string
-          enum: [user, assistant, system, tool]
-          description: Message role
-        content:
-          type: string
-          description: Message content
-          maxLength: 10000
-        parts:
+          enum: [mermaid, json, yaml]
+        is_starred:
+          type: boolean
+        tags:
           type: array
           items:
-            $ref: '#/components/schemas/MessagePart'
-          description: Message parts
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateWorkspaceRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          default: Untitled Workspace
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+        document:
+          type: object
+          additionalProperties: true
+        engine:
+          type: string
+          enum: [mermaid, json, yaml]
+          default: mermaid
+
+    UpdateWorkspaceRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+        is_starred:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+
+    SaveWorkspaceDocumentRequest:
+      type: object
+      required: [document]
+      properties:
+        document:
+          type: object
+          additionalProperties: true
+        element_count:
+          type: integer
+        diagram_type:
+          type: string
+
+    DiagramGenerateRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          maxLength: 100000
+        diagramType:
+          type: string
+        complexity:
+          type: string
+          enum: [simple, medium, complex, large]
+          default: medium
+        options:
+          type: object
+          additionalProperties: true
+
+    DiagramGenerateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        mermaid_code:
+          type: string
+        diagram_type:
+          type: string
+        complexity:
+          type: string
+        generation_time:
+          type: number
         metadata:
           type: object
-          description: Message metadata
+          additionalProperties: true
 
-    Snapshot:
+    DiagramHealthResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+        status:
+          type: integer
+        backend_url:
+          type: string
+        message:
+          type: string
+        error:
+          type: string
+
+    UploadResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          nullable: true
+        mediaType:
+          type: string
+        filename:
+          type: string
+        type:
+          type: string
+        extractedText:
+          type: string
+        fileId:
+          type: string
+        size:
+          type: integer
+
+    Model:
       type: object
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique snapshot identifier
-        conversationId:
+        name:
           type: string
-          format: uuid
-          description: Associated conversation ID
-        messageId:
+        provider:
           type: string
-          format: uuid
-          description: Associated message ID
-        description:
+        category:
           type: string
-          description: Snapshot description
-        state:
-          type: object
-          description: Diagram state
-        createdAt:
-          type: string
-          format: date-time
-          description: Snapshot creation timestamp
-
-    CreateSnapshotRequest:
-      type: object
-      required:
-        - conversationId
-        - state
-      properties:
-        conversationId:
-          type: string
-          format: uuid
-          description: Conversation ID
-        messageId:
-          type: string
-          format: uuid
-          description: Message ID
-        description:
-          type: string
-          description: Snapshot description
-        state:
-          type: object
-          description: Diagram state to snapshot
-
-    Pagination:
-      type: object
-      properties:
-        limit:
-          type: integer
-          description: Items per page
-        offset:
-          type: integer
-          description: Items skipped
-        total:
-          type: integer
-          description: Total items available
-        hasMore:
+        toolSupport:
           type: boolean
-          description: Whether more items are available
+        description:
+          type: string
+        gemsPerMessage:
+          type: integer
+        isFree:
+          type: boolean
+        isEnabled:
+          type: boolean
+        maxTokens:
+          type: integer
 
-    PromptMode:
-      type: string
-      enum: [plan, create]
-      description: Chat interaction mode
-
-    Model:
-      type: string
-      enum: [gpt-5-mini, gpt-5-nano]
-      description: AI model to use
-
-    ApiError:
+    CreditsResponse:
       type: object
-      required:
-        - error
-        - message
-        - timestamp
       properties:
+        balance:
+          $ref: '#/components/schemas/CreditBalance'
+        transactions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        pricing:
+          type: array
+          items:
+            type: object
+            properties:
+              model_id:
+                type: string
+              model_name:
+                type: string
+              provider:
+                type: string
+              credits_per_request:
+                type: integer
+              is_free:
+                type: boolean
+
+    CollaboratorRequest:
+      type: object
+      required: [workspace_id]
+      properties:
+        workspace_id:
+          type: string
+        email:
+          type: string
+          format: email
+        user_id:
+          type: string
+        role:
+          type: string
+          enum: [viewer, editor, admin]
+          default: editor
+
+    JsonRpcRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc:
+          type: string
+          enum: ['2.0']
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+
+    JsonRpcResponse:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum: ['2.0']
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+        result:
+          type: object
+          additionalProperties: true
         error:
-          type: string
-          description: Error category
-        message:
-          type: string
-          description: Human-readable error message
-        code:
-          type: string
-          description: Machine-readable error code
-        details:
-          description: Additional error details
-        timestamp:
-          type: string
-          format: date-time
-          description: Error timestamp
-        requestId:
-          type: string
-          description: Request identifier for tracing
+          type: object
+          additionalProperties: true
 
   responses:
+    Success:
+      description: Operation succeeded
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: true
     BadRequest:
-      description: Invalid request parameters
+      description: Invalid request
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-          example:
-            error: 'Validation Error'
-            message: 'Invalid conversation ID format'
-            code: 'INVALID_INPUT'
-            timestamp: '2024-01-01T00:00:00Z'
-            requestId: 'req_1234567890'
-
+            $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
-      description: Authentication required
+      description: Missing or invalid session
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-          example:
-            error: 'Client Error'
-            message: 'Authentication required'
-            code: 'UNAUTHORIZED'
-            timestamp: '2024-01-01T00:00:00Z'
-            requestId: 'req_1234567890'
-
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-          example:
-            error: 'Client Error'
-            message: 'Conversation not found'
-            code: 'NOT_FOUND'
-            timestamp: '2024-01-01T00:00:00Z'
-            requestId: 'req_1234567890'
-
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: Request payload is too large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     RateLimited:
       description: Too many requests
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-          example:
-            error: 'Client Error'
-            message: 'Rate limit exceeded'
-            code: 'RATE_LIMITED'
-            details:
-              retryAfter: 60
-            timestamp: '2024-01-01T00:00:00Z'
-            requestId: 'req_1234567890'
-      headers:
-        Retry-After:
-          description: Seconds to wait before retrying
-          schema:
-            type: integer
-
-    InternalServerError:
-      description: Server error occurred
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
-          example:
-            error: 'Server Error'
-            message: 'Internal server error'
-            code: 'INTERNAL_ERROR'
-            timestamp: '2024-01-01T00:00:00Z'
-            requestId: 'req_1234567890'
-
+            $ref: '#/components/schemas/ErrorResponse'
     ServiceUnavailable:
-      description: Service temporarily unavailable
+      description: Upstream or backend service unavailable
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-          example:
-            error: 'Server Error'
-            message: 'Database service unavailable'
-            code: 'SERVICE_UNAVAILABLE'
-            timestamp: '2024-01-01T00:00:00Z'
-            requestId: 'req_1234567890'
-
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
-security:
-  - BearerAuth: []
-
-tags:
-  - name: Chat
-    description: Chat and AI interaction endpoints
-  - name: Conversations
-    description: Conversation management
-  - name: Messages
-    description: Message management
-  - name: Snapshots
-    description: Diagram state snapshots
+            $ref: '#/components/schemas/ErrorResponse'
+    Timeout:
+      description: Upstream request timed out
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

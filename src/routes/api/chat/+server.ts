@@ -2,12 +2,17 @@ import { validateSession } from '$lib/server/auth';
 import { createDiagramTools } from '$lib/server/chat/tools';
 import { diagramStore, markdownStore } from '$lib/server/chat/state';
 import { hasRecentSubagentFanout, shouldExposePlanningTool } from '$lib/server/chat/tool-gating';
-import { loadOpenRouterApiKey, openrouterFastChat } from '$lib/server/chat/model';
+import {
+  getChatProviderOptions,
+  loadProviderApiKeys,
+  normalizeChatModelId,
+  resolveChatModel
+} from '$lib/server/chat/model';
 import { getDb } from '$lib/server/db';
 import { stateManager } from '$lib/server/state-manager';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { error, json } from '@sveltejs/kit';
-import { streamText } from 'ai';
+import { stepCountIs, streamText } from 'ai';
 import dotenv from 'dotenv';
 import type { RequestHandler } from './$types';
 dotenv.config({ path: '.env.local' });
@@ -21,7 +26,7 @@ function buildMultiStepSystemPrompt(): string {
     day: 'numeric'
   });
 
-  return `You are an expert Mermaid diagram assistant inside a live editor.
+  return `You are an expert Mermaid diagram assistant inside Graphini.
 Today's date: ${today}.
 
 IMPORTANT COMMUNICATION RULES:
@@ -321,15 +326,11 @@ export const POST: RequestHandler = async ({ request }) => {
       return error(401, 'Authentication required. Please sign in to use the chat.');
     }
 
-    // Extract the actual model ID for the AI SDK
-    // Supports formats: "openrouter/org/model", "openrouter:org/model", "org/model"
-    let actualModelId = model;
-    if (actualModelId.startsWith('openrouter/')) {
-      actualModelId = actualModelId.slice('openrouter/'.length);
-    } else if (actualModelId.startsWith('openrouter:')) {
-      actualModelId = actualModelId.slice('openrouter:'.length);
-    }
-    await loadOpenRouterApiKey();
+    const db = getDb();
+    const enabledModel = await db.getEnabledModel(model).catch(() => null);
+    const providerHint = enabledModel?.provider || undefined;
+    const { modelId: actualModelId } = normalizeChatModelId(model, providerHint);
+    await loadProviderApiKeys();
 
     // Store current diagram and markdown in session store
     if (currentDiagram !== undefined) {
@@ -349,9 +350,8 @@ export const POST: RequestHandler = async ({ request }) => {
       ? 'A subagent fanout already completed in the recent conversation. Do NOT call subagentFanout again for this continuation. Read the existing specialist outputs in history, then call subagentAssemble if synthesis helps, or immediately perform the concrete next tool step such as diagramWrite, markdownWrite, or errorChecker.'
       : '';
 
+    const system = continuationPrompt ? `${systemPrompt}\n\n${continuationPrompt}` : systemPrompt;
     const messages: Record<string, unknown>[] = [
-      { role: 'system', content: systemPrompt },
-      ...(continuationPrompt ? [{ role: 'system', content: continuationPrompt }] : []),
       ...(uiMessages || []),
       { role: 'user', content: userContent }
     ];
@@ -382,7 +382,10 @@ export const POST: RequestHandler = async ({ request }) => {
     // Convert to AI SDK format and stream with multi-step tool calling
     const result = streamText({
       messages: messages as never,
-      model: openrouterFastChat(actualModelId),
+      model: resolveChatModel(model, providerHint),
+      providerOptions: getChatProviderOptions(model, providerHint),
+      stopWhen: stepCountIs(12),
+      system,
       temperature: 0.55,
       tools: allTools
     });
@@ -428,7 +431,8 @@ export const POST: RequestHandler = async ({ request }) => {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST',
         'Access-Control-Allow-Headers': 'Content-Type'
-      }
+      },
+      sendReasoning: false
     });
 
     return response;

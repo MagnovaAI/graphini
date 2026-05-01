@@ -10,7 +10,7 @@ This guide will help you set up the database for server-side chat storage.
 2. Sign up or log in
 3. Click "New Project"
 4. Choose organization and fill in:
-   - **Project name**: `mermaid-live-editor`
+   - **Project name**: `graphini`
    - **Database password**: (generate strong password)
    - **Region**: Choose closest to your users
    - **Pricing plan**: Free tier is sufficient for development
@@ -77,26 +77,21 @@ test();
 
 Run: `tsx test-db.ts`
 
-## Alternative: PostgreSQL (Self-Hosted)
+## Alternative: Managed PostgreSQL
 
-### Using Docker
-
-```bash
-# Start PostgreSQL
-docker run --name mermaid-postgres \
-  -e POSTGRES_PASSWORD=yourpassword \
-  -e POSTGRES_DB=mermaid_chat \
-  -p 5432:5432 \
-  -d postgres:15
-
-# Run schema
-docker exec -i mermaid-postgres psql -U postgres -d mermaid_chat < database/schema.sql
-```
+Use any hosted PostgreSQL database that can provide a standard connection string, such as Supabase, Neon, or Vercel Postgres.
 
 ### Environment Variables
 
 ```bash
-DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/mermaid_chat
+DATABASE_URL=postgresql://user:password@host:5432/graphini
+```
+
+Apply the checked-in SQL files from the project root:
+
+```bash
+psql "$DATABASE_URL" -f database/schema.sql
+psql "$DATABASE_URL" -f database/performance-indexes.sql
 ```
 
 ### Install Dependencies

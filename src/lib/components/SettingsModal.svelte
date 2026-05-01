@@ -103,6 +103,8 @@
 
   // Local state for API key input
   let apiKeyInput = $state('');
+  let anthropicApiKeyInput = $state('');
+  let openAiApiKeyInput = $state('');
   let openRouterApiKeyInput = $state('');
 
   // Use new three-tier model system
@@ -240,23 +242,37 @@
     return enabledModels.some((model) => model.model_id === `openrouter/${modelId}`);
   }
 
-  async function saveOpenRouterApiKey() {
-    const apiKey = openRouterApiKeyInput.trim();
+  async function saveProviderApiKey(provider: 'anthropic' | 'openai' | 'openrouter') {
+    const inputByProvider = {
+      anthropic: anthropicApiKeyInput,
+      openai: openAiApiKeyInput,
+      openrouter: openRouterApiKeyInput
+    };
+    const labelByProvider = {
+      anthropic: 'Anthropic',
+      openai: 'OpenAI',
+      openrouter: 'OpenRouter'
+    };
+    const apiKey = inputByProvider[provider].trim();
     if (!apiKey) {
-      modelAdminError = 'Enter an OpenRouter API key first';
+      modelAdminError = `Enter a ${labelByProvider[provider]} API key first`;
       return;
     }
     apiKeySaving = true;
     modelAdminError = '';
     modelAdminNotice = '';
     try {
-      await adminPost({ action: 'setOpenRouterApiKey', apiKey });
-      updateApiKey('openrouter', apiKey);
-      modelAdminNotice = 'OpenRouter API key saved';
-      openRouterApiKeyInput = '';
+      await adminPost({ action: 'setProviderApiKey', apiKey, provider });
+      updateApiKey(provider, apiKey);
+      modelAdminNotice = `${labelByProvider[provider]} API key saved`;
+      if (provider === 'anthropic') anthropicApiKeyInput = '';
+      if (provider === 'openai') openAiApiKeyInput = '';
+      if (provider === 'openrouter') openRouterApiKeyInput = '';
     } catch (error) {
       modelAdminError =
-        error instanceof Error ? error.message : 'Failed to save OpenRouter API key';
+        error instanceof Error
+          ? error.message
+          : `Failed to save ${labelByProvider[provider]} API key`;
     } finally {
       apiKeySaving = false;
     }
@@ -374,42 +390,116 @@
           </div>
         </div>
 
-        <div class="rounded-lg border border-border/40 bg-background/80 p-3">
-          <div class="mb-2 flex items-center justify-between gap-2">
-            <div>
-              <div class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                OpenRouter API Key
+        <div class="grid gap-2 md:grid-cols-3">
+          <div class="rounded-lg border border-border/40 bg-background/80 p-3">
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <div
+                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  OpenRouter
+                </div>
+                <p class="text-[10px] text-muted-foreground/60">Routing and broad model access.</p>
               </div>
-              <p class="text-[10px] text-muted-foreground/60">
-                Used by server-side chat and AI tools.
-              </p>
+              <Badge variant="outline" class="text-[8px]">
+                {aiSettings.value.openrouterApiKey ? 'Saved locally' : 'Not set locally'}
+              </Badge>
             </div>
-            <Badge variant="outline" class="text-[8px]">
-              {aiSettings.value.openrouterApiKey ? 'Saved locally' : 'Not set locally'}
-            </Badge>
+            <div class="flex gap-2">
+              <Input
+                class="h-8 min-w-0 font-mono text-[11px]"
+                type="password"
+                autocomplete="off"
+                placeholder="sk-or-v1-..."
+                bind:value={openRouterApiKeyInput}
+                onkeydown={(event) => {
+                  if (event.key === 'Enter') saveProviderApiKey('openrouter');
+                }} />
+              <Button
+                size="sm"
+                class="h-8 shrink-0 gap-1 text-[10px]"
+                disabled={apiKeySaving || !openRouterApiKeyInput.trim()}
+                onclick={() => saveProviderApiKey('openrouter')}>
+                {#if apiKeySaving}
+                  <RefreshCw class="size-3 animate-spin" />
+                {:else}
+                  <Save class="size-3" />
+                {/if}
+              </Button>
+            </div>
           </div>
-          <div class="flex gap-2">
-            <Input
-              class="h-8 font-mono text-[11px]"
-              type="password"
-              autocomplete="off"
-              placeholder="sk-or-v1-..."
-              bind:value={openRouterApiKeyInput}
-              onkeydown={(event) => {
-                if (event.key === 'Enter') saveOpenRouterApiKey();
-              }} />
-            <Button
-              size="sm"
-              class="h-8 shrink-0 gap-1 text-[10px]"
-              disabled={apiKeySaving || !openRouterApiKeyInput.trim()}
-              onclick={saveOpenRouterApiKey}>
-              {#if apiKeySaving}
-                <RefreshCw class="size-3 animate-spin" />
-              {:else}
-                <Save class="size-3" />
-              {/if}
-              Save Key
-            </Button>
+
+          <div class="rounded-lg border border-border/40 bg-background/80 p-3">
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <div
+                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  OpenAI
+                </div>
+                <p class="text-[10px] text-muted-foreground/60">Direct GPT models and tools.</p>
+              </div>
+              <Badge variant="outline" class="text-[8px]">
+                {aiSettings.value.openaiApiKey ? 'Saved locally' : 'Not set locally'}
+              </Badge>
+            </div>
+            <div class="flex gap-2">
+              <Input
+                class="h-8 min-w-0 font-mono text-[11px]"
+                type="password"
+                autocomplete="off"
+                placeholder="sk-proj-..."
+                bind:value={openAiApiKeyInput}
+                onkeydown={(event) => {
+                  if (event.key === 'Enter') saveProviderApiKey('openai');
+                }} />
+              <Button
+                size="sm"
+                class="h-8 shrink-0 gap-1 text-[10px]"
+                disabled={apiKeySaving || !openAiApiKeyInput.trim()}
+                onclick={() => saveProviderApiKey('openai')}>
+                {#if apiKeySaving}
+                  <RefreshCw class="size-3 animate-spin" />
+                {:else}
+                  <Save class="size-3" />
+                {/if}
+              </Button>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-border/40 bg-background/80 p-3">
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <div
+                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  Anthropic
+                </div>
+                <p class="text-[10px] text-muted-foreground/60">Direct Claude reasoning models.</p>
+              </div>
+              <Badge variant="outline" class="text-[8px]">
+                {aiSettings.value.anthropicApiKey ? 'Saved locally' : 'Not set locally'}
+              </Badge>
+            </div>
+            <div class="flex gap-2">
+              <Input
+                class="h-8 min-w-0 font-mono text-[11px]"
+                type="password"
+                autocomplete="off"
+                placeholder="sk-ant-..."
+                bind:value={anthropicApiKeyInput}
+                onkeydown={(event) => {
+                  if (event.key === 'Enter') saveProviderApiKey('anthropic');
+                }} />
+              <Button
+                size="sm"
+                class="h-8 shrink-0 gap-1 text-[10px]"
+                disabled={apiKeySaving || !anthropicApiKeyInput.trim()}
+                onclick={() => saveProviderApiKey('anthropic')}>
+                {#if apiKeySaving}
+                  <RefreshCw class="size-3 animate-spin" />
+                {:else}
+                  <Save class="size-3" />
+                {/if}
+              </Button>
+            </div>
           </div>
         </div>
 

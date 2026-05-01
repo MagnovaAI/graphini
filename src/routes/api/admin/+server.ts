@@ -6,7 +6,11 @@
 import { requireAdmin } from '$lib/server/admin/auth';
 import { handleAdminGet } from '$lib/server/admin/get-actions';
 import { getCache } from '$lib/server/cache';
-import { setRuntimeOpenRouterApiKey } from '$lib/server/chat/model';
+import {
+  setRuntimeAnthropicApiKey,
+  setRuntimeOpenAiApiKey,
+  setRuntimeOpenRouterApiKey
+} from '$lib/server/chat/model';
 import { getDb } from '$lib/server/db';
 import {
   adminDashboard,
@@ -459,6 +463,32 @@ export const POST: RequestHandler = async ({ request }) => {
         });
         setRuntimeOpenRouterApiKey(apiKey);
         await adminDashboard.logAction(null, 'set_openrouter_api_key', 'setting', 'ai_provider');
+        return json({ success: true });
+      }
+
+      case 'setProviderApiKey': {
+        const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+        const provider =
+          typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '';
+        const supportedProviders = new Set(['anthropic', 'openai', 'openrouter']);
+        if (!supportedProviders.has(provider)) {
+          return json(
+            { success: false, error: 'provider must be openai, anthropic, or openrouter' },
+            { status: 400 }
+          );
+        }
+        if (!apiKey) {
+          return json({ success: false, error: 'apiKey required' }, { status: 400 });
+        }
+
+        await settingsManager.set(null, 'ai_provider', `${provider}_api_key`, apiKey, {
+          description: `${provider} API key used for server-side AI requests`,
+          isSensitive: true
+        });
+        if (provider === 'anthropic') setRuntimeAnthropicApiKey(apiKey);
+        if (provider === 'openai') setRuntimeOpenAiApiKey(apiKey);
+        if (provider === 'openrouter') setRuntimeOpenRouterApiKey(apiKey);
+        await adminDashboard.logAction(null, 'set_provider_api_key', 'setting', provider);
         return json({ success: true });
       }
 

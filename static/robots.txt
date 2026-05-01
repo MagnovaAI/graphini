@@ -1,4 +1,4 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Sitemap: https://mermaid.live/sitemap.xml
+Sitemap: https://graphini.magnova.ai/sitemap.xml
 Disallow: 
