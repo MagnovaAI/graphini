@@ -1,187 +1,88 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
+  import { AnimatedAiInput } from '$lib/components/ui/animated-ai-input';
   import { Header } from '$lib/components/ui/header/index.js';
   import {
     ArrowRight,
     Braces,
     Download,
-    FileSearch,
-    GitBranch,
     Github,
     LayoutGrid,
-    MessageSquareText,
-    Mic,
-    PanelsTopLeft,
-    Paperclip,
-    Palette,
-    Presentation,
-    Share2,
-    ShieldCheck,
     Sparkles,
-    Table2,
-    TerminalSquare,
-    Wand2,
-    Wrench
+    TerminalSquare
   } from 'lucide-svelte';
 
   function gotoEdit(prompt: string) {
     goto(resolve('/app') + `?prompt=${encodeURIComponent(prompt)}`);
   }
 
-  const diagramTypes = [
-    'Flowchart',
-    'Sequence',
-    'Architecture',
-    'C4 Model',
-    'State',
-    'ERD',
-    'Gantt',
-    'Mindmap',
-    'Git Graph',
-    'User Journey',
-    'Packet Flow',
-    'Deployment',
-    'Decision Tree'
-  ];
-
-  const workflow = [
+  const systemCards = [
     {
-      title: 'Start from a sentence',
-      description: 'Ask for the system, process, schema, or dependency map you need.',
-      icon: MessageSquareText
-    },
-    {
-      title: 'Edit the Mermaid source',
-      description: 'Use the generated code directly, or keep shaping it in the workspace.',
-      icon: Braces
-    },
-    {
-      title: 'Arrange on canvas',
-      description: 'Keep diagrams, notes, and exports together without leaving the page.',
-      icon: PanelsTopLeft
-    },
-    {
-      title: 'Ship the result',
-      description: 'Export SVG, PNG, or Mermaid for docs, READMEs, slides, and tickets.',
-      icon: Download
-    }
-  ];
-
-  const details = [
-    {
-      title: 'Mermaid-native',
-      description: 'The output stays readable, portable, and easy to review in git.',
-      icon: GitBranch
-    },
-    {
-      title: 'Workspace history',
+      index: '01',
+      title: 'Prompt',
       description:
-        'Save diagrams as workspaces so the rough draft and final version stay connected.',
-      icon: LayoutGrid
+        'Start with rough architecture notes, a process description, a schema, or a handoff question.'
     },
     {
-      title: 'Open source',
+      index: '02',
+      title: 'Source',
       description:
-        'Graphini is MIT licensed and built for teams that want to self-host or extend it.',
-      icon: Share2
+        'Keep Mermaid readable and editable, so every diagram remains reviewable in docs and git.'
+    },
+    {
+      index: '03',
+      title: 'Canvas',
+      description:
+        'Use the workspace around the diagram for chat, notes, visual arrangement, export, and repair.'
     }
   ];
 
-  const useCases = [
-    'Architecture reviews',
-    'API handoffs',
-    'Incident notes',
-    'Database planning',
-    'Sprint specs',
-    'README diagrams'
-  ];
-
-  const formats = [
+  const differenceItems = [
     {
-      title: 'Prompt to Mermaid',
-      description: 'Generate a first draft, then keep the DSL close enough to edit by hand.',
-      icon: TerminalSquare
+      index: '001',
+      title: 'Mermaid-native output',
+      description: 'No proprietary format standing between the idea and the document.'
     },
     {
-      title: 'Docs-ready exports',
-      description: 'Use SVG or PNG when a diagram needs to leave the workspace cleanly.',
-      icon: Presentation
+      index: '002',
+      title: 'Code and diagram stay together',
+      description: 'The source remains visible while the rendered artifact is shaped for handoff.'
     },
     {
-      title: 'Structured diagrams',
-      description: 'Flowcharts, sequences, ERDs, state machines, Gantt plans, and more.',
-      icon: Table2
+      index: '003',
+      title: 'Built for the messy middle',
+      description:
+        'Useful before a spec is final, before a review starts, and before the README gets polished.'
+    },
+    {
+      index: '004',
+      title: 'Open source by default',
+      description: 'Self-host, extend, inspect, and keep the workflow close to your team.'
     }
   ];
 
-  const scannedFeatures = [
+  const prompts = [
+    'Architecture review',
+    'Sequence diagram',
+    'ERD from schema',
+    'Incident timeline',
+    'API handoff',
+    'Deployment map'
+  ];
+
+  const proofPoints = [
+    { icon: TerminalSquare, title: 'Generate', text: 'Plain English to Mermaid drafts.' },
+    { icon: Braces, title: 'Repair', text: 'Syntax-aware edits when code breaks.' },
     {
-      group: 'AI workspace',
-      items: [
-        {
-          title: 'Context-aware chat',
-          description:
-            'Ask the assistant to create, expand, convert, review, or document the active diagram.',
-          icon: Sparkles
-        },
-        {
-          title: 'Syntax repair',
-          description:
-            'Diagram edits can be validated and repaired against Mermaid syntax before you keep working.',
-          icon: Wrench
-        },
-        {
-          title: 'Prompt enhancer',
-          description:
-            'Rewrite rough prompts into clearer diagram instructions from inside the chat panel.',
-          icon: Wand2
-        }
-      ]
+      icon: LayoutGrid,
+      title: 'Organize',
+      text: 'Workspaces keep diagrams, notes, and exports connected.'
     },
     {
-      group: 'Inputs',
-      items: [
-        {
-          title: 'File-aware prompts',
-          description:
-            'Attach PDFs, spreadsheets, CSVs, Markdown, code, Mermaid files, or logs for the assistant to read.',
-          icon: Paperclip
-        },
-        {
-          title: 'Image understanding',
-          description:
-            'Uploaded diagrams, screenshots, charts, and technical images are described for reuse in chat.',
-          icon: FileSearch
-        },
-        {
-          title: 'Voice input',
-          description: 'Record audio and turn it into a prompt without leaving the workspace.',
-          icon: Mic
-        }
-      ]
-    },
-    {
-      group: 'Editing',
-      items: [
-        {
-          title: 'Visual node tools',
-          description:
-            'Add shapes, edit labels, tune colors, change arrows, and style nodes from the canvas.',
-          icon: Palette
-        },
-        {
-          title: 'Markdown document panel',
-          description: 'Keep explanation, requirements, and handoff notes beside the diagram.',
-          icon: Presentation
-        },
-        {
-          title: 'Architecture handoff',
-          description:
-            'Export diagrams and notes as clean artifacts for documentation, reviews, and presentations.',
-          icon: ShieldCheck
-        }
-      ]
+      icon: Download,
+      title: 'Export',
+      text: 'SVG, PNG, and Mermaid for docs, tickets, and slides.'
     }
   ];
 </script>
@@ -200,355 +101,652 @@
   <meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
-<div class="min-h-screen bg-background text-foreground">
+<div class="poster-page">
   <Header />
 
   <main>
-    <section
-      class="mx-auto grid max-w-6xl gap-10 px-5 pt-14 pb-12 md:grid-cols-[0.78fr_1.22fr] md:px-8 md:pt-20">
-      <div class="intro-copy">
-        <div class="product-line">
-          <img src="/brand/logo.png" alt="" class="size-6 rounded-md" />
-          <span>Graphini</span>
-        </div>
+    <section class="poster-section hero-section">
+      <aside class="section-rail">
+        <div class="rail-square" aria-hidden="true"></div>
+        <p>Manifesto</p>
+      </aside>
 
-        <h1>Diagram the idea before it goes stale.</h1>
+      <div class="section-main hero-main">
+        <h1>
+          Diagram the system before it
+          <span>goes stale.</span>
+        </h1>
 
-        <p>
-          Turn rough architecture notes, process descriptions, and data models into Mermaid diagrams
-          you can edit, save, and export.
-        </p>
-
-        <div class="action-row">
-          <a href={resolve('/app')} class="primary-action">
-            Open workspace
-            <ArrowRight class="size-4" />
-          </a>
-          <a
-            href="https://github.com/omkarbhad/graphini"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="secondary-action">
-            <Github class="size-4" />
-            GitHub
-          </a>
-        </div>
-
-        <div class="prompt-row" aria-label="Example diagram prompts">
-          {#each diagramTypes as type (type)}
-            <button type="button" onclick={() => gotoEdit(`${type} diagram`)}>{type}</button>
-          {/each}
-        </div>
-      </div>
-
-      <a
-        href={resolve('/app')}
-        class="workspace-preview"
-        aria-label="Open Graphini workspace">
-        <img src="/demo2.png" alt="Graphini workspace with Mermaid editor and rendered diagram" />
-      </a>
-    </section>
-
-    <section class="border-y border-border bg-card">
-      <div
-        class="mx-auto grid max-w-6xl divide-y divide-border px-5 md:grid-cols-4 md:divide-x md:divide-y-0 md:px-8">
-        {#each workflow as item (item.title)}
-          {@const Icon = item.icon}
-          <article class="workflow-item">
-            <Icon class="mb-4 size-5 text-muted-foreground" />
-            <h2>{item.title}</h2>
-            <p>{item.description}</p>
-          </article>
-        {/each}
-      </div>
-    </section>
-
-    <section class="border-y border-border">
-      <div class="mx-auto grid max-w-6xl gap-6 px-5 py-10 md:grid-cols-[0.45fr_1fr] md:px-8">
-        <div class="section-copy">
-          <h2>Useful when the diagram is part of the work.</h2>
+        <div class="hero-lower">
           <p>
-            Graphini is meant for the messy middle: when a note, ticket, or design discussion needs
-            a diagram before it is polished.
+            Graphini turns rough architecture notes, process descriptions, schemas, and product
+            handoffs into Mermaid diagrams you can edit, save, repair, and export.
           </p>
+
+          <div class="cta-cluster">
+            <a href={resolve('/app')} class="poster-button primary">
+              Open workspace
+              <ArrowRight class="size-4" />
+            </a>
+            <a
+              href="https://github.com/omkarbhad/graphini"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="source-link">
+              <Github class="size-4" />
+              Source
+            </a>
+          </div>
         </div>
 
-        <div class="use-case-list" aria-label="Graphini use cases">
-          {#each useCases as item (item)}
-            <button type="button" onclick={() => gotoEdit(item)}>{item}</button>
+        <AnimatedAiInput
+          class="homepage-chat-input"
+          placeholder="Describe a diagram to generate..."
+          onSubmit={(message) => gotoEdit(message)} />
+
+        <div class="prompt-strip" aria-label="Example diagram prompts">
+          {#each prompts as prompt (prompt)}
+            <button type="button" onclick={() => gotoEdit(prompt)}>{prompt}</button>
           {/each}
         </div>
       </div>
     </section>
 
-    <section
-      class="mx-auto grid max-w-6xl gap-8 px-5 py-14 md:grid-cols-[1fr_0.82fr] md:px-8 md:py-20">
-      <div class="image-stack">
-        <img src="/demo2.png" alt="Graphini prompt and generated diagram view" />
-        <img src="/demo1.png" alt="Generated microservices diagram exported from Graphini" />
-      </div>
+    <section class="poster-section product-section">
+      <aside class="section-rail">
+        <p>Workspace</p>
+      </aside>
 
-      <div class="detail-list">
+      <div class="section-main product-main">
+        <a href={resolve('/app')} class="workspace-shot" aria-label="Open Graphini workspace">
+          <img src="/demo2.png" alt="Graphini workspace with Mermaid editor and rendered diagram" />
+        </a>
+
+        <div class="proof-grid">
+          {#each proofPoints as point (point.title)}
+            {@const Icon = point.icon}
+            <article>
+              <Icon class="size-5" />
+              <h2>{point.title}</h2>
+              <p>{point.text}</p>
+            </article>
+          {/each}
+        </div>
+      </div>
+    </section>
+
+    <section class="poster-section system-section">
+      <aside class="section-rail">
+        <p>System</p>
+      </aside>
+
+      <div class="section-main">
+        <h2 class="stack-headline">
+          Prompt.
+          <br />
+          Mermaid.
+          <br />
+          Handoff.
+        </h2>
+
+        <div class="system-grid">
+          {#each systemCards as card (card.index)}
+            <article>
+              <span>{card.index}</span>
+              <h3>{card.title}</h3>
+              <p>{card.description}</p>
+            </article>
+          {/each}
+        </div>
+      </div>
+    </section>
+
+    <section class="poster-section difference-section">
+      <aside class="section-rail">
+        <p>Why different</p>
+      </aside>
+
+      <div class="section-main">
+        <div class="difference-list">
+          {#each differenceItems as item (item.index)}
+            <article>
+              <span>{item.index}</span>
+              <div>
+                <h2>{item.title}</h2>
+                <p>{item.description}</p>
+              </div>
+            </article>
+          {/each}
+        </div>
+      </div>
+    </section>
+
+    <section class="poster-section access-section">
+      <aside class="section-rail">
+        <p>Access</p>
+      </aside>
+
+      <div class="section-main access-main">
         <div>
-          <h2>Built around the Mermaid file, not around a proprietary canvas.</h2>
+          <h2>Start exploring.</h2>
           <p>
-            Graphini keeps the source visible and editable, then gives you a canvas around it for
-            iteration, organization, and export.
+            Open the workspace, describe the system, and keep shaping the diagram until it is ready
+            for the place your team actually works.
           </p>
         </div>
 
-        {#each details as item (item.title)}
-          {@const Icon = item.icon}
-          <article>
-            <Icon class="mb-4 size-5 text-muted-foreground" />
-            <div>
-              <h3>{item.title}</h3>
-              <p>{item.description}</p>
-            </div>
-          </article>
-        {/each}
-
-        <a href={resolve('/app')} class="text-link">
+        <a href={resolve('/app')} class="poster-button secondary">
           Create a diagram
           <Sparkles class="size-4" />
         </a>
       </div>
     </section>
-
-    <section class="border-t border-border bg-card">
-      <div
-        class="mx-auto grid max-w-6xl divide-y divide-border px-5 md:grid-cols-3 md:divide-x md:divide-y-0 md:px-8">
-        {#each formats as item (item.title)}
-          {@const Icon = item.icon}
-          <article class="format-item">
-            <Icon class="mb-4 size-5 text-muted-foreground" />
-            <h2>{item.title}</h2>
-            <p>{item.description}</p>
-          </article>
-        {/each}
-      </div>
-    </section>
-
-    <section class="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
-      <div class="section-copy feature-heading">
-        <h2>Feature scan from the actual workspace.</h2>
-        <p>
-          These are the things the app already has behind the homepage: panels, tools, endpoints,
-          and stores that show up in the working product.
-        </p>
-      </div>
-
-      <div class="scanned-grid">
-        {#each scannedFeatures as group (group.group)}
-          <section class="feature-group" aria-labelledby={`${group.group}-features`}>
-            <h3 id={`${group.group}-features`}>{group.group}</h3>
-            <div class="feature-group-list">
-              {#each group.items as item (item.title)}
-                {@const Icon = item.icon}
-                <article>
-                  <Icon class="mt-0.5 size-4 text-muted-foreground" />
-                  <div>
-                    <h4>{item.title}</h4>
-                    <p>{item.description}</p>
-                  </div>
-                </article>
-              {/each}
-            </div>
-          </section>
-        {/each}
-      </div>
-    </section>
   </main>
 
-  <footer class="border-t border-border">
-    <div
-      class="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-8">
-      <div class="flex items-center gap-2">
-        <img src="/brand/logo.png" alt="" class="size-5 rounded" />
-        <span class="font-medium text-foreground">Graphini</span>
-        <span>&copy; {new Date().getFullYear()} Magnova</span>
-      </div>
-      <nav class="flex flex-wrap items-center gap-4">
-        <a href={resolve('/app')}>App</a>
-        <a href="https://github.com/omkarbhad/graphini" target="_blank" rel="noopener noreferrer">
-          Source
-        </a>
-        <a
-          href="https://github.com/omkarbhad/graphini/blob/main/LICENSE"
-          target="_blank"
-          rel="noopener noreferrer">
-          MIT License
-        </a>
-      </nav>
+  <footer class="poster-footer">
+    <div>
+      <span>Graphini</span>
+      <span>&copy; {new Date().getFullYear()} Magnova</span>
     </div>
+    <nav>
+      <a href={resolve('/app')}>App</a>
+      <a href="https://github.com/omkarbhad/graphini" target="_blank" rel="noopener noreferrer">
+        GitHub
+      </a>
+      <a
+        href="https://github.com/omkarbhad/graphini/blob/main/LICENSE"
+        target="_blank"
+        rel="noopener noreferrer">
+        MIT License
+      </a>
+    </nav>
   </footer>
 </div>
 
 <style>
   @reference "../app.css";
 
-  .intro-copy {
-    @apply flex flex-col justify-center;
+  :global(:root) {
+    --poster-bg: #e3e2de;
+    --poster-blue: #1351aa;
+    --poster-black: #141414;
+    --poster-gray: #444343;
+    --poster-muted: #7a7a7a;
+    --poster-border: #c7c7c7;
   }
 
-  .product-line {
-    @apply mb-5 flex items-center gap-2 text-sm font-semibold;
+  :global(body) {
+    background: var(--poster-bg);
+  }
+
+  .poster-page {
+    min-height: 100vh;
+    background: var(--poster-bg);
+    color: var(--poster-black);
+  }
+
+  .poster-section {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    border-bottom: 1px solid var(--poster-border);
+  }
+
+  .section-rail {
+    grid-column: span 3;
+    min-height: 100%;
+    border-right: 1px solid var(--poster-border);
+    padding: 36px 24px;
+  }
+
+  .section-rail p {
+    position: sticky;
+    top: 128px;
+    margin: 0;
+    color: var(--poster-muted);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .rail-square {
+    width: 16px;
+    height: 16px;
+    margin-bottom: 20px;
+    background: var(--poster-black);
+  }
+
+  .section-main {
+    grid-column: span 9;
+    min-width: 0;
+    padding: 48px 40px;
+  }
+
+  .hero-section {
+    min-height: calc(88vh - 72px);
+  }
+
+  .hero-main {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 32px;
+  }
+
+  h1,
+  .stack-headline,
+  .access-main h2 {
+    margin: 0;
+    font-family:
+      'Space Grotesk',
+      'DM Sans',
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
+    letter-spacing: 0;
+    text-transform: uppercase;
   }
 
   h1 {
-    @apply max-w-xl text-4xl leading-[1.05] font-semibold tracking-normal text-foreground md:text-5xl;
+    max-width: 1120px;
+    font-size: 104px;
+    font-weight: 900;
+    line-height: 0.86;
   }
 
-  .intro-copy > p {
-    @apply mt-5 max-w-xl text-base leading-7 text-muted-foreground md:text-lg;
+  h1 span {
+    color: var(--poster-blue);
   }
 
-  .action-row {
-    @apply mt-8 flex flex-col gap-3 sm:flex-row;
+  .hero-lower {
+    display: grid;
+    grid-template-columns: minmax(260px, 420px) minmax(220px, 1fr);
+    gap: 32px;
+    align-items: start;
   }
 
-  .primary-action,
-  .secondary-action {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition-colors duration-150;
-    @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
+  .hero-lower p,
+  .access-main p {
+    margin: 0;
+    color: var(--poster-gray);
+    font-size: 16px;
+    line-height: 1.5;
   }
 
-  .primary-action {
-    @apply bg-primary text-primary-foreground hover:opacity-90;
+  .cta-cluster {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
   }
 
-  .secondary-action {
-    @apply border border-border bg-card text-foreground hover:bg-accent;
+  .poster-button {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    padding: 13px 24px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: uppercase;
+    transition:
+      background-color 0.3s linear,
+      border-color 0.3s linear,
+      color 0.3s linear;
   }
 
-  .prompt-row {
-    @apply mt-8 flex max-w-xl flex-wrap gap-2;
+  .poster-button.primary {
+    background: var(--poster-blue);
+    color: var(--poster-bg);
   }
 
-  .prompt-row button {
-    @apply h-8 cursor-pointer rounded-md border border-border bg-card px-3 text-sm text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground;
+  .poster-button.primary:hover,
+  .poster-button.secondary {
+    background: var(--poster-black);
+    color: var(--poster-bg);
   }
 
-  .workspace-preview {
-    @apply block overflow-hidden rounded-lg border border-border bg-card transition-colors duration-150 hover:border-foreground/30;
+  .poster-button.secondary:hover {
+    background: var(--poster-blue);
   }
 
-  .workspace-preview img,
-  .image-stack img {
-    @apply block w-full;
+  .source-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--poster-black);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    text-decoration: underline;
+    text-underline-offset: 5px;
+    transition: color 0.3s linear;
   }
 
-  .workflow-item {
-    @apply px-0 py-6 md:px-5;
+  .source-link:hover {
+    color: var(--poster-blue);
   }
 
-  .workflow-item h2,
-  .detail-list h3,
-  .format-item h2 {
-    @apply text-base font-semibold tracking-normal text-foreground;
+  .prompt-strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    border: 1px solid var(--poster-border);
   }
 
-  .workflow-item p,
-  .detail-list p,
-  .format-item p {
-    @apply mt-2 text-sm leading-6 text-muted-foreground;
+  .prompt-strip button {
+    min-height: 52px;
+    cursor: pointer;
+    border: 0;
+    border-right: 1px solid var(--poster-border);
+    border-radius: 0;
+    background: transparent;
+    color: var(--poster-black);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    transition:
+      background-color 0.3s linear,
+      color 0.3s linear;
   }
 
-  .section-copy h2 {
-    @apply text-xl leading-tight font-semibold tracking-normal text-foreground md:text-2xl;
+  .prompt-strip button:last-child {
+    border-right: 0;
   }
 
-  .section-copy p {
-    @apply mt-3 max-w-md text-sm leading-6 text-muted-foreground;
+  .prompt-strip button:hover {
+    background: var(--poster-black);
+    color: var(--poster-bg);
   }
 
-  .feature-heading {
-    @apply mb-8;
+  .product-main {
+    display: grid;
+    gap: 28px;
   }
 
-  .use-case-list {
-    @apply grid gap-2 sm:grid-cols-2 lg:grid-cols-3;
+  .workspace-shot {
+    display: block;
+    border: 1px solid var(--poster-border);
+    background: #f2f1ed;
   }
 
-  .use-case-list button {
-    @apply h-10 cursor-pointer rounded-md border border-border bg-card px-3 text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-accent;
+  .workspace-shot img {
+    display: block;
+    width: 100%;
   }
 
-  .image-stack {
-    @apply grid gap-4;
+  .proof-grid,
+  .system-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--poster-border);
   }
 
-  .image-stack img {
-    @apply rounded-lg border border-border bg-card;
+  .proof-grid article,
+  .system-grid article {
+    min-height: 160px;
+    border-right: 1px solid var(--poster-border);
+    padding: 20px;
+    transition: background-color 0.3s linear;
   }
 
-  .detail-list {
-    @apply flex flex-col justify-center gap-8;
+  .proof-grid article:last-child,
+  .system-grid article:last-child {
+    border-right: 0;
   }
 
-  .detail-list > div:first-child h2 {
-    @apply text-2xl leading-tight font-semibold tracking-normal text-foreground md:text-3xl;
+  .proof-grid article:hover,
+  .system-grid article:hover {
+    background: rgb(255 255 255 / 0.28);
   }
 
-  .detail-list > div:first-child p {
-    @apply mt-4 text-base leading-7;
+  .proof-grid :global(svg) {
+    color: var(--poster-blue);
   }
 
-  .detail-list article {
-    @apply grid grid-cols-[24px_1fr] gap-4 border-t border-border pt-6;
+  .proof-grid h2,
+  .system-grid h3 {
+    margin: 32px 0 0;
+    color: var(--poster-black);
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
   }
 
-  .text-link {
-    @apply inline-flex w-fit items-center gap-2 text-sm font-semibold text-foreground underline underline-offset-4 transition-colors duration-150 hover:text-muted-foreground;
+  .proof-grid p,
+  .system-grid p,
+  .difference-list p {
+    margin: 12px 0 0;
+    color: var(--poster-gray);
+    font-size: 13px;
+    line-height: 1.45;
   }
 
-  .format-item {
-    @apply px-0 py-6 md:px-6;
+  .stack-headline {
+    font-size: 74px;
+    font-weight: 900;
+    line-height: 0.9;
   }
 
-  .scanned-grid {
-    @apply grid gap-4 md:grid-cols-3;
+  .system-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 36px;
   }
 
-  .feature-group {
-    @apply rounded-lg border border-border bg-card p-5;
+  .system-grid span,
+  .difference-list span {
+    color: var(--poster-muted);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    font-weight: 700;
   }
 
-  .feature-group h3 {
-    @apply text-sm font-semibold tracking-normal text-foreground;
+  .difference-list {
+    border-bottom: 1px solid var(--poster-border);
   }
 
-  .feature-group-list {
-    @apply mt-5 grid gap-5;
+  .difference-list article {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 24px;
+    min-height: 108px;
+    align-items: start;
+    border-top: 1px solid var(--poster-border);
+    padding: 22px 0;
   }
 
-  .feature-group article {
-    @apply grid grid-cols-[20px_1fr] gap-3;
+  .difference-list h2 {
+    margin: 0;
+    color: var(--poster-black);
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 0.95;
+    transition: color 0.3s linear;
   }
 
-  .feature-group h4 {
-    @apply text-sm font-semibold tracking-normal text-foreground;
+  .difference-list article:hover h2 {
+    color: var(--poster-blue);
   }
 
-  .feature-group p {
-    @apply mt-1 text-sm leading-6 text-muted-foreground;
+  .access-section {
+    min-height: 50vh;
   }
 
-  footer a {
-    @apply transition-colors duration-150 hover:text-foreground;
+  .access-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 36px;
+    align-items: end;
   }
 
-  @media (max-width: 767px) {
-    .workspace-preview {
-      @apply rounded-md;
+  .access-main h2 {
+    font-size: 82px;
+    font-weight: 900;
+    line-height: 0.9;
+  }
+
+  .access-main p {
+    max-width: 720px;
+    margin-top: 20px;
+  }
+
+  .poster-footer {
+    display: flex;
+    min-height: 88px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    border-top: 1px solid var(--poster-border);
+    padding: 24px 28px;
+    color: var(--poster-gray);
+    font-size: 13px;
+  }
+
+  .poster-footer div,
+  .poster-footer nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+  }
+
+  .poster-footer span:first-child {
+    color: var(--poster-black);
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .poster-footer a {
+    color: var(--poster-gray);
+    transition: color 0.3s linear;
+  }
+
+  .poster-footer a:hover {
+    color: var(--poster-blue);
+  }
+
+  @media (max-width: 1180px) {
+    h1 {
+      font-size: 78px;
     }
 
-    .prompt-row {
-      @apply gap-1.5;
+    .stack-headline,
+    .access-main h2 {
+      font-size: 62px;
     }
 
-    .prompt-row button {
-      @apply px-2.5;
+    .proof-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .proof-grid article:nth-child(2) {
+      border-right: 0;
+    }
+
+    .proof-grid article:nth-child(n + 3) {
+      border-top: 1px solid var(--poster-border);
+    }
+  }
+
+  @media (max-width: 860px) {
+    .poster-section {
+      display: block;
+    }
+
+    .section-rail {
+      min-height: 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--poster-border);
+      padding: 20px;
+    }
+
+    .section-rail p {
+      position: static;
+    }
+
+    .rail-square {
+      margin-bottom: 12px;
+    }
+
+    .section-main {
+      padding: 28px 20px;
+    }
+
+    .hero-section {
+      min-height: 0;
+    }
+
+    .hero-main {
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 44px;
+      line-height: 0.9;
+    }
+
+    .hero-lower,
+    .access-main {
+      grid-template-columns: 1fr;
+    }
+
+    .prompt-strip,
+    .system-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .prompt-strip button,
+    .system-grid article,
+    .proof-grid article {
+      border-right: 0;
+      border-bottom: 1px solid var(--poster-border);
+    }
+
+    .prompt-strip button:last-child,
+    .system-grid article:last-child,
+    .proof-grid article:last-child {
+      border-bottom: 0;
+    }
+
+    .proof-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .proof-grid article:nth-child(2) {
+      border-right: 0;
+    }
+
+    .proof-grid article:nth-child(n + 3) {
+      border-top: 0;
+    }
+
+    .stack-headline,
+    .access-main h2 {
+      font-size: 40px;
+    }
+
+    .difference-list article {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .difference-list h2 {
+      font-size: 28px;
+    }
+
+    .poster-footer {
+      align-items: flex-start;
+      flex-direction: column;
     }
   }
 </style>
