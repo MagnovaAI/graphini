@@ -70,6 +70,11 @@
     return workspaceId && diagramId ? `${workspaceId}:${diagramId}` : workspaceId || '_default';
   }
 
+  function getDiagramIdFromFileId(fileId: string): string | null {
+    const separatorIndex = fileId.indexOf(':');
+    return separatorIndex >= 0 ? fileId.slice(separatorIndex + 1) : null;
+  }
+
   function getActiveWorkspaceTab() {
     return workspaceStore.diagrams.find((diagram) => diagram.id === workspaceStore.activeDiagramId);
   }
@@ -206,8 +211,16 @@
       return;
     }
     if (newFileId !== currentFileId) {
-      saveChatState();
-      debouncedDbSync();
+      const previousFileId = currentFileId;
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        saveTimeout = null;
+      }
+      if (dbSyncTimeout) {
+        clearTimeout(dbSyncTimeout);
+        dbSyncTimeout = null;
+      }
+      saveChatState(previousFileId);
       currentFileId = newFileId;
       restoreChatStateForFile();
     }
@@ -1174,7 +1187,7 @@
   );
 
   // Save chat state to localStorage (full state including artifacts) — per-file
-  function saveChatState() {
+  function saveChatState(fileId = currentFileId) {
     try {
       // Save messages (include attachments for user messages)
       const simpleMessages = messages.map((m: Record<string, unknown>) => {
@@ -1197,16 +1210,21 @@
         if (m.timestamp) msg.timestamp = m.timestamp;
         return msg;
       });
-      kv.set('chat', chatKey('messages'), simpleMessages);
-      workspaceStore.setActiveDiagramChatMessages(
+      kv.set('chat', chatKey('messages', fileId), simpleMessages);
+      const diagramId = getDiagramIdFromFileId(fileId);
+      const workspaceMessages =
         simpleMessages.map((message: Record<string, unknown>) => ({
           content: String(message.content ?? ''),
           id: String(message.id ?? uuidv4()),
           model_used: message.model_used as string | undefined,
           role: (message.role as 'user' | 'assistant' | 'system') ?? 'user',
           timestamp: String(message.timestamp ?? new Date().toISOString())
-        }))
-      );
+        }));
+      if (diagramId) {
+        workspaceStore.setDiagramChatMessages(diagramId, workspaceMessages);
+      } else {
+        workspaceStore.setActiveDiagramChatMessages(workspaceMessages);
+      }
       // Save message parts, excluding provider reasoning/internal thoughts.
       const allParts: Record<number, ContentPart[]> = {};
       for (const [idx, parts] of Object.entries(messageParts)) {
@@ -1219,7 +1237,7 @@
             return p;
           });
       }
-      kv.set('chat', chatKey('parts'), allParts);
+      kv.set('chat', chatKey('parts', fileId), allParts);
       // Save artifacts (only finalized, non-streaming)
       const savedArtifacts: Record<string, Artifact> = {};
       for (const [id, art] of Object.entries(artifactMap)) {
@@ -1227,27 +1245,29 @@
           savedArtifacts[id] = { ...art, isStreaming: false };
         }
       }
-      kv.set('chat', chatKey('artifacts'), savedArtifacts);
-      kv.delete('chat', chatKey('reasoning'));
+      kv.set('chat', chatKey('artifacts', fileId), savedArtifacts);
+      kv.delete('chat', chatKey('reasoning', fileId));
       // Save checkpoints
-      kv.set('chat', chatKey('checkpoints'), checkpoints);
-      // Save current diagram code so it renders on refresh
-      try {
-        const currentCode = (
-          inputStateStore as unknown as { get?: () => Record<string, unknown> }
-        )?.get?.()?.code;
-        if (!currentCode) {
-          let storeVal: Record<string, unknown> | null = null;
-          const unsub = inputStateStore.subscribe((s: Record<string, unknown>) => {
-            storeVal = s;
-          });
-          unsub();
-          if (storeVal?.code) kv.set('chat', chatKey('diagramCode'), storeVal.code);
-        } else {
-          kv.set('chat', chatKey('diagramCode'), currentCode);
+      kv.set('chat', chatKey('checkpoints', fileId), checkpoints);
+      // Only the active editor store can safely provide source for the active tab.
+      if (fileId === getCurrentFileId()) {
+        try {
+          const currentCode = (
+            inputStateStore as unknown as { get?: () => Record<string, unknown> }
+          )?.get?.()?.code;
+          if (!currentCode) {
+            let storeVal: Record<string, unknown> | null = null;
+            const unsub = inputStateStore.subscribe((s: Record<string, unknown>) => {
+              storeVal = s;
+            });
+            unsub();
+            if (storeVal?.code) kv.set('chat', chatKey('diagramCode', fileId), storeVal.code);
+          } else {
+            kv.set('chat', chatKey('diagramCode', fileId), currentCode);
+          }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
     } catch {
       /* ignore */
@@ -1268,8 +1288,15 @@
       const savedParts = kv.get<Record<number, ContentPart[]>>('chat', chatKey('parts'));
       const savedArtifacts = kv.get<Record<string, Artifact>>('chat', chatKey('artifacts'));
       kv.delete('chat', chatKey('reasoning'));
-      if (savedMessages && Array.isArray(savedMessages) && savedMessages.length > 0) {
-        messages = savedMessages;
+      const activeTabMessages: Record<string, unknown>[] = (
+        getActiveWorkspaceTab()?.chat?.messages ?? []
+      ).map((message) => ({ ...message }));
+      const restoredMessages: Record<string, unknown>[] =
+        savedMessages && Array.isArray(savedMessages) && savedMessages.length > 0
+          ? savedMessages
+          : activeTabMessages;
+      if (restoredMessages && Array.isArray(restoredMessages) && restoredMessages.length > 0) {
+        messages = restoredMessages;
         conversationStarted = true;
         if (savedParts) {
           messageParts = Object.fromEntries(
@@ -1283,7 +1310,7 @@
         } else {
           // Rebuild simple text parts from messages
           const parts: Record<number, ContentPart[]> = {};
-          savedMessages.forEach((m: Record<string, unknown>, i: number) => {
+          restoredMessages.forEach((m: Record<string, unknown>, i: number) => {
             if (m.role === 'assistant' && m.content) {
               parts[i] = [{ type: 'text', text: m.content as string }];
             }

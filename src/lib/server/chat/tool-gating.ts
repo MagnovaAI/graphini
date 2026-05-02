@@ -128,7 +128,7 @@ function addAll(target: Set<string>, tools: string[]) {
   for (const tool of tools) target.add(tool);
 }
 
-const REQUESTABLE_TOOL_NAMES = [
+export const REQUESTABLE_TOOL_NAMES = [
   'actionItemExtractor',
   'askQuestions',
   'autoStyler',
@@ -160,6 +160,13 @@ const REQUESTABLE_TOOL_NAMES = [
   'webSearch'
 ];
 
+export function isToolInventoryRequest(
+  message: string,
+  context: { recentMessages?: { content?: unknown; role?: unknown }[] } = {}
+): boolean {
+  return wantsToolInventory(message) || wantsToolInventoryFollowUp(message, context);
+}
+
 function normalizeToolMention(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -184,7 +191,7 @@ export function selectToolNamesForRequest(
 
   if (isCasualMessage(message)) return selected;
 
-  if (wantsToolInventory(message) || wantsToolInventoryFollowUp(message, context)) {
+  if (isToolInventoryRequest(message, context)) {
     addAll(selected, REQUESTABLE_TOOL_NAMES);
     return selected;
   }

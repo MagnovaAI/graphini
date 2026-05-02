@@ -210,6 +210,19 @@ export const graphiniMcpTools = [
     title: 'Style Search'
   },
   {
+    annotations: { destructiveHint: true, title: 'Auto Styler' },
+    description:
+      'Automatically apply harmonious Mermaid style directives to the active diagram using a selected palette.',
+    inputSchema: objectSchema(
+      z.object({
+        palette: z.enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome']).optional(),
+        preserveExisting: z.boolean().optional()
+      })
+    ),
+    name: 'autoStyler',
+    title: 'Auto Styler'
+  },
+  {
     annotations: { openWorldHint: true, readOnlyHint: true, title: 'Icon Search' },
     description:
       'Search local and Iconify icon candidates for Mermaid nodes without mutating the diagram.',
@@ -225,6 +238,21 @@ export const graphiniMcpTools = [
     ),
     name: 'iconSearch',
     title: 'Icon Search'
+  },
+  {
+    annotations: { destructiveHint: true, openWorldHint: true, title: 'Iconifier' },
+    description:
+      'Attach resolved visual icons to Mermaid diagram nodes, remove icons, or iconify all eligible nodes.',
+    inputSchema: objectSchema(
+      z.object({
+        mode: z.enum(['all', 'selective', 'remove']),
+        nodes: z.array(z.string()).optional(),
+        removeAll: z.boolean().optional(),
+        removeFromNodes: z.array(z.string()).optional()
+      })
+    ),
+    name: 'iconifier',
+    title: 'Iconifier'
   },
   {
     annotations: { title: 'Long Term Memory' },

@@ -345,14 +345,25 @@ function setActiveDiagramChatMessages(messages: WorkspaceDocument['chat']['messa
   const document = collectDocument();
   const activeDiagram = getActiveDiagram(document);
   if (!activeDiagram) return;
-  const chat = { ...activeDiagram.chat, messages };
+  setDiagramChatMessages(activeDiagram.id, messages);
+}
+
+function setDiagramChatMessages(
+  diagramId: string,
+  messages: WorkspaceDocument['chat']['messages']
+) {
+  if (!state.workspace) return;
+  const document = collectDocument();
+  const diagram = document.diagrams?.find((item) => item.id === diagramId);
+  if (!diagram) return;
+  const chat = { ...diagram.chat, messages };
   state.workspace = {
     ...state.workspace,
     document: {
       ...document,
-      chat,
+      chat: document.activeDiagramId === diagramId ? chat : document.chat,
       diagrams: document.diagrams?.map((diagram) =>
-        diagram.id === activeDiagram.id ? { ...diagram, chat } : diagram
+        diagram.id === diagramId ? { ...diagram, chat } : diagram
       )
     }
   };
@@ -760,6 +771,7 @@ export const workspaceStore = {
   renameFile,
   save,
   setActiveDiagramChatMessages,
+  setDiagramChatMessages,
   setActiveDiagramDocumentMarkdown,
   get state() {
     return state;

@@ -1,7 +1,8 @@
 import { validateSession } from '$lib/server/auth';
+import { agentToolNames, listMcpTools } from '$lib/server/agents/tool-catalog';
 import { createDiagramTools } from '$lib/server/chat/tools';
 import { codeStore, diagramStore, markdownStore } from '$lib/server/chat/state';
-import { selectToolNamesForRequest } from '$lib/server/chat/tool-gating';
+import { isToolInventoryRequest, selectToolNamesForRequest } from '$lib/server/chat/tool-gating';
 import {
   getChatProviderOptions,
   hasProviderCredential,
@@ -74,7 +75,8 @@ Target only the active tab unless the user asks to switch.`;
 
 function buildLeanSystemPrompt(
   workspaceContext: WorkspaceToolContext,
-  exposedToolNames: Set<string>
+  exposedToolNames: Set<string>,
+  options: { includeFullToolCatalog?: boolean; mermaidSourceIsEmpty?: boolean } = {}
 ): string {
   const today = new Date().toLocaleDateString('en-US', {
     day: 'numeric',
@@ -100,6 +102,24 @@ function buildLeanSystemPrompt(
     sections.push('This is a conversational turn. Answer naturally without calling tools.');
   }
 
+  if (options.includeFullToolCatalog) {
+    const catalogTools = listMcpTools();
+    const catalog = catalogTools.map((tool) => `- ${tool.name}: ${tool.description}`).join('\n');
+    const agentBundles = Object.entries(agentToolNames)
+      .map(([agentId, toolNames]) => `- ${agentId}: ${toolNames.join(', ')}`)
+      .join('\n');
+    sections.push(
+      [
+        'Full Graphini tool catalog. This is the complete catalog you can request across turns. The executable set may be narrowed each turn, but do not confuse the current exposed set with the full catalog:',
+        `Full catalog count: exactly ${catalogTools.length} tools. If asked how many tools you have, use this number and do not invent a different count.`,
+        catalog,
+        '',
+        'Agent role tool bundles:',
+        agentBundles
+      ].join('\n')
+    );
+  }
+
   sections.push(
     'Execution honesty: never claim you changed, enhanced, saved, deployed, or ran work unless a tool result in this turn succeeded. If a tool fails, say the failure plainly and continue with the next concrete step.'
   );
@@ -116,6 +136,9 @@ function buildLeanSystemPrompt(
         'Mermaid rules:',
         '- Tool payloads may contain Mermaid syntax only.',
         '- diagramWrite sends the complete Mermaid document. diagramPatch sends only the replacement lines for startLine..endLine; never send the whole diagram through diagramPatch.',
+        options.mermaidSourceIsEmpty
+          ? '- The active Mermaid tab is empty. Do not call diagramPatch to create content. Use diagramWrite for the first diagram.'
+          : '',
         '- The final Mermaid document must have exactly one top-level diagram declaration.',
         '- For edits and repairs, read the diagram first when diagramRead is available.',
         '- If the current diagram starts with a bare subgraph or otherwise lacks a root declaration, first repair line 1 with diagramPatch by prepending a root such as "flowchart TD"; then continue with style/icon patches.',
@@ -124,7 +147,9 @@ function buildLeanSystemPrompt(
         '- After diagramWrite or diagramPatch, call errorChecker when available.',
         '- If errorChecker returns valid:false or success:false, the diagram is still broken. Do not say it is fixed; either repair it with another diagramPatch or tell the user the exact remaining error.',
         '- Do not invent Mermaid icon annotations; copy annotation lines only from iconSearch suggestions. Web suggestions from iconSearch have already been checked for a live SVG response.'
-      ].join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
     );
   }
 
@@ -396,16 +421,18 @@ export const POST: RequestHandler = async ({ request }) => {
     // Build messages array — always text-only (images are pre-processed in /api/upload)
     const userContent = message;
 
+    const recentMessages = Array.isArray(uiMessages)
+      ? uiMessages
+          .filter(
+            (item: unknown): item is { content?: unknown; role?: unknown } =>
+              Boolean(item) && typeof item === 'object'
+          )
+          .slice(-4)
+      : undefined;
+    const toolInventoryRequest = isToolInventoryRequest(message, { recentMessages });
     const selectedToolNames = selectToolNamesForRequest(message, {
       activeEngine,
-      recentMessages: Array.isArray(uiMessages)
-        ? uiMessages
-            .filter(
-              (item: unknown): item is { content?: unknown; role?: unknown } =>
-                Boolean(item) && typeof item === 'object'
-            )
-            .slice(-4)
-        : undefined
+      recentMessages
     });
 
     // Create tools and filter using persisted settings when available.
@@ -416,7 +443,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const filteredTools: Partial<typeof toolCatalog> = {};
     for (const [key, value] of Object.entries(toolCatalog)) {
       if (!selectedToolNames.has(key)) continue;
-      if (enabledSet && !enabledSet.has(key)) continue;
+      if (!toolInventoryRequest && enabledSet && !enabledSet.has(key)) continue;
       (filteredTools as Record<string, typeof value>)[key] = value;
     }
     const allTools = filteredTools as typeof toolCatalog;
@@ -425,7 +452,10 @@ export const POST: RequestHandler = async ({ request }) => {
       preserveSubagentHistory:
         exposedToolNames.has('subagentFanout') || exposedToolNames.has('subagentAssemble')
     });
-    const systemPrompt = buildLeanSystemPrompt(workspaceContext, exposedToolNames);
+    const systemPrompt = buildLeanSystemPrompt(workspaceContext, exposedToolNames, {
+      includeFullToolCatalog: true,
+      mermaidSourceIsEmpty: activeEngine === 'mermaid' && !activeSource.trim()
+    });
     const system = systemPrompt;
 
     const canForceSpecificToolChoice = normalizedModel.provider !== 'openrouter';
@@ -443,6 +473,24 @@ export const POST: RequestHandler = async ({ request }) => {
       messages: messages as never,
       model: resolveChatModel(model, providerHint),
       prepareStep: ({ steps }) => {
+        if (
+          steps.length === 0 &&
+          activeEngine === 'mermaid' &&
+          !activeSource.trim() &&
+          'diagramWrite' in allTools
+        ) {
+          if (!canForceSpecificToolChoice) {
+            return {
+              activeTools: ['diagramWrite'],
+              system: `${system}\n\nEMPTY DIAGRAM: The active Mermaid tab has no content. Call diagramWrite now with a complete Mermaid diagram. Do not call diagramPatch to create a new diagram.`
+            } as never;
+          }
+          return {
+            activeTools: ['diagramWrite'],
+            toolChoice: { toolName: 'diagramWrite', type: 'tool' }
+          } as never;
+        }
+
         if (steps.length === 0 && 'thinking' in allTools) {
           if (!canForceSpecificToolChoice) {
             return {

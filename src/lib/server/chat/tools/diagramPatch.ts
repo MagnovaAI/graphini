@@ -33,9 +33,21 @@ import {
 const execFileAsync = promisify(execFile);
 
 const markdownSignals = /^(#{1,6}\s|\*\*|__|\[.*\]\(.*\)|^>\s|^-{3,}$|^\*{3,}$|^```)/m;
+const mermaidEdgePattern = /(<-->|<-\.->|<==>|<---|-->|-\.->|==>|---|\.\.>|--x|--o)/;
 
 function normalizeMermaidToolContent(content: string): string {
   return content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+}
+
+function countMermaidEdgeLines(source: string): number {
+  return source
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line || line.startsWith('%%')) return false;
+      if (/^(classDef|class|style|linkStyle|subgraph|end)\b/i.test(line)) return false;
+      return mermaidEdgePattern.test(line);
+    }).length;
 }
 
 function isFullDocumentPatchAttempt(
@@ -124,6 +136,17 @@ export function applyDiagramLinePatch({
   const nextLines = [...lines];
   nextLines.splice(startLine - 1, endLine - startLine + 1, ...replacementLines);
   const newDiagram = nextLines.join('\n');
+  const previousEdgeCount = countMermaidEdgeLines(diagram);
+  const nextEdgeCount = countMermaidEdgeLines(newDiagram);
+  if (previousEdgeCount > 0 && nextEdgeCount === 0) {
+    return {
+      error:
+        'REJECTED: diagramPatch would remove every connection from the existing diagram.',
+      hint: 'Keep the existing edges when styling or adding icons. Patch only the relevant node, style, or icon lines unless the user explicitly asks to delete all relationships.',
+      success: false
+    };
+  }
+
   const validation = validateSingleMermaidDocument(newDiagram);
   if (!validation.valid) {
     return {

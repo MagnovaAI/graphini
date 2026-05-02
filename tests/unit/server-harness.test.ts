@@ -178,7 +178,9 @@ const expectedMcpToolNames = [
   'diagramDelete',
   'errorChecker',
   'styleSearch',
+  'autoStyler',
   'iconSearch',
+  'iconifier',
   'longTermMemory',
   'markdownRead',
   'markdownWrite',
@@ -197,6 +199,7 @@ const expectedMcpToolNames = [
 const expectedToolRequiredInputs = {
   actionItemExtractor: ['source'],
   askQuestions: ['context', 'questions'],
+  autoStyler: [],
   codePatch: ['content', 'endLine', 'startLine'],
   codeRead: [],
   codeWrite: ['content', 'language'],
@@ -209,6 +212,7 @@ const expectedToolRequiredInputs = {
   fileManager: ['operation'],
   gitGuard: ['operation'],
   iconSearch: [],
+  iconifier: ['mode'],
   longTermMemory: ['operation'],
   markdownRead: [],
   markdownWrite: ['content'],
@@ -928,6 +932,19 @@ describe('diagram patch tool', () => {
     '  Email --> Done[Done]'
   ].join('\n');
 
+  it('rejects attempts to create a diagram through diagramPatch', () => {
+    const result = applyDiagramLinePatch({
+      content: 'flowchart TD\n  Start[Start] --> Done[Done]',
+      diagram: '',
+      endLine: 1,
+      startLine: 1
+    });
+
+    if (result.success) throw new Error('Expected empty-diagram patch to be rejected.');
+    expect(result.error).toContain('no existing Mermaid diagram');
+    expect(result.hint).toContain('diagramWrite');
+  });
+
   it('applies focused replacement lines without rewriting the whole diagram', () => {
     const result = applyDiagramLinePatch({
       content: '  Start[Start] --> Verify[Verify Email]',
@@ -961,6 +978,25 @@ describe('diagram patch tool', () => {
 
     if (result.success) throw new Error('Expected full-document patch to be rejected.');
     expect(result.error).toContain('full Mermaid document');
+  });
+
+  it('rejects patches that remove every existing connection', () => {
+    const result = applyDiagramLinePatch({
+      content: [
+        '  Start[Start]',
+        '  Email[Email]',
+        '  Done[Done]',
+        '  style Start fill:#6366f1,color:#ffffff',
+        '  style Email fill:#14b8a6,color:#ffffff',
+        '  style Done fill:#8b5cf6,color:#ffffff'
+      ].join('\n'),
+      diagram: baseDiagram,
+      endLine: 3,
+      startLine: 2
+    });
+
+    if (result.success) throw new Error('Expected disconnected patch to be rejected.');
+    expect(result.error).toContain('remove every connection');
   });
 
   it('allows a focused line-one repair for a missing Mermaid root declaration', () => {
