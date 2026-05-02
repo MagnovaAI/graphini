@@ -8,11 +8,13 @@ interface AvailableModel {
   name: string;
   provider: string;
   category: string;
+  contextWindow: number;
   toolSupport: boolean;
   description: string;
   gemsPerMessage: number;
   isFree: boolean;
   isEnabled: boolean;
+  imageSupport: boolean;
   maxTokens: number;
 }
 
@@ -29,7 +31,13 @@ hmrPreserve('modelsState', () => ({ models, selectedModelId, lastFetched }));
 
 async function fetchModels(): Promise<void> {
   // Don't refetch if we fetched within the last 60 seconds
-  if (Date.now() - lastFetched < 60000 && models.length > 0) return;
+  if (
+    Date.now() - lastFetched < 60000 &&
+    models.length > 0 &&
+    models.every((model) => typeof model.contextWindow === 'number')
+  ) {
+    return;
+  }
 
   isLoading = true;
   try {

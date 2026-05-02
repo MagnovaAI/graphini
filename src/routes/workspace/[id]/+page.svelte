@@ -26,7 +26,7 @@
   import { conversationsStore } from '$lib/stores/conversations.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { kv } from '$lib/stores/kvStore.svelte';
-  import { panels, type PanelId } from '$lib/stores/panels.svelte';
+  import { panels, VISIBLE_PANEL_SWITCHER_IDS, type PanelId } from '$lib/stores/panels.svelte';
   import { cn } from '$lib/utils';
   import {
     AlertCircle,
@@ -47,20 +47,16 @@
     LogOut,
     Maximize2,
     MessageSquare,
-    Moon,
     MousePointer2,
     Network,
     Pencil,
     PenTool,
     Plus,
     RectangleHorizontal,
-    Redo2,
     Scan,
     Settings,
     Square,
-    Sun,
     Triangle,
-    Undo2,
     UserCircle,
     Workflow,
     X,
@@ -70,7 +66,6 @@
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/stores';
-  import { mode, setMode } from 'mode-watcher';
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
@@ -260,6 +255,14 @@
 
   const activeDiagramEngine = $derived(workspaceStore.workspace?.document?.engine ?? 'mermaid');
   const isMermaidDiagram = $derived(activeDiagramEngine === 'mermaid');
+  const isMarkdownDocument = $derived(activeDiagramEngine === 'markdown');
+  const isDocumentPanelRenderable = $derived(isMarkdownDocument);
+  const hasMandatoryFileViewer = $derived(
+    activeDiagramEngine === 'mermaid' ||
+      activeDiagramEngine === 'markdown' ||
+      activeDiagramEngine === 'json' ||
+      activeDiagramEngine === 'yaml'
+  );
   let isViewRendering = $state(false);
   let viewRenderError = $state('');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -329,6 +332,12 @@
   });
 
   onMount(() => {
+    panels.setWorkspaceOrder();
+    panels.show('canvas');
+    panels.show('code');
+    panels.show('chat');
+    panels.hide('document');
+
     // Load workspace from route param — always reload if ID changed
     const workspaceId = $page.params.id;
     const currentId = workspaceStore.workspace?.id;
@@ -408,14 +417,6 @@
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        handleRedo();
-      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         handleDelete();
@@ -491,13 +492,6 @@
 
   let chatComponent = $state<Chat | undefined>(undefined);
 
-  const toggleTheme = () => {
-    setMode($mode === 'dark' ? 'light' : 'dark');
-    window.dispatchEvent(
-      new CustomEvent('theme-changed', { detail: { theme: $mode === 'dark' ? 'light' : 'dark' } })
-    );
-  };
-
   const handleToolSelect = (tool: 'select' | 'pan' | 'draw') => {
     activeTool = tool;
     window.dispatchEvent(new CustomEvent('tool-changed', { detail: { tool } }));
@@ -526,8 +520,6 @@
     showShapeDropdown = false;
   };
 
-  const handleUndo = () => window.dispatchEvent(new CustomEvent('undo'));
-  const handleRedo = () => window.dispatchEvent(new CustomEvent('redo'));
   const handleDelete = () => window.dispatchEvent(new CustomEvent('delete-selected'));
 
   const handleExport = () => {
@@ -672,6 +664,19 @@
     workspaceStore.switchDiagram(tab.id);
   }
 
+  $effect(() => {
+    if (isDocumentPanelRenderable && panels.panels.document.visible) return;
+    if (!isDocumentPanelRenderable && panels.panels.document.visible) {
+      panels.hide('document');
+    }
+  });
+
+  $effect(() => {
+    if (hasMandatoryFileViewer && !panels.panels.canvas.visible) {
+      panels.show('canvas');
+    }
+  });
+
   function handleCloseTab(event: Event, tabId: string) {
     event.stopPropagation();
     workspaceStore.closeDiagram(tabId);
@@ -712,7 +717,7 @@
           <img src="/brand/logo.png" alt="Graphini" class="size-7" />
         </div>
 
-        <div class="tab-switcher">
+        <div class="tab-switcher" role="tablist" aria-label="Workspace files">
           {#each workspaceTabs as tab (tab.id)}
             {@const isActiveTab = tab.id === activeWorkspaceId}
             {#if isActiveTab && isRenamingInNavbar}
@@ -729,12 +734,19 @@
               <button
                 type="button"
                 class="workspace-tab {isActiveTab ? 'active' : ''}"
-                onclick={() => (isActiveTab ? startNavbarRename() : handleSwitchTab(tab))}
-                title={isActiveTab ? 'Click to rename' : `Open ${tab.title}`}>
+                aria-selected={isActiveTab}
+                role="tab"
+                onclick={() => handleSwitchTab(tab)}
+                ondblclick={() => {
+                  if (isActiveTab) startNavbarRename();
+                }}
+                title={isActiveTab ? 'Double-click to rename' : `Open ${tab.title}`}>
                 {#if tab.engine === 'json'}
                   <Braces class="size-3.5" />
                 {:else if tab.engine === 'yaml'}
                   <FileCode2 class="size-3.5" />
+                {:else if tab.engine === 'markdown'}
+                  <FileText class="size-3.5" />
                 {:else}
                   <Workflow class="size-3.5" />
                 {/if}
@@ -755,22 +767,51 @@
           {/each}
 
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger class="workspace-tab plus-tab" title="New diagram">
-              <Plus class="size-4" />
+            <DropdownMenu.Trigger class="workspace-tab" aria-label="New file" title="New file">
+              <Plus class="size-3.5" />
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content align="start" class="w-48">
-              <DropdownMenu.Label>New diagram</DropdownMenu.Label>
-              <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid', 'Untitled Mermaid')}>
-                <Workflow class="size-4" />
-                <span>Mermaid</span>
+            <DropdownMenu.Content
+              align="start"
+              sideOffset={5}
+              class="w-64 rounded-md border-border bg-card p-1 shadow-sm dark:border-white/10">
+              <DropdownMenu.Label class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                New file
+              </DropdownMenu.Label>
+              <DropdownMenu.Item
+                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                onclick={() => handleNewWorkspace('mermaid', 'Untitled Mermaid')}>
+                <Workflow class="mt-0.5 size-4" />
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium">Mermaid</span>
+                  <span class="block text-xs text-muted-foreground">Diagram source and canvas</span>
+                </span>
               </DropdownMenu.Item>
-              <DropdownMenu.Item onclick={() => handleNewWorkspace('json', 'Untitled JSON')}>
-                <Braces class="size-4" />
-                <span>JSON</span>
+              <DropdownMenu.Item
+                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                onclick={() => handleNewWorkspace('markdown', 'Untitled Markdown')}>
+                <FileText class="mt-0.5 size-4" />
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium">Markdown</span>
+                  <span class="block text-xs text-muted-foreground">Notes, specs, and docs</span>
+                </span>
               </DropdownMenu.Item>
-              <DropdownMenu.Item onclick={() => handleNewWorkspace('yaml', 'Untitled YAML')}>
-                <FileCode2 class="size-4" />
-                <span>YAML</span>
+              <DropdownMenu.Item
+                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                onclick={() => handleNewWorkspace('json', 'Untitled JSON')}>
+                <Braces class="mt-0.5 size-4" />
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium">JSON</span>
+                  <span class="block text-xs text-muted-foreground">Structured data viewer</span>
+                </span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                onclick={() => handleNewWorkspace('yaml', 'Untitled YAML')}>
+                <FileCode2 class="mt-0.5 size-4" />
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium">YAML</span>
+                  <span class="block text-xs text-muted-foreground">Config and manifest files</span>
+                </span>
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
@@ -780,8 +821,8 @@
       <!-- Right: Actions -->
       <div class="flex items-center gap-1">
         <div
-          class="mr-1 hidden items-center gap-0.5 rounded-lg border border-border bg-muted/30 p-0.5 lg:flex">
-          {#each panels.order as panelId (panelId)}
+          class="mr-1 hidden items-center gap-0.5 border border-border bg-card p-0.5 lg:flex dark:border-white/10">
+          {#each VISIBLE_PANEL_SWITCHER_IDS as panelId (panelId)}
             {@const Icon = panelIcons[panelId]}
             {@const panelConfig = panels.panels}
             {@const isActive = panelConfig[panelId].visible}
@@ -800,11 +841,11 @@
               ondragend={handlePanelDragEnd}>
               <button
                 type="button"
-                class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150
+                class="flex items-center gap-1.5 border-b-2 px-2.5 py-1.5 text-[11px] font-medium transition-colors duration-150
                 {isActive
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground'}"
-                title="{label} (drag to reorder)"
+                  ? 'border-foreground text-foreground'
+                  : 'border-transparent text-muted-foreground/70 hover:bg-muted/30 hover:text-foreground'}"
+                title={label}
                 onclick={() => panels.toggle(panelId)}>
                 <Icon class="size-3.5" />
                 <span class="hidden xl:inline">{label}</span>
@@ -812,25 +853,6 @@
             </div>
           {/each}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          class="icon-btn size-9"
-          title="Toggle theme"
-          onclick={toggleTheme}>
-          {#if $mode === 'dark'}<Sun class="size-4" />{:else}<Moon class="size-4" />{/if}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          class="icon-btn size-9"
-          title="Settings"
-          onclick={() => {
-            isSettingsModalOpen = true;
-          }}>
-          <Settings class="size-4" />
-        </Button>
-
         <!-- User Auth -->
         {#if authStore.isLoggedIn}
           {@const initials = (authStore.user?.display_name || authStore.user?.email || 'U')
@@ -850,6 +872,14 @@
                 <span class="text-xs font-normal text-muted-foreground"
                   >{authStore.user?.email}</span>
               </DropdownMenu.Label>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item
+                class="gap-2"
+                onclick={() => {
+                  isSettingsModalOpen = true;
+                }}>
+                <Settings class="size-4" /><span>Settings</span>
+              </DropdownMenu.Item>
               <DropdownMenu.Separator />
               <DropdownMenu.Item
                 class="gap-2 text-red-500 focus:text-red-500"
@@ -971,21 +1001,6 @@
                     class="toolbar-btn size-8 {activeTool === 'draw' ? 'active' : ''}"
                     title="Draw (D)"
                     onclick={() => handleToolSelect('draw')}><Pencil class="size-4" /></Button>
-                  <div class="mx-1 h-px bg-border"></div>
-
-                  <!-- History controls -->
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Undo (Ctrl+Z)"
-                    onclick={handleUndo}><Undo2 class="size-4" /></Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Redo (Ctrl+Y)"
-                    onclick={handleRedo}><Redo2 class="size-4" /></Button>
                   <div class="mx-1 h-px bg-border"></div>
 
                   <!-- Style and display options -->
@@ -1121,6 +1136,23 @@
                     shouldShowGrid={$stateStore.grid}
                     bind:isRendering={isViewRendering}
                     bind:renderError={viewRenderError} />
+                {:else if isMarkdownDocument}
+                  <div class="h-full overflow-auto bg-background p-8">
+                    <article
+                      class="mx-auto min-h-full max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-sm">
+                      <div class="mb-5 flex items-center gap-2 border-b border-border pb-3">
+                        <FileText class="size-4 text-muted-foreground" />
+                        <span class="text-sm font-semibold text-foreground"
+                          >{activeDiagramTitle}</span>
+                        <span
+                          class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                          >Markdown</span>
+                      </div>
+                      <pre
+                        class="font-sans text-sm leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
+                          'Start writing in the Code panel.'}</pre>
+                    </article>
+                  </div>
                 {:else}
                   <StructuredGraphView
                     engine={activeDiagramEngine}
@@ -1196,19 +1228,21 @@
               </div>
             </div>
           {:else if panelId === 'document'}
-            <div
-              class="relative min-w-0 overflow-hidden border-l border-border"
-              style="{panels.panels.canvas.visible
-                ? `width: ${panels.panels.document.width}px;`
-                : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels.canvas
-                .visible
-                ? '1 1 0%'
-                : '0 0 auto'};">
-              <PanelResizeHandle
-                position="left"
-                onResize={(delta) => handlePanelResize('document', delta)} />
-              <DocumentPanel />
-            </div>
+            {#if isDocumentPanelRenderable}
+              <div
+                class="relative min-w-0 overflow-hidden border-l border-border"
+                style="{panels.panels.canvas.visible
+                  ? `width: ${panels.panels.document.width}px;`
+                  : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels.canvas
+                  .visible
+                  ? '1 1 0%'
+                  : '0 0 auto'};">
+                <PanelResizeHandle
+                  position="left"
+                  onResize={(delta) => handlePanelResize('document', delta)} />
+                <DocumentPanel />
+              </div>
+            {/if}
           {:else if panelId === 'code'}
             <div
               class="relative min-w-0 overflow-hidden border-l border-border"
@@ -1355,7 +1389,7 @@
               Edit
             </h3>
             <div class="space-y-1">
-              {#each [['⌘Z', 'Undo'], ['⌘⇧Z', 'Redo'], ['⌘S', 'Export'], ['⌘O', 'Import'], ['Del', 'Delete selected']] as [key, label] (key)}
+              {#each [['⌘S', 'Export'], ['⌘O', 'Import'], ['Del', 'Delete selected']] as [key, label] (key)}
                 <div
                   class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
                   <span class="text-xs text-foreground/80">{label}</span>
@@ -1393,21 +1427,16 @@
   @reference "../../../app.css";
 
   .tab-switcher {
-    @apply ml-2 flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto rounded-lg border border-transparent bg-muted/30 p-0.5;
+    @apply ml-2 flex h-full min-w-0 flex-1 items-end gap-0 overflow-x-auto border-b border-border bg-card dark:border-white/10;
   }
 
-  .workspace-tab {
-    @apply flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-left text-[11px] font-medium transition-all duration-150;
-    @apply text-muted-foreground hover:bg-muted/40 hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:outline-none;
+  :global(.workspace-tab) {
+    @apply flex h-9 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2.5 text-left text-[11px] font-medium transition-colors duration-150;
+    @apply text-muted-foreground hover:border-transparent hover:bg-background hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:outline-none;
   }
 
-  .workspace-tab.active {
-    @apply min-w-0 bg-background text-foreground shadow-sm;
-  }
-
-  .workspace-tab.plus-tab {
-    @apply ml-auto size-8 justify-center rounded-md border border-transparent bg-transparent p-0 text-muted-foreground shadow-none;
-    @apply hover:border-border hover:bg-background hover:text-foreground hover:shadow-sm;
+  :global(.workspace-tab.active) {
+    @apply min-w-0 border-foreground bg-background text-foreground;
   }
 
   .tab-title {
@@ -1415,13 +1444,13 @@
   }
 
   .tab-close {
-    @apply -mr-1 flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-all duration-150;
+    @apply -mr-1 flex size-5 max-w-0 items-center justify-center overflow-hidden text-muted-foreground opacity-0 transition-all duration-150 ease-out;
     @apply pointer-events-none hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 focus-visible:outline-none;
   }
 
-  .workspace-tab:hover .tab-close,
-  .workspace-tab:focus-within .tab-close {
-    @apply pointer-events-auto opacity-100;
+  :global(.workspace-tab):hover .tab-close,
+  :global(.workspace-tab):focus-within .tab-close {
+    @apply pointer-events-auto max-w-5 opacity-100;
   }
 
   @media (max-width: 767px) {

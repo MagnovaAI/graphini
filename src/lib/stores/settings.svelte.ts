@@ -84,6 +84,7 @@ export interface AISettings {
   favoriteModels: string[];
   openaiApiKey?: string;
   anthropicApiKey?: string;
+  anthropicAuthToken?: string;
   openrouterApiKey?: string;
   kiloApiKey?: string;
   geminiApiKey?: string;
@@ -93,6 +94,7 @@ export const aiSettings =
   (hmrRestore('aiSettings') as PersistentSetting<AISettings> | undefined) ??
   new PersistentSetting<AISettings>('ai_settings', {
     anthropicApiKey: '',
+    anthropicAuthToken: '',
     favoriteModels: ['gpt-4o', 'anthropic/claude-3.5-sonnet', 'gemini-3-flash-preview'],
     geminiApiKey: '',
     kiloApiKey: '',
@@ -107,6 +109,55 @@ export const aiSettings =
     temperature: 0.7
   });
 hmrPreserve('aiSettings', () => aiSettings);
+
+// ---------------------------------------------------------------------------
+// PersonalizationSettings
+// ---------------------------------------------------------------------------
+
+export interface PersonalizationRule {
+  id: string;
+  name: string;
+  body: string;
+  enabled: boolean;
+  source: 'manual' | 'imported' | 'model';
+}
+
+export interface PersonalizationSkill {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  source: 'manual' | 'imported' | 'model';
+}
+
+export interface PersonalizationSettings {
+  memoryAutoSave: boolean;
+  memorySaveMode: 'conservative' | 'balanced' | 'aggressive';
+  memoryReviewBeforeSave: boolean;
+  rules: PersonalizationRule[];
+  skills: PersonalizationSkill[];
+}
+
+export const personalizationSettings =
+  (hmrRestore('personalizationSettings') as
+    | PersistentSetting<PersonalizationSettings>
+    | undefined) ??
+  new PersistentSetting<PersonalizationSettings>('personalization_settings', {
+    memoryAutoSave: true,
+    memoryReviewBeforeSave: true,
+    memorySaveMode: 'balanced',
+    rules: [
+      {
+        body: 'Keep answers direct, practical, and grounded in the current workspace.',
+        enabled: true,
+        id: 'default-directness',
+        name: 'Direct workspace help',
+        source: 'manual'
+      }
+    ],
+    skills: []
+  });
+hmrPreserve('personalizationSettings', () => personalizationSettings);
 
 // ---------------------------------------------------------------------------
 // EditorSettings

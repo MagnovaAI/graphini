@@ -22,18 +22,19 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { z } from 'zod';
 import { resolveIconForNode } from './icon-resolver';
+import {
+  targetMetadata,
+  targetTabNameSchema,
+  validateCodeTarget,
+  type ToolContext
+} from './context';
 
 const execFileAsync = promisify(execFile);
 
-interface ToolContext {
-  modelId?: string;
-  sessionId: string;
-}
-
-export function createCodePatchTool({ modelId, sessionId }: ToolContext) {
+export function createCodePatchTool({ modelId, sessionId, target }: ToolContext) {
   return tool({
     description:
-      'Patch the current non-Mermaid code artifact by replacing a 1-based line range. Use for JSON, YAML, TypeScript, JavaScript, CSS, HTML, config, and other code. Never use this for Mermaid diagrams.',
+      'Patch the active non-Mermaid code tab by replacing a 1-based line range. Use for JSON, YAML, Markdown, TypeScript, JavaScript, CSS, HTML, config, and other code. Requires targetTabName to match the active tab, and language must match JSON/YAML/Markdown tabs. Never use this for Mermaid diagrams.',
     inputSchema: z.object({
       content: z.string().min(1).describe('Replacement code for the selected line range'),
       endLine: z.number().int().min(1).describe('1-based ending line number'),
@@ -51,9 +52,20 @@ export function createCodePatchTool({ modelId, sessionId }: ToolContext) {
         ])
         .optional()
         .describe('Language of the code artifact'),
-      startLine: z.number().int().min(1).describe('1-based starting line number')
+      startLine: z.number().int().min(1).describe('1-based starting line number'),
+      targetTabName: targetTabNameSchema
     }),
-    execute: async ({ startLine, endLine, content, language }) => {
+    execute: async ({ startLine, endLine, content, language, targetTabName }) => {
+      const resolvedLanguage =
+        language ??
+        (target?.activeEngine === 'json' ||
+        target?.activeEngine === 'yaml' ||
+        target?.activeEngine === 'markdown'
+          ? target.activeEngine
+          : detectCodeLanguage(codeStore.get(sessionId) || ''));
+      const targetError = validateCodeTarget(target, resolvedLanguage, targetTabName);
+      if (targetError) return { ...targetError, success: false };
+
       const current = codeStore.get(sessionId) || '';
       const lines = current.split('\n');
 
@@ -76,13 +88,14 @@ export function createCodePatchTool({ modelId, sessionId }: ToolContext) {
       const unescapedContent = content.replace(/\\n/g, '\n');
       lines.splice(startLine - 1, endLine - startLine + 1, ...unescapedContent.split('\n'));
       const nextCode = lines.join('\n');
-      const validation = validateCodeArtifact(nextCode, language ?? detectCodeLanguage(nextCode));
+      const validation = validateCodeArtifact(nextCode, resolvedLanguage);
       if (!validation.valid) return { success: false, error: validation.error };
 
       codeStore.set(sessionId, nextCode);
       return {
+        ...targetMetadata(target, targetTabName),
         content: nextCode,
-        language: language ?? detectCodeLanguage(nextCode),
+        language: resolvedLanguage,
         lines: nextCode.split('\n').length,
         success: true
       };

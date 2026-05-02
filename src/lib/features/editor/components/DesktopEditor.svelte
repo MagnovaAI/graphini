@@ -12,10 +12,10 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
 
-  const {
+  let {
     onUpdate,
     language = 'mermaid'
-  }: EditorProps & { language?: 'mermaid' | 'json' | 'yaml' } = $props();
+  }: EditorProps & { language?: 'mermaid' | 'json' | 'yaml' | 'markdown' } = $props();
 
   let divElement: HTMLDivElement | undefined = $state();
   let editor: monaco.editor.IStandaloneCodeEditor | undefined;
@@ -198,20 +198,23 @@
   const jsonUri = monaco.Uri.parse('internal://config.json');
   const jsonDiagramUri = monaco.Uri.parse('internal://diagram.json');
   const mermaidUri = monaco.Uri.parse('internal://mermaid.mmd');
+  const markdownUri = monaco.Uri.parse('internal://document.md');
   const yamlUri = monaco.Uri.parse('internal://diagram.yaml');
   const jsonModel =
     monaco.editor.getModel(jsonUri) ?? monaco.editor.createModel('', 'json', jsonUri);
   const jsonDiagramModel =
-    monaco.editor.getModel(jsonDiagramUri) ??
-    monaco.editor.createModel('', 'json', jsonDiagramUri);
+    monaco.editor.getModel(jsonDiagramUri) ?? monaco.editor.createModel('', 'json', jsonDiagramUri);
   const mermaidModel =
     monaco.editor.getModel(mermaidUri) ?? monaco.editor.createModel('', 'mermaid', mermaidUri);
+  const markdownModel =
+    monaco.editor.getModel(markdownUri) ?? monaco.editor.createModel('', 'markdown', markdownUri);
   const yamlModel =
     monaco.editor.getModel(yamlUri) ?? monaco.editor.createModel('', 'yaml', yamlUri);
 
   function getCodeModel(editorMode: string) {
     if (editorMode !== 'code') return jsonModel;
     if (language === 'json') return jsonDiagramModel;
+    if (language === 'markdown') return markdownModel;
     if (language === 'yaml') return yamlModel;
     return mermaidModel;
   }
@@ -342,6 +345,11 @@
         mermaidModel.dispose();
       } catch {
         // ignore disposal errors
+      }
+      try {
+        markdownModel.dispose();
+      } catch {
+        // Model may already be disposed by Monaco during HMR.
       }
       try {
         yamlModel.dispose();

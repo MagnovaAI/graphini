@@ -169,6 +169,18 @@
     read: 'Checking',
     update: 'Updating'
   };
+  let artifactIconColor = $derived(
+    isError
+      ? 'bg-red-500/10 text-red-500'
+      : isRead
+        ? 'bg-blue-500/10 text-blue-500'
+        : 'bg-emerald-500/10 text-emerald-500'
+  );
+  let artifactSummary = $derived.by(() => {
+    if (isStreaming) return operationLabel[operation] || 'Running';
+    if (isError) return `${errors.length} error${errors.length !== 1 ? 's' : ''} found`;
+    return `${language.toUpperCase()} · ${lineCount}L`;
+  });
 
   // Syntax highlighting for mermaid — uses placeholder tokens to avoid regex cascading
   function highlightLine(text: string): string {
@@ -215,36 +227,25 @@
 
 <div
   class={[
-    'artifact-container my-1.5 overflow-hidden rounded-lg border shadow-sm transition-all duration-200',
+    'artifact-container group my-1.5 overflow-hidden rounded-lg border transition-all duration-200',
     isError
-      ? 'border-red-500/30 bg-red-500/[0.03] dark:border-red-400/20 dark:bg-red-500/[0.04]'
-      : isRead
-        ? 'border-amber-500/25 bg-card dark:bg-card'
-        : isStreaming
-          ? 'border-primary/30 bg-card'
-          : 'border-border/40 bg-card',
-    isStreaming && !isRead && 'artifact-streaming',
-    !isStreaming && code.length > 0 && !isRead && 'artifact-complete'
+      ? 'border-border bg-muted/20'
+      : isStreaming
+        ? 'border-border bg-muted/30'
+        : 'border-border bg-muted/20 hover:border-foreground/10'
   ]}>
   <!-- Header -->
   <button
     type="button"
     onclick={() => (isCollapsed = !isCollapsed)}
+    aria-expanded={!isCollapsed}
     class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30">
     <!-- Icon -->
-    <div
-      class="flex size-5 shrink-0 items-center justify-center rounded-md
-        {isError
-        ? 'bg-red-500/15 text-red-600 dark:text-red-400'
-        : isRead
-          ? 'bg-amber-500/10 text-amber-500'
-          : isStreaming
-            ? 'bg-blue-500/10 text-blue-500'
-            : 'bg-emerald-500/10 text-emerald-500'}">
+    <div class="flex size-5 shrink-0 items-center justify-center rounded-md {artifactIconColor}">
       {#if isError}
-        <Eye class="size-3 text-red-500" />
-      {:else if isRead}
         <Eye class="size-3" />
+      {:else if isRead}
+        <Eye class="size-3 {isStreaming ? 'animate-pulse' : ''}" />
       {:else if isStreaming}
         <Sparkles class="size-3 animate-pulse" />
       {:else}
@@ -254,19 +255,11 @@
 
     <!-- Title -->
     <span
-      class="flex-1 text-xs font-medium
-        {isError
-        ? 'text-red-700 dark:text-red-300'
-        : isStreaming
-          ? 'text-blue-700 dark:text-blue-300'
-          : 'text-muted-foreground'}">
-      {#if isStreaming}
-        {operationLabel[operation] || 'Generating'}
-      {:else if isError}
-        {errors.length} error{errors.length !== 1 ? 's' : ''} found
-      {:else}
-        {title} · {language.toUpperCase()} · {lineCount}L
-      {/if}
+      class="flex-1 text-xs font-medium {isStreaming
+        ? 'text-foreground'
+        : 'text-muted-foreground'}">
+      <span>{title}</span>
+      <span class="ml-1 text-muted-foreground/70">· {artifactSummary}</span>
       {#if isRead && readFrom && readTo}
         <span
           class="ml-1 rounded bg-muted/60 px-1 py-0.5 text-[9px] font-normal text-muted-foreground/60">
@@ -279,15 +272,15 @@
 
     <!-- Streaming dots -->
     {#if isStreaming}
-      <div class="flex items-center gap-0.5">
+      <div class="flex items-center gap-0.5" aria-live="polite">
         <span
-          class="inline-block size-1 animate-pulse rounded-full bg-blue-500 [animation-delay:0ms]"
+          class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:0ms]"
         ></span>
         <span
-          class="inline-block size-1 animate-pulse rounded-full bg-blue-500 [animation-delay:150ms]"
+          class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]"
         ></span>
         <span
-          class="inline-block size-1 animate-pulse rounded-full bg-blue-500 [animation-delay:300ms]"
+          class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]"
         ></span>
       </div>
     {/if}
@@ -315,7 +308,7 @@
   {#if !isCollapsed}
     <div
       bind:this={codeContainer}
-      class="artifact-code-body relative overflow-auto transition-all duration-200"
+      class="artifact-code-body relative overflow-auto transition-[max-height] duration-150"
       style="max-height: {isStreaming ? '300px' : '250px'};">
       {#if showDiffView}
         <!-- Diff-only view: show only changed regions -->
@@ -430,7 +423,7 @@
     <div
       class="border-t border-border/30 px-3 py-1.5 font-mono text-[10px] text-muted-foreground/70">
       {code.split('\n').slice(0, 1).join(' ').substring(0, 60)}{code.split('\n').length > 1
-        ? '...'
+        ? '…'
         : ''}
     </div>
   {/if}
@@ -472,9 +465,6 @@
   /* Streaming glow border */
   .artifact-streaming {
     border-color: hsl(var(--primary) / 0.3);
-    box-shadow:
-      0 0 0 1px hsl(var(--primary) / 0.05),
-      0 2px 8px hsl(var(--primary) / 0.08);
   }
 
   .artifact-complete {

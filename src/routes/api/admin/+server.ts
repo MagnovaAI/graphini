@@ -7,6 +7,7 @@ import { requireAdmin } from '$lib/server/admin/auth';
 import { handleAdminGet } from '$lib/server/admin/get-actions';
 import { getCache } from '$lib/server/cache';
 import {
+  setRuntimeAnthropicAuthToken,
   setRuntimeAnthropicApiKey,
   setRuntimeOpenAiApiKey,
   setRuntimeOpenRouterApiKey
@@ -422,7 +423,8 @@ export const POST: RequestHandler = async ({ request }) => {
         return json({ success: true });
       }
 
-      case 'importOpenRouterModel': {
+      case 'importOpenRouterModel':
+      case 'importEnabledModel': {
         const { modelData: orModelData } = body;
         if (!orModelData || !orModelData.model_id || !orModelData.model_name)
           return json(
@@ -470,6 +472,10 @@ export const POST: RequestHandler = async ({ request }) => {
         const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
         const provider =
           typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '';
+        const credentialType =
+          typeof body.credentialType === 'string'
+            ? body.credentialType.trim().toLowerCase()
+            : 'api_key';
         const supportedProviders = new Set(['anthropic', 'openai', 'openrouter']);
         if (!supportedProviders.has(provider)) {
           return json(
@@ -477,18 +483,38 @@ export const POST: RequestHandler = async ({ request }) => {
             { status: 400 }
           );
         }
+        if (credentialType !== 'api_key' && credentialType !== 'auth_token') {
+          return json(
+            { success: false, error: 'credentialType must be api_key or auth_token' },
+            { status: 400 }
+          );
+        }
+        if (credentialType === 'auth_token' && provider !== 'anthropic') {
+          return json(
+            { success: false, error: 'OAuth bearer tokens are only supported for Anthropic' },
+            { status: 400 }
+          );
+        }
         if (!apiKey) {
           return json({ success: false, error: 'apiKey required' }, { status: 400 });
         }
 
-        await settingsManager.set(null, 'ai_provider', `${provider}_api_key`, apiKey, {
-          description: `${provider} API key used for server-side AI requests`,
+        const settingKey =
+          credentialType === 'auth_token' ? `${provider}_auth_token` : `${provider}_api_key`;
+        await settingsManager.set(null, 'ai_provider', settingKey, apiKey, {
+          description:
+            credentialType === 'auth_token'
+              ? `${provider} OAuth/OAT bearer token used for server-side AI requests`
+              : `${provider} API key used for server-side AI requests`,
           isSensitive: true
         });
-        if (provider === 'anthropic') setRuntimeAnthropicApiKey(apiKey);
+        if (provider === 'anthropic' && credentialType === 'auth_token')
+          setRuntimeAnthropicAuthToken(apiKey);
+        if (provider === 'anthropic' && credentialType === 'api_key')
+          setRuntimeAnthropicApiKey(apiKey);
         if (provider === 'openai') setRuntimeOpenAiApiKey(apiKey);
         if (provider === 'openrouter') setRuntimeOpenRouterApiKey(apiKey);
-        await adminDashboard.logAction(null, 'set_provider_api_key', 'setting', provider);
+        await adminDashboard.logAction(null, 'set_provider_api_key', 'setting', settingKey);
         return json({ success: true });
       }
 

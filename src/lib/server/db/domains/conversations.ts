@@ -198,7 +198,43 @@ export async function createMessage(
       tokens_used: data.tokens_used ?? 0
     })
     .returning();
+  await touchConversation(db, data.conversation_id);
   return mapMessage(msg);
+}
+
+export async function createMessages(
+  db: NeonHttpDatabase<typeof schema>,
+  messages: {
+    conversation_id: string;
+    role: Message['role'];
+    content: string;
+    parts?: unknown;
+    model_used?: string;
+    tokens_used?: number;
+    credits_charged?: number;
+    metadata?: Record<string, unknown>;
+  }[]
+): Promise<Message[]> {
+  if (messages.length === 0) return [];
+
+  const rows = await db
+    .insert(schema.messages)
+    .values(
+      messages.map((message) => ({
+        content: message.content,
+        conversation_id: message.conversation_id,
+        credits_charged: message.credits_charged ?? 0,
+        metadata: message.metadata ?? {},
+        model_used: message.model_used ?? null,
+        parts: (message.parts as Record<string, unknown>) ?? null,
+        role: message.role,
+        tokens_used: message.tokens_used ?? 0
+      }))
+    )
+    .returning();
+
+  await touchConversation(db, messages[0].conversation_id);
+  return rows.map((row) => mapMessage(row));
 }
 
 export async function listMessages(
@@ -223,6 +259,16 @@ export async function deleteMessage(
   id: string
 ): Promise<void> {
   await db.delete(schema.messages).where(eq(schema.messages.id, id));
+}
+
+async function touchConversation(
+  db: NeonHttpDatabase<typeof schema>,
+  conversationId: string
+): Promise<void> {
+  await db
+    .update(schema.conversations)
+    .set({ updated_at: new Date() })
+    .where(eq(schema.conversations.id, conversationId));
 }
 
 // ── Snapshots ──────────────────────────────────────────────────────────────

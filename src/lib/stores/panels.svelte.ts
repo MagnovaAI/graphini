@@ -4,6 +4,7 @@ import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 // ── Types ──
 
 export type PanelId = 'canvas' | 'document' | 'code' | 'chat';
+export const VISIBLE_PANEL_SWITCHER_IDS: PanelId[] = ['code', 'chat'];
 
 export interface PanelConfig {
   id: PanelId;
@@ -19,15 +20,16 @@ export interface PanelConfig {
 // ── Defaults ──
 
 const DEFAULT_ORDER: PanelId[] = ['canvas', 'document', 'code', 'chat'];
+export const WORKSPACE_PANEL_ORDER: PanelId[] = ['canvas', 'document', 'code', 'chat'];
 
 const PANEL_DEFAULTS: Record<PanelId, Omit<PanelConfig, 'id'>> = {
   canvas: { flex: true, label: 'Canvas', maxWidth: 9999, minWidth: 200, visible: true, width: 0 },
-  document: { label: 'Document', maxWidth: 9999, minWidth: 220, visible: false, width: 400 },
-  code: { label: 'Code', maxWidth: 9999, minWidth: 220, visible: true, width: 350 },
+  document: { label: 'Markdown', maxWidth: 9999, minWidth: 220, visible: false, width: 400 },
+  code: { flex: true, label: 'Code', maxWidth: 9999, minWidth: 220, visible: true, width: 0 },
   chat: { label: 'Chat', maxWidth: 9999, minWidth: 220, visible: true, width: 380 }
 };
 
-const STORAGE_KEY = 'graphini_panels_v2';
+const STORAGE_KEY = 'graphini_panels_v4';
 const ORDER_STORAGE_KEY = 'graphini_panel_order_v1';
 
 // ── Server Sync ──
@@ -155,6 +157,11 @@ class PanelManager {
 
   reorder(newOrder: PanelId[]): void {
     this.order = newOrder;
+    this.saveOrder();
+  }
+
+  setWorkspaceOrder(): void {
+    this.order = [...WORKSPACE_PANEL_ORDER];
     this.saveOrder();
   }
 

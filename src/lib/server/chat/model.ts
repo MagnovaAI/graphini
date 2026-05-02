@@ -7,6 +7,11 @@ import type { LanguageModel, ProviderMetadata } from 'ai';
 let runtimeOpenRouterApiKey = '';
 let runtimeOpenAiApiKey = '';
 let runtimeAnthropicApiKey = '';
+let runtimeAnthropicAuthToken = '';
+
+export type ChatProvider = 'openrouter' | 'openai' | 'anthropic';
+export type ProviderCredentialType = 'api_key' | 'auth_token';
+const anthropicOAuthBetaHeader = 'oauth-2025-04-20';
 
 export async function loadOpenRouterApiKey() {
   runtimeOpenRouterApiKey =
@@ -32,8 +37,37 @@ export async function loadAnthropicApiKey() {
   return runtimeAnthropicApiKey;
 }
 
+export async function loadAnthropicAuthToken() {
+  runtimeAnthropicAuthToken =
+    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.ANTHROPIC_OAUTH_TOKEN ||
+    (await settingsManager.get<string | null>(null, 'ai_provider', 'anthropic_auth_token', null)) ||
+    '';
+  return runtimeAnthropicAuthToken;
+}
+
 export async function loadProviderApiKeys() {
-  await Promise.all([loadOpenRouterApiKey(), loadOpenAiApiKey(), loadAnthropicApiKey()]);
+  await Promise.all([
+    loadOpenRouterApiKey(),
+    loadOpenAiApiKey(),
+    loadAnthropicApiKey(),
+    loadAnthropicAuthToken()
+  ]);
+}
+
+export async function hasProviderCredential(provider: ChatProvider) {
+  if (provider === 'openrouter') return Boolean(await loadOpenRouterApiKey());
+  if (provider === 'openai') return Boolean(await loadOpenAiApiKey());
+  return Boolean((await loadAnthropicApiKey()) || (await loadAnthropicAuthToken()));
+}
+
+export function missingProviderCredentialMessage(provider: ChatProvider) {
+  const labelByProvider: Record<ChatProvider, string> = {
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    openrouter: 'OpenRouter'
+  };
+  return `${labelByProvider[provider]} API key is not set. Add your key in Settings > Models & Keys.`;
 }
 
 export function setRuntimeOpenRouterApiKey(apiKey: string) {
@@ -46,6 +80,10 @@ export function setRuntimeOpenAiApiKey(apiKey: string) {
 
 export function setRuntimeAnthropicApiKey(apiKey: string) {
   runtimeAnthropicApiKey = apiKey.trim();
+}
+
+export function setRuntimeAnthropicAuthToken(authToken: string) {
+  runtimeAnthropicAuthToken = authToken.trim();
 }
 
 function getOpenRouterApiKey() {
@@ -70,6 +108,38 @@ function getAnthropicApiKey() {
     throw new Error('ANTHROPIC_API_KEY is not set. Add it in Settings > Model Access.');
   }
   return apiKey;
+}
+
+function getAnthropicAuthToken() {
+  return (
+    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.ANTHROPIC_OAUTH_TOKEN ||
+    runtimeAnthropicAuthToken
+  );
+}
+
+function isAnthropicOAuthToken(token: string): boolean {
+  return token.startsWith('sk-ant-oat') || token.startsWith('sk-ant-oauth');
+}
+
+export function getAnthropicAuthHeaders(): Record<string, string> {
+  const authToken = getAnthropicAuthToken();
+  if (authToken) {
+    return {
+      'anthropic-beta': anthropicOAuthBetaHeader,
+      Authorization: `Bearer ${authToken}`
+    };
+  }
+
+  const apiKey = getAnthropicApiKey();
+  if (isAnthropicOAuthToken(apiKey)) {
+    return {
+      'anthropic-beta': anthropicOAuthBetaHeader,
+      Authorization: `Bearer ${apiKey}`
+    };
+  }
+
+  return { 'x-api-key': apiKey };
 }
 
 export function normalizeChatModelId(modelId: string, providerHint?: string) {
@@ -106,11 +176,11 @@ export function openrouterFastChat(modelId: string) {
   });
 
   return openrouter.chat(modelId, {
-    includeReasoning: false,
+    includeReasoning: true,
     reasoning: {
       enabled: true,
-      exclude: true,
-      effort: 'low'
+      exclude: false,
+      effort: 'medium'
     }
   });
 }
@@ -124,8 +194,14 @@ export function openaiChat(modelId: string) {
 }
 
 export function anthropicChat(modelId: string) {
+  const authHeaders = getAnthropicAuthHeaders();
   const anthropic = createAnthropic({
-    apiKey: getAnthropicApiKey()
+    ...(authHeaders.Authorization
+      ? { authToken: authHeaders.Authorization.replace(/^Bearer\s+/i, '') }
+      : { apiKey: authHeaders['x-api-key'] }),
+    headers: authHeaders['anthropic-beta']
+      ? { 'anthropic-beta': authHeaders['anthropic-beta'] }
+      : undefined
   });
 
   return anthropic(modelId);
@@ -138,6 +214,10 @@ export function resolveChatModel(modelId: string, providerHint?: string): Langua
   return openrouterFastChat(normalized.modelId);
 }
 
+function supportsAnthropicAdaptiveThinking(modelId: string): boolean {
+  return !/\bhaiku\b/i.test(modelId);
+}
+
 export function getChatProviderOptions(
   modelId: string,
   providerHint?: string
@@ -146,12 +226,21 @@ export function getChatProviderOptions(
   if (normalized.provider === 'openai') {
     return {
       openai: {
-        reasoningEffort: 'low' as const,
+        reasoningEffort: 'medium' as const,
+        reasoningSummary: 'auto' as const,
         store: false
       }
     };
   }
   if (normalized.provider === 'anthropic') {
+    if (!supportsAnthropicAdaptiveThinking(normalized.modelId)) {
+      return {
+        anthropic: {
+          toolStreaming: true
+        }
+      };
+    }
+
     return {
       anthropic: {
         contextManagement: {
@@ -162,8 +251,8 @@ export function getChatProviderOptions(
             }
           ]
         },
-        sendReasoning: false,
-        thinking: { display: 'omitted' as const, type: 'adaptive' as const },
+        sendReasoning: true,
+        thinking: { display: 'summarized' as const, type: 'adaptive' as const },
         toolStreaming: true
       }
     };

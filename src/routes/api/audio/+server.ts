@@ -5,7 +5,7 @@
 
 import { getDb } from '$lib/server/db';
 import { loadOpenRouterApiKey } from '$lib/server/chat/model';
-import { stateManager } from '$lib/server/state-manager';
+import { settingsManager, stateManager } from '$lib/server/state-manager';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import dotenv from 'dotenv';
 
@@ -13,7 +13,23 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = 'gemini-2.0-flash-lite';
+const DEFAULT_VOICE_MODEL = 'google/gemini-2.0-flash-001';
+const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash-lite';
+
+async function loadVoiceModel(): Promise<string> {
+  const configured = await settingsManager.get<string | null>(null, 'voice', 'model', null);
+  return configured?.trim() || DEFAULT_VOICE_MODEL;
+}
+
+function normalizeOpenRouterModel(model: string): string {
+  return model.startsWith('openrouter/') ? model.slice('openrouter/'.length) : model;
+}
+
+function normalizeGeminiModel(model: string): string {
+  if (model.startsWith('google/')) return model.slice('google/'.length);
+  if (model.startsWith('gemini/')) return model.slice('gemini/'.length);
+  return model;
+}
 
 // Auto-register internal models so they appear in admin panel
 let modelsRegistered = false;
@@ -64,10 +80,14 @@ async function ensureInternalModelsRegistered() {
   }
 }
 
-async function transcribeWithGemini(base64Audio: string, mimeType: string): Promise<string | null> {
+async function transcribeWithGemini(
+  base64Audio: string,
+  mimeType: string,
+  model = GEMINI_FALLBACK_MODEL
+): Promise<string | null> {
   if (!GEMINI_API_KEY) return null;
   try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${normalizeGeminiModel(model)}:generateContent?key=${GEMINI_API_KEY}`;
     const res = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -99,7 +119,8 @@ async function transcribeWithGemini(base64Audio: string, mimeType: string): Prom
 
 async function transcribeWithOpenRouter(
   base64Audio: string,
-  mimeType: string
+  mimeType: string,
+  model: string
 ): Promise<string | null> {
   const openRouterApiKey = await loadOpenRouterApiKey();
   if (!openRouterApiKey) return null;
@@ -112,7 +133,7 @@ async function transcribeWithOpenRouter(
         Authorization: `Bearer ${openRouterApiKey}`
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: normalizeOpenRouterModel(model),
         messages: [
           {
             role: 'user',
@@ -159,11 +180,19 @@ export const POST: RequestHandler = async ({ request }) => {
     const arrayBuffer = await audioFile.arrayBuffer();
     const base64Audio = Buffer.from(arrayBuffer).toString('base64');
     const mimeType = audioFile.type || 'audio/webm';
+    const voiceModel = await loadVoiceModel();
 
-    // Try OpenRouter first (more reliable), fall back to Gemini
-    let text = await transcribeWithOpenRouter(base64Audio, mimeType);
+    const prefersGeminiDirect =
+      voiceModel.startsWith('gemini-') || voiceModel.startsWith('gemini/');
+
+    let text = prefersGeminiDirect
+      ? await transcribeWithGemini(base64Audio, mimeType, voiceModel)
+      : null;
     if (text === null) {
-      text = await transcribeWithGemini(base64Audio, mimeType);
+      text = await transcribeWithOpenRouter(base64Audio, mimeType, voiceModel);
+    }
+    if (text === null) {
+      text = await transcribeWithGemini(base64Audio, mimeType, GEMINI_FALLBACK_MODEL);
     }
 
     if (text === null) {

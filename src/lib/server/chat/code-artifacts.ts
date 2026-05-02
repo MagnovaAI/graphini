@@ -16,6 +16,7 @@ export function detectCodeLanguage(code: string): CodeArtifactLanguage {
   if (!trimmed) return 'text';
   if (/^---\n/.test(trimmed) || /^[\w-]+:\s/m.test(trimmed)) return 'yaml';
   if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || trimmed.startsWith('[')) return 'json';
+  if (/^(#{1,6}\s|[-*]\s|\d+\.\s|>\s|```)/m.test(trimmed)) return 'markdown';
   if (trimmed.includes('<script') && trimmed.includes('</script>')) return 'svelte';
   if (/^<!doctype html/i.test(trimmed) || /<\/?[a-z][\s\S]*>/i.test(trimmed)) return 'html';
   if (/\b(import|export|interface|type)\b/.test(trimmed)) return 'typescript';

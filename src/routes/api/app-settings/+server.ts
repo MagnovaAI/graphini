@@ -9,7 +9,8 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 
 // Whitelisted public settings that any user can read
 const PUBLIC_SETTINGS: Record<string, string[]> = {
-  prompt_enhancer: ['model']
+  prompt_enhancer: ['model'],
+  voice: ['model']
 };
 
 export const GET: RequestHandler = async ({ url }) => {

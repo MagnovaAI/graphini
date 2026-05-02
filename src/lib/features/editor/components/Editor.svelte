@@ -11,7 +11,7 @@
 
   interface Props {
     isMobile?: boolean;
-    language?: 'mermaid' | 'json' | 'yaml';
+    language?: 'mermaid' | 'json' | 'yaml' | 'markdown';
     onUpdate?: (code: string) => void;
     sendChatMessage?: (message: string, options?: { isRepair?: boolean }) => Promise<boolean>;
     showMermaidError?: boolean;

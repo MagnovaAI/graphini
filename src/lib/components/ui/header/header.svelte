@@ -4,25 +4,7 @@
   import { resolve } from '$app/paths';
   import { authStore } from '$lib/stores/auth.svelte.js';
   import { onMount } from 'svelte';
-  import {
-    Github,
-    Code2,
-    Globe,
-    Layers,
-    UserPlus,
-    BarChart3,
-    Plug,
-    Users,
-    Star,
-    Handshake,
-    FileText,
-    Shield,
-    RotateCcw,
-    Leaf,
-    HelpCircle,
-    Menu,
-    X
-  } from 'lucide-svelte';
+  import { ArrowRight, Github, LogIn, Menu, X } from 'lucide-svelte';
 
   let scrolled = $state(false);
   let mobileOpen = $state(false);
@@ -44,136 +26,66 @@
     }
   });
 
-  const productLinks = [
-    {
-      title: 'AI Diagrams',
-      href: '/dashboard',
-      description: 'Generate diagrams from plain English',
-      icon: Code2
-    },
-    {
-      title: 'Infinite Canvas',
-      href: '/dashboard',
-      description: 'Pan, zoom, and arrange freely',
-      icon: Globe
-    },
-    {
-      title: 'Workspaces',
-      href: '/dashboard',
-      description: 'Organize and manage your diagrams',
-      icon: Layers
-    },
-    {
-      title: 'Collaboration',
-      href: '/dashboard',
-      description: 'Work together in real-time',
-      icon: UserPlus
-    },
-    {
-      title: 'Export & Share',
-      href: '/dashboard',
-      description: 'SVG, PNG, or raw Mermaid code',
-      icon: BarChart3
-    },
-    {
-      title: 'API',
-      href: 'https://github.com/omkarbhad/graphini',
-      description: 'Build custom integrations',
-      icon: Plug
-    }
-  ];
-
-  const companyLinks = [
-    {
-      title: 'About Magnova',
-      href: 'https://magnova.ai',
-      description: 'Learn more about our mission',
-      icon: Users
-    },
-    {
-      title: 'Open Source',
-      href: 'https://github.com/omkarbhad/graphini',
-      description: 'Fork it, extend it, self-host it',
-      icon: Star
-    },
-    {
-      title: 'Contributing',
-      href: 'https://github.com/omkarbhad/graphini/blob/main/CONTRIBUTING.md',
-      description: 'Help us build Graphini',
-      icon: Handshake
-    }
-  ];
-
-  const companyLinks2 = [
-    {
-      title: 'MIT License',
-      href: 'https://github.com/omkarbhad/graphini/blob/main/LICENSE',
-      icon: FileText
-    },
-    {
-      title: 'Security',
-      href: 'https://github.com/omkarbhad/graphini/blob/main/SECURITY.md',
-      icon: Shield
-    },
-    {
-      title: 'Changelog',
-      href: 'https://github.com/omkarbhad/graphini/blob/main/CHANGELOG.md',
-      icon: RotateCcw
-    },
-    { title: 'Blog', href: 'https://magnova.ai', icon: Leaf },
-    { title: 'Help', href: 'https://github.com/omkarbhad/graphini/issues', icon: HelpCircle }
+  const navLinks = [
+    { title: 'Workspace', href: '/dashboard' },
+    { title: 'GitHub', href: 'https://github.com/omkarbhad/graphini', external: true }
   ];
 </script>
 
 <header
-  class={cn('sticky top-0 z-50 w-full border-b border-transparent', {
-    'border-border bg-background/95 backdrop-blur-lg supports-[backdrop-filter]:bg-background/50':
+  class={cn('sticky top-0 z-50 w-full border-b transition-colors', {
+    'border-transparent bg-background': !scrolled,
+    'border-border bg-background/95 shadow-[0_1px_0_color-mix(in_oklch,var(--color-border),transparent_35%)] supports-[backdrop-filter]:bg-background/90':
       scrolled
   })}>
-  <nav class="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4">
-    <div class="flex items-center gap-5">
-      <a href={resolve('/')} class="flex items-center gap-2 rounded-md p-2 hover:bg-accent">
-        <img src="/brand/logo.png" alt="Graphini" class="size-7 rounded-lg" />
-        <span class="text-sm font-semibold tracking-tight">Graphini</span>
+  <nav class="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-5 md:px-8">
+    <div class="flex min-w-0 items-center gap-6">
+      <a
+        href={resolve('/')}
+        class="flex min-w-0 items-center gap-2 rounded-md py-1 pr-2 text-foreground transition-colors outline-none hover:text-foreground/80 focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <img src="/brand/logo.png" alt="" class="size-7 rounded-md" />
+        <span class="truncate text-sm font-semibold">Graphini</span>
       </a>
 
-      <!-- Desktop nav links -->
-      <div class="hidden items-center gap-1 md:flex">
-        <a
-          href={resolve('/dashboard')}
-          class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-          Dashboard
-        </a>
-        <a
-          href="https://github.com/omkarbhad/graphini"
-          target="_blank"
-          rel="noopener"
-          class="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-          <Github class="size-4" />
-          GitHub
-        </a>
+      <div class="hidden items-center gap-1 md:flex" aria-label="Primary navigation">
+        {#each navLinks as link (link.title)}
+          <a
+            href={link.external ? link.href : resolve(link.href as '/dashboard')}
+            target={link.external ? '_blank' : undefined}
+            rel={link.external ? 'noopener noreferrer' : undefined}
+            class="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
+            {#if link.title === 'GitHub'}
+              <Github class="size-4" />
+            {/if}
+            {link.title}
+          </a>
+        {/each}
       </div>
     </div>
 
-    <!-- Desktop buttons -->
     <div class="hidden items-center gap-2 md:flex">
       {#if authStore.isLoggedIn}
         <Button variant="outline" href={resolve('/dashboard')}>Dashboard</Button>
       {:else}
-        <Button variant="outline" onclick={() => authStore.login()}>Sign In</Button>
+        <Button variant="ghost" onclick={() => authStore.login()}>
+          <LogIn class="size-4" />
+          Sign in
+        </Button>
       {/if}
-      <Button href={resolve('/dashboard')}>Get Started</Button>
+      <Button href={resolve('/dashboard')}>
+        Open app
+        <ArrowRight class="size-4" />
+      </Button>
     </div>
 
-    <!-- Mobile menu toggle -->
     <Button
-      variant="outline"
+      variant="ghost"
       size="icon"
       class="md:hidden"
       onclick={() => (mobileOpen = !mobileOpen)}
       aria-expanded={mobileOpen}
       aria-controls="mobile-menu"
-      aria-label="Toggle menu">
+      aria-label={mobileOpen ? 'Close menu' : 'Open menu'}>
       {#if mobileOpen}
         <X class="size-5" />
       {:else}
@@ -182,67 +94,31 @@
     </Button>
   </nav>
 
-  <!-- Mobile menu -->
   {#if mobileOpen}
-    <div
-      id="mobile-menu"
-      class="fixed inset-x-0 top-14 bottom-0 z-40 flex flex-col overflow-y-auto border-y bg-background/95 backdrop-blur-lg supports-[backdrop-filter]:bg-background/50 md:hidden">
-      <div class="flex size-full animate-in flex-col justify-between gap-2 p-4 ease-out zoom-in-97">
-        <div class="flex w-full flex-col gap-y-2">
-          <span class="text-sm font-medium text-muted-foreground">Product</span>
-          {#each productLinks as link (link.title)}
+    <div id="mobile-menu" class="fixed inset-x-0 top-14 z-40 border-y bg-background md:hidden">
+      <div class="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-4">
+        <div class="grid gap-1" aria-label="Mobile navigation">
+          {#each navLinks as link (link.title)}
             <a
-              href={link.href.startsWith('http') ? link.href : resolve(link.href as '/dashboard')}
-              class="flex flex-row items-center gap-x-2 rounded-md p-2 hover:bg-accent"
+              href={link.external ? link.href : resolve(link.href as '/dashboard')}
+              target={link.external ? '_blank' : undefined}
+              rel={link.external ? 'noopener noreferrer' : undefined}
+              class="flex min-h-11 items-center justify-between rounded-md px-2 text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50"
               onclick={() => (mobileOpen = false)}>
-              <div
-                class="flex aspect-square size-12 items-center justify-center rounded-md border bg-background/40 shadow-sm">
-                <link.icon class="size-5 text-foreground" />
-              </div>
-              <div class="flex flex-col items-start justify-center">
-                <span class="text-sm font-medium">{link.title}</span>
-                {#if link.description}
-                  <span class="text-xs text-muted-foreground">{link.description}</span>
+              <span class="inline-flex items-center gap-2">
+                {#if link.title === 'GitHub'}
+                  <Github class="size-4 text-muted-foreground" />
                 {/if}
-              </div>
-            </a>
-          {/each}
-
-          <span class="mt-2 text-sm font-medium text-muted-foreground">Company</span>
-          {#each companyLinks as link (link.title)}
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="flex flex-row items-center gap-x-2 rounded-md p-2 hover:bg-accent"
-              onclick={() => (mobileOpen = false)}>
-              <div
-                class="flex aspect-square size-12 items-center justify-center rounded-md border bg-background/40 shadow-sm">
-                <link.icon class="size-5 text-foreground" />
-              </div>
-              <div class="flex flex-col items-start justify-center">
-                <span class="text-sm font-medium">{link.title}</span>
-                {#if link.description}
-                  <span class="text-xs text-muted-foreground">{link.description}</span>
-                {/if}
-              </div>
-            </a>
-          {/each}
-
-          {#each companyLinks2 as link (link.title)}
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="flex flex-row items-center gap-x-2 rounded-md p-2 hover:bg-accent"
-              onclick={() => (mobileOpen = false)}>
-              <link.icon class="size-4 text-foreground" />
-              <span class="text-sm font-medium">{link.title}</span>
+                {link.title}
+              </span>
+              {#if link.external}
+                <span class="text-xs text-muted-foreground">External</span>
+              {/if}
             </a>
           {/each}
         </div>
 
-        <div class="flex flex-col gap-2">
+        <div class="grid gap-2 border-t pt-4">
           {#if authStore.isLoggedIn}
             <Button variant="outline" class="w-full bg-transparent" href={resolve('/dashboard')}>
               Dashboard
@@ -252,10 +128,14 @@
               variant="outline"
               class="w-full bg-transparent"
               onclick={() => authStore.login()}>
-              Sign In
+              <LogIn class="size-4" />
+              Sign in
             </Button>
           {/if}
-          <Button class="w-full" href={resolve('/dashboard')}>Get Started</Button>
+          <Button class="w-full" href={resolve('/dashboard')}>
+            Open app
+            <ArrowRight class="size-4" />
+          </Button>
         </div>
       </div>
     </div>

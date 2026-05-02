@@ -49,16 +49,26 @@
   }
 
   function mermaidPreview(node: HTMLElement, code: string | null) {
-    if (!code?.trim()) return;
     initMermaid();
     let cancelled = false;
-    const id = `preview-${Math.random().toString(36).slice(2, 9)}`;
-    mermaid
-      .render(id, code)
-      .then(({ svg }) => {
+
+    async function renderPreview(source: string | null) {
+      node.innerHTML = '';
+      if (!source?.trim()) return;
+
+      const originalConsoleError = console.error;
+      const originalConsoleWarn = console.warn;
+      try {
+        console.error = () => {};
+        console.warn = () => {};
+        await mermaid.parse(source);
+
+        const id = `preview-${Math.random().toString(36).slice(2, 9)}`;
+        const { svg } = await mermaid.render(id, source);
         if (cancelled) return;
+        if (svg.includes('Syntax error in text') || svg.includes('mermaid version')) return;
+
         node.innerHTML = svg;
-        // Scale SVG to fit
         const svgEl = node.querySelector('svg');
         if (svgEl) {
           svgEl.style.maxWidth = '100%';
@@ -66,11 +76,20 @@
           svgEl.style.width = 'auto';
           svgEl.style.height = 'auto';
         }
-      })
-      .catch(() => {
-        // Render failed — leave preview empty (icon fallback stays)
-      });
+      } catch {
+        node.innerHTML = '';
+      } finally {
+        console.error = originalConsoleError;
+        console.warn = originalConsoleWarn;
+      }
+    }
+
+    void renderPreview(code);
+
     return {
+      update(nextCode: string | null) {
+        void renderPreview(nextCode);
+      },
       destroy() {
         cancelled = true;
       }
@@ -95,6 +114,7 @@
   let activeFilter = $state('all');
   let deleteTarget = $state<{ id: string; title: string } | null>(null);
   let deleting = $state(false);
+  let createError = $state<string | null>(null);
   let searchTimeout: ReturnType<typeof setTimeout>;
   let mounted = $state(false);
   let searchFocused = $state(false);
@@ -210,14 +230,24 @@
   }
 
   async function handleNewWorkspace() {
+    if (creating) return;
+    createError = null;
+    if (!authStore.isInitialized) await authStore.init();
     if (!authStore.isLoggedIn) {
-      authStore.login();
+      authStore.login(window.location.href);
       return;
     }
     creating = true;
-    const ws = await workspaceStore.create(nextUntitledName(), 'mermaid');
-    creating = false;
-    if (ws) goto(resolve(`/workspace/${ws.id}`));
+    try {
+      const ws = await workspaceStore.create(nextUntitledName(), 'mermaid');
+      if (ws) {
+        await goto(resolve(`/workspace/${ws.id}`));
+        return;
+      }
+      createError = workspaceStore.error || 'Failed to create workspace';
+    } finally {
+      creating = false;
+    }
   }
 
   async function handleStar(ws: DiagramWorkspaceSummary) {
@@ -408,6 +438,12 @@
                 New
               </button>
             </div>
+          </div>
+        {/if}
+
+        {#if createError}
+          <div class="create-error" role="alert" in:fade={{ duration: 150 }}>
+            {createError}
           </div>
         {/if}
 
@@ -738,6 +774,17 @@
   }
   .new-btn:hover {
     opacity: 0.85;
+  }
+
+  .new-btn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+  }
+
+  .create-error {
+    @apply mb-5 rounded-lg px-3 py-2 text-[12px] font-medium text-red-500;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.18);
   }
 
   /* ── Auth Banner ── */

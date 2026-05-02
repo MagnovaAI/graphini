@@ -42,7 +42,7 @@ export class NeonAdapter implements DatabaseAdapter {
   public db: NeonHttpDatabase<typeof schema>;
 
   constructor(connectionString: string) {
-    const client = neon(connectionString);
+    const client = neon(connectionString, { disableWarningInBrowsers: true });
     this.db = drizzle(client, { schema });
   }
 
@@ -296,6 +296,21 @@ export class NeonAdapter implements DatabaseAdapter {
     metadata?: Record<string, unknown>;
   }): Promise<Message> {
     return conversationsDomain.createMessage(this.db, data);
+  }
+
+  async createMessages(
+    messages: {
+      conversation_id: string;
+      role: Message['role'];
+      content: string;
+      parts?: unknown;
+      model_used?: string;
+      tokens_used?: number;
+      credits_charged?: number;
+      metadata?: Record<string, unknown>;
+    }[]
+  ): Promise<Message[]> {
+    return conversationsDomain.createMessages(this.db, messages);
   }
 
   async listMessages(conversation_id: string, options?: PaginationOptions): Promise<Message[]> {

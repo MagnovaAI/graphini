@@ -22,28 +22,38 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { z } from 'zod';
 import { resolveIconForNode } from './icon-resolver';
+import {
+  targetMetadata,
+  targetTabNameSchema,
+  validateMermaidTarget,
+  type ToolContext
+} from './context';
 
 const execFileAsync = promisify(execFile);
 
-interface ToolContext {
-  modelId?: string;
-  sessionId: string;
+function normalizeMermaidToolContent(content: string): string {
+  return content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
 }
 
-export function createDiagramWriteTool({ modelId, sessionId }: ToolContext) {
+export function createDiagramWriteTool({ modelId, sessionId, target }: ToolContext) {
   return tool({
     description:
-      'Replace the entire diagram with new content. ONLY Mermaid diagram syntax is allowed. Do NOT write markdown, documentation, or prose here.',
+      'Replace the active Mermaid tab with new content. ONLY Mermaid diagram syntax is allowed. Requires targetTabName to match the active Mermaid tab. Do NOT write markdown, JSON, YAML, documentation, or prose here.',
     inputSchema: z.object({
       content: z
         .string()
         .describe(
           'Complete new Mermaid diagram content — must start with a valid diagram type (graph, flowchart, sequenceDiagram, classDiagram, etc.)'
-        )
+        ),
+      purpose: z.string().optional().describe('Short reason for creating this diagram artifact'),
+      targetTabName: targetTabNameSchema
     }),
-    execute: async ({ content }) => {
-      // Unescape \n to actual newlines
-      const unescapedContent = content.replace(/\\n/g, '\n');
+    execute: async ({ content, purpose, targetTabName }) => {
+      const targetError = validateMermaidTarget(target, targetTabName);
+      if (targetError) return targetError;
+
+      // Normalize common JSON-style escapes models sometimes emit literally.
+      const unescapedContent = normalizeMermaidToolContent(content);
       const trimmed = unescapedContent.trim();
 
       // Validate: must be one complete Mermaid document with one diagram root
@@ -67,9 +77,11 @@ export function createDiagramWriteTool({ modelId, sessionId }: ToolContext) {
 
       diagramStore.set(sessionId, unescapedContent);
       return {
-        success: true,
+        ...targetMetadata(target, targetTabName),
         lines: unescapedContent.split('\n').length,
-        content: unescapedContent
+        content: unescapedContent,
+        purpose,
+        success: true
       };
     }
   });

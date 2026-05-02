@@ -1,25 +1,10 @@
-import debounce from 'lodash-es/debounce';
-
-let shouldSync = true;
-let updater: () => void;
 let renderPromise: Promise<void> | undefined;
 let resolveRenderPromise: (() => void) | undefined;
-const renderDelay = 300;
-const slowRenderThreshold = 100;
-
-const debouncedRender = debounce(() => {
-  shouldSync = true;
-  updater();
-}, renderDelay);
 
 export const recordRenderTime = (renderTimeMs: number, updaterFunction: () => void): void => {
+  void renderTimeMs;
+  void updaterFunction;
   resolveRenderPromise?.();
-  updater = updaterFunction;
-  const isSlow = renderTimeMs > slowRenderThreshold;
-  if (!shouldSync) {
-    debouncedRender();
-  }
-  shouldSync = !isSlow;
 };
 
 export const shouldRefreshView = (): boolean => {
@@ -32,10 +17,7 @@ export const shouldRefreshView = (): boolean => {
     });
   }
 
-  if (!shouldSync) {
-    debouncedRender();
-  }
-  return shouldSync;
+  return true;
 };
 
 export const waitForRender = (): Promise<void> => {

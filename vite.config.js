@@ -39,7 +39,13 @@ export default defineConfig({
     }
   },
   envPrefix: ['MERMAID_', 'OPENROUTER_', 'OPENAI_', 'GEMINI_'],
-  server: { port: 3000, host: true },
+  server: {
+    host: true,
+    port: 3000,
+    watch: {
+      ignored: ['**/.vercel/**', '**/.svelte-kit/output/**', '**/.svelte-kit/generated/**']
+    }
+  },
   preview: { port: 3000, host: true },
   build: {
     chunkSizeWarningLimit: 1000

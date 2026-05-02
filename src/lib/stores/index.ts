@@ -9,10 +9,14 @@ export {
   editorSettings,
   getSessionId,
   getUserId,
+  personalizationSettings,
   setUserId,
   uiSettings,
   type AISettings,
   type EditorSettings,
+  type PersonalizationRule,
+  type PersonalizationSettings,
+  type PersonalizationSkill,
   type UISettings
 } from './settings.svelte';
 
@@ -38,4 +42,3 @@ export { TOOL_CATEGORIES, toolsStore, type ToolConfig } from './toolsStore.svelt
 
 // Workspace store (diagram workspace management)
 export { workspaceStore } from './workspace.svelte';
-

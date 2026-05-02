@@ -3,6 +3,10 @@ import { getDb } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 /** List conversations for the authenticated user */
 export const GET: RequestHandler = async ({ request, url }) => {
   try {
@@ -22,8 +26,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
     });
 
     return json({ conversations });
-  } catch (err: any) {
-    return json({ error: err?.message || 'Failed to list conversations' }, { status: 500 });
+  } catch (err: unknown) {
+    return json({ error: errorMessage(err, 'Failed to list conversations') }, { status: 500 });
   }
 };
 
@@ -37,11 +41,16 @@ export const DELETE: RequestHandler = async ({ request, url }) => {
     if (!id) return json({ error: 'Missing conversation id' }, { status: 400 });
 
     const db = getDb();
+    const conv = await db.getConversation(id);
+    if (!conv || conv.user_id !== user.id) {
+      return json({ error: 'Conversation not found' }, { status: 404 });
+    }
+
     await db.deleteConversation(id);
 
     return json({ success: true });
-  } catch (err: any) {
-    return json({ error: err?.message || 'Failed to delete conversation' }, { status: 500 });
+  } catch (err: unknown) {
+    return json({ error: errorMessage(err, 'Failed to delete conversation') }, { status: 500 });
   }
 };
 
@@ -61,7 +70,7 @@ export const POST: RequestHandler = async ({ request }) => {
     });
 
     return json({ conversation }, { status: 201 });
-  } catch (err: any) {
-    return json({ error: err?.message || 'Failed to create conversation' }, { status: 500 });
+  } catch (err: unknown) {
+    return json({ error: errorMessage(err, 'Failed to create conversation') }, { status: 500 });
   }
 };

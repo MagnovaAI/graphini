@@ -3,42 +3,41 @@
   import { Button } from '$lib/components/ui/button';
   import * as Dialog from '$lib/components/ui/dialog';
   import { Input } from '$lib/components/ui/input';
-  import {
-    adminFetch,
-    adminPost,
-    buildOpenRouterImportPayload,
-    ensureGeminiProvider,
-    mapProviderSettings,
-    normalizeModelId,
-    type ProviderOption
-  } from '$lib/components/settings/model-admin';
-  import { aiSettings, TOOL_CATEGORIES, toolsStore } from '$lib/stores';
+  import { adminFetch, adminPost } from '$lib/components/settings/model-admin';
+  import { aiSettings, personalizationSettings, TOOL_CATEGORIES, toolsStore } from '$lib/stores';
+  import { uiSettings, type UISettings } from '$lib/stores/settings.svelte';
   import { kv } from '$lib/stores/kvStore.svelte';
-  import {
-    allModelsStore,
-    favoriteModelsStore,
-    loadModelsFromAPI,
-    modelsLoadingStore,
-    selectedChatModelsStore
-  } from '$lib/stores/modelStore.svelte';
+  import { loadModelsFromAPI } from '$lib/stores/modelStore.svelte';
   import { downloadAppState } from '$lib/util/serialization/exportState';
   import {
     BookOpen,
+    Brain,
     Check,
     Download,
     EyeOff,
+    FileText,
+    KeyRound,
+    Library,
+    Mic,
     Pencil,
+    Palette,
+    Plus,
     Power,
     RefreshCw,
     RotateCcw,
     Save,
     Search,
+    ShieldCheck,
+    Monitor,
+    Moon,
+    Sun,
     ToggleLeft,
     ToggleRight,
     Trash2,
     Wrench
   } from 'lucide-svelte';
   import { onMount } from 'svelte';
+  import { setMode } from 'mode-watcher';
 
   // Memory state
   let memories = $state<{ key: string; value: string; savedAt: string }[]>([]);
@@ -100,49 +99,78 @@
 
   // Tools config (reactive via rune-based store)
   let toolsConfig = $derived(toolsStore.value);
+  let personalization = $derived(personalizationSettings.value);
 
-  // Local state for API key input
-  let apiKeyInput = $state('');
+  type SettingsTab = 'theme' | 'models' | 'voice' | 'tools' | 'rules' | 'memory';
+
+  const settingsTabs: {
+    id: SettingsTab;
+    label: string;
+    description: string;
+    icon: typeof Monitor;
+  }[] = [
+    { description: 'Theme and interface density', icon: Palette, id: 'theme', label: 'Theme' },
+    {
+      description: 'Search, keys, and enabled models',
+      icon: KeyRound,
+      id: 'models',
+      label: 'Models & Keys'
+    },
+    {
+      description: 'Speech transcription model',
+      icon: Mic,
+      id: 'voice',
+      label: 'Voice'
+    },
+    {
+      description: 'Tool availability by category',
+      icon: Wrench,
+      id: 'tools',
+      label: 'Tool Settings'
+    },
+    {
+      description: 'Rules and reusable skills',
+      icon: Library,
+      id: 'rules',
+      label: 'Rules & Skills'
+    },
+    { description: 'User memory preferences', icon: Brain, id: 'memory', label: 'Memory' }
+  ];
+
+  let activeTab = $state<SettingsTab>('theme');
+
+  type ModelSearchProvider = 'openrouter' | 'openai' | 'anthropic';
+  type ProviderCredential = 'api_key' | 'auth_token';
+
+  const modelSearchProviders: { label: string; value: ModelSearchProvider }[] = [
+    { label: 'OpenRouter', value: 'openrouter' },
+    { label: 'OpenAI', value: 'openai' },
+    { label: 'Anthropic', value: 'anthropic' }
+  ];
+
+  // Local state for provider credential input
   let anthropicApiKeyInput = $state('');
+  let anthropicAuthTokenInput = $state('');
   let openAiApiKeyInput = $state('');
   let openRouterApiKeyInput = $state('');
 
-  // Use new three-tier model system
-  // allModels, favoriteModels, selectedChatModels, loadingProviders are derived from stores below
-  let providers = $state<ProviderOption[]>([]);
   let enabledModels = $state<Record<string, any>[]>([]);
   let enabledModelsLoading = $state(false);
-  let openRouterModels = $state<Record<string, any>[]>([]);
-  let openRouterLoading = $state(false);
-  let openRouterSearch = $state('');
+  let modelSearchProvider = $state<ModelSearchProvider>('openrouter');
+  let providerModels = $state<Record<string, any>[]>([]);
+  let providerModelsLoading = $state(false);
+  let providerModelSearch = $state('');
   let modelAdminError = $state('');
   let modelAdminNotice = $state('');
   let apiKeySaving = $state(false);
+  let voiceModelInput = $state('google/gemini-2.0-flash-001');
+  let voiceSettingsLoading = $state(false);
+  let voiceSettingsSaving = $state(false);
 
-  // Critical fix: Sync API key input when provider changes
-  $effect(() => {
-    if (aiSettings.value?.provider) {
-      const keyField = `${aiSettings.value.provider}ApiKey`;
-      apiKeyInput = (aiSettings.value as any)[keyField] ?? '';
-    }
-  });
-
-  // Critical fix: Missing toggle favorite function
-  function toggleFavoriteModel(modelId: string) {
-    favoriteModelsStore.update((favs) =>
-      favs.includes(modelId) ? favs.filter((id) => id !== modelId) : [...favs, modelId]
-    );
-  }
-
-  // Reactive bindings to model stores (Svelte 5 runes)
-  let allModels = $derived(allModelsStore.value);
-  let favoriteModels = $derived(favoriteModelsStore.value);
-  let selectedChatModels = $derived(selectedChatModelsStore.value);
-  let loadingProviders = $derived(modelsLoadingStore.value);
-  let filteredOpenRouterModels = $derived.by(() => {
-    const q = openRouterSearch.toLowerCase().trim();
-    if (!q) return openRouterModels.slice(0, 80);
-    return openRouterModels
+  let filteredProviderModels = $derived.by(() => {
+    const q = providerModelSearch.toLowerCase().trim();
+    if (!q) return providerModels.slice(0, 80);
+    return providerModels
       .filter((model) =>
         [model.id, model.name, model.description, model.architecture?.modality]
           .filter(Boolean)
@@ -152,21 +180,7 @@
   });
 
   async function loadProvidersAndModels() {
-    // Load all models from admin
     await loadModelsFromAPI();
-
-    // Load providers separately since they're not in the shared store yet
-    try {
-      const providersRes = await fetch('/api/admin?action=providers');
-      const providersData = await providersRes.json();
-      if (providersData.success) {
-        providers = mapProviderSettings(providersData.data);
-      }
-    } catch (error) {
-      console.error('Failed to load providers:', error);
-    }
-
-    providers = ensureGeminiProvider(providers);
   }
 
   async function loadEnabledModels() {
@@ -181,15 +195,56 @@
     }
   }
 
-  async function loadOpenRouterModels() {
-    openRouterLoading = true;
+  function providerModelId(provider: ModelSearchProvider, modelId: string) {
+    return modelId.startsWith(`${provider}/`) ? modelId : `${provider}/${modelId}`;
+  }
+
+  function buildProviderImportPayload(provider: ModelSearchProvider, model: Record<string, any>) {
+    const fullId = providerModelId(provider, model.id);
+    const isFree = model.pricing?.prompt === '0' && model.pricing?.completion === '0';
+
+    return {
+      category: model.architecture?.modality || model.provider || 'General',
+      description: (model.description || '').slice(0, 160),
+      gems_per_message: isFree ? 1 : provider === 'anthropic' ? 4 : 2,
+      is_free: isFree,
+      max_tokens: model.contextWindow || model.context_length || 4000,
+      metadata: {
+        created: model.created,
+        pricing: model.pricing,
+        provider_search_id: model.id,
+        supported_parameters: model.supportedParameters || model.supported_parameters
+      },
+      model_id: fullId,
+      model_name: model.name || model.id,
+      provider,
+      tool_support:
+        provider === 'openrouter'
+          ? (model.supportedParameters || model.supported_parameters || []).includes('tools')
+          : true
+    };
+  }
+
+  async function loadProviderModels() {
+    providerModelsLoading = true;
     modelAdminError = '';
     try {
-      openRouterModels = (await adminFetch('openrouter_models')) || [];
+      const search = new URLSearchParams({
+        limit: '100',
+        provider: modelSearchProvider,
+        q: providerModelSearch.trim()
+      });
+      const res = await fetch(`/api/model-lab?${search}`, { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || `Failed to load ${modelSearchProvider} models`);
+      }
+      providerModels = data.data?.models || [];
     } catch (error) {
-      modelAdminError = error instanceof Error ? error.message : 'Failed to load OpenRouter models';
+      modelAdminError =
+        error instanceof Error ? error.message : `Failed to load ${modelSearchProvider} models`;
     } finally {
-      openRouterLoading = false;
+      providerModelsLoading = false;
     }
   }
 
@@ -218,17 +273,14 @@
     }
   }
 
-  async function importOpenRouterModel(model: Record<string, any>) {
-    const fullId = `openrouter/${model.id}`;
+  async function importProviderModel(model: Record<string, any>) {
+    const modelData = buildProviderImportPayload(modelSearchProvider, model);
     modelAdminError = '';
     modelAdminNotice = '';
     try {
       await adminPost({
-        action: 'importOpenRouterModel',
-        modelData: {
-          ...buildOpenRouterImportPayload(model),
-          model_id: fullId
-        }
+        action: 'importEnabledModel',
+        modelData
       });
       modelAdminNotice = `Imported ${model.name || model.id}`;
       await loadEnabledModels();
@@ -238,13 +290,17 @@
     }
   }
 
-  function isOpenRouterImported(modelId: string) {
-    return enabledModels.some((model) => model.model_id === `openrouter/${modelId}`);
+  function isProviderModelImported(modelId: string) {
+    const fullId = providerModelId(modelSearchProvider, modelId);
+    return enabledModels.some((model) => model.model_id === fullId);
   }
 
-  async function saveProviderApiKey(provider: 'anthropic' | 'openai' | 'openrouter') {
+  async function saveProviderCredential(
+    provider: 'anthropic' | 'openai' | 'openrouter',
+    credentialType: ProviderCredential = 'api_key'
+  ) {
     const inputByProvider = {
-      anthropic: anthropicApiKeyInput,
+      anthropic: credentialType === 'auth_token' ? anthropicAuthTokenInput : anthropicApiKeyInput,
       openai: openAiApiKeyInput,
       openrouter: openRouterApiKeyInput
     };
@@ -253,28 +309,77 @@
       openai: 'OpenAI',
       openrouter: 'OpenRouter'
     };
-    const apiKey = inputByProvider[provider].trim();
-    if (!apiKey) {
-      modelAdminError = `Enter a ${labelByProvider[provider]} API key first`;
+    const credential = inputByProvider[provider].trim();
+    const credentialLabel = credentialType === 'auth_token' ? 'OAuth/OAT bearer token' : 'API key';
+    if (!credential) {
+      modelAdminError = `Enter a ${labelByProvider[provider]} ${credentialLabel} first`;
       return;
     }
     apiKeySaving = true;
     modelAdminError = '';
     modelAdminNotice = '';
     try {
-      await adminPost({ action: 'setProviderApiKey', apiKey, provider });
-      updateApiKey(provider, apiKey);
-      modelAdminNotice = `${labelByProvider[provider]} API key saved`;
-      if (provider === 'anthropic') anthropicApiKeyInput = '';
+      await adminPost({
+        action: 'setProviderApiKey',
+        apiKey: credential,
+        credentialType,
+        provider
+      });
+      updateProviderCredential(provider, credential, credentialType);
+      modelAdminNotice = `${labelByProvider[provider]} ${credentialLabel} saved`;
+      if (provider === 'anthropic' && credentialType === 'api_key') anthropicApiKeyInput = '';
+      if (provider === 'anthropic' && credentialType === 'auth_token') anthropicAuthTokenInput = '';
       if (provider === 'openai') openAiApiKeyInput = '';
       if (provider === 'openrouter') openRouterApiKeyInput = '';
     } catch (error) {
       modelAdminError =
         error instanceof Error
           ? error.message
-          : `Failed to save ${labelByProvider[provider]} API key`;
+          : `Failed to save ${labelByProvider[provider]} ${credentialLabel}`;
     } finally {
       apiKeySaving = false;
+    }
+  }
+
+  async function loadVoiceSettings() {
+    voiceSettingsLoading = true;
+    modelAdminError = '';
+    try {
+      const settings = (await adminFetch('settings', { category: 'voice' })) || [];
+      const modelSetting = settings.find((setting: Record<string, any>) => setting.key === 'model');
+      if (typeof modelSetting?.value === 'string' && modelSetting.value.trim()) {
+        voiceModelInput = modelSetting.value;
+      }
+    } catch (error) {
+      modelAdminError = error instanceof Error ? error.message : 'Failed to load voice settings';
+    } finally {
+      voiceSettingsLoading = false;
+    }
+  }
+
+  async function saveVoiceSettings() {
+    const model = voiceModelInput.trim();
+    if (!model) {
+      modelAdminError = 'Enter a voice transcription model';
+      return;
+    }
+    voiceSettingsSaving = true;
+    modelAdminError = '';
+    modelAdminNotice = '';
+    try {
+      await adminPost({
+        action: 'setSetting',
+        category: 'voice',
+        description: 'Model used by /api/audio for voice transcription',
+        isSensitive: false,
+        key: 'model',
+        value: model
+      });
+      modelAdminNotice = 'Voice model saved';
+    } catch (error) {
+      modelAdminError = error instanceof Error ? error.message : 'Failed to save voice model';
+    } finally {
+      voiceSettingsSaving = false;
     }
   }
 
@@ -282,626 +387,821 @@
     // Load providers and models
     loadProvidersAndModels();
     loadEnabledModels();
+    loadVoiceSettings();
     // Load memories
     loadMemories();
 
     return () => {};
   });
 
-  function setProvider(nextProvider: string) {
-    const currentModel = aiSettings.value.providerModel || '';
-    const normalizedModel = normalizeModelId(nextProvider, currentModel);
-
-    const provider = providers.find((p) => p.id === nextProvider);
-
-    aiSettings.update((s: any) => ({
-      ...s,
-      provider: nextProvider,
-      providerModel: normalizedModel,
-      model: normalizedModel,
-      baseUrl: provider?.baseUrl || s.baseUrl || ''
-    }));
-  }
-
-  function setProviderModel(nextModel: string) {
-    const fullModelId = normalizeModelId(aiSettings.value.provider, nextModel);
-    aiSettings.update((s: any) => ({
-      ...s,
-      providerModel: fullModelId,
-      model: fullModelId
-    }));
-  }
-
-  function updateApiKey(provider: string, value: string) {
-    const keyField = `${provider}ApiKey` as const;
+  function updateProviderCredential(
+    provider: string,
+    value: string,
+    credentialType: ProviderCredential
+  ) {
+    const keyField = credentialType === 'auth_token' ? `${provider}AuthToken` : `${provider}ApiKey`;
     aiSettings.update((s: any) => ({
       ...s,
       [keyField]: value
     }));
   }
 
-  // Add missing function with proper limit checking
-  function addToChatSelection(model: any) {
-    selectedChatModelsStore.update((list: any[]) => {
-      if (list.length >= 10) return list; // Enforce max-10 limit
-      if (list.some((m: any) => m.id === model.id)) return list; // Avoid duplicates
-      return [...list, model];
-    });
+  const themeOptions: { label: string; value: UISettings['theme']; icon: typeof Monitor }[] = [
+    { icon: Monitor, label: 'System', value: 'system' },
+    { icon: Sun, label: 'Light', value: 'light' },
+    { icon: Moon, label: 'Dark', value: 'dark' }
+  ];
+
+  function setThemePreference(theme: UISettings['theme']) {
+    uiSettings.update((settings) => ({ ...settings, theme }));
+    setMode(theme);
+    window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
   }
 
-  // Debounced API key update to prevent excessive store updates
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  function debouncedUpdateApiKey(provider: string, value: string) {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      updateApiKey(provider, value);
-    }, 300);
+  function setMemoryPreference(patch: {
+    memoryAutoSave?: boolean;
+    memorySaveMode?: 'conservative' | 'balanced' | 'aggressive';
+    memoryReviewBeforeSave?: boolean;
+  }) {
+    personalizationSettings.update((settings) => ({ ...settings, ...patch }));
   }
 
-  function getApiKeyField(provider: string): string {
-    return `${provider}ApiKey` as string;
+  function toggleRule(ruleId: string) {
+    personalizationSettings.update((settings) => ({
+      ...settings,
+      rules: settings.rules.map((rule) =>
+        rule.id === ruleId ? { ...rule, enabled: !rule.enabled } : rule
+      )
+    }));
+  }
+
+  function toggleSkill(skillId: string) {
+    personalizationSettings.update((settings) => ({
+      ...settings,
+      skills: settings.skills.map((skill) =>
+        skill.id === skillId ? { ...skill, enabled: !skill.enabled } : skill
+      )
+    }));
   }
 </script>
 
 <Dialog.Root bind:open {onOpenChange}>
-  <Dialog.Content class="max-h-[92vh] overflow-y-auto sm:max-w-[1120px]">
-    <Dialog.Header>
-      <div class="flex items-center gap-3">
-        <div
-          class="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 shadow-sm">
-          <img src="/brand/logo.png" alt="Graphini" class="size-6 rounded-md" />
-        </div>
-        <div>
-          <Dialog.Title class="text-base font-bold tracking-tight">Graphini Settings</Dialog.Title>
-          <Dialog.Description class="text-[11px] text-muted-foreground/70">
-            Configure AI tools and preferences
-          </Dialog.Description>
-        </div>
-      </div>
-    </Dialog.Header>
+  <Dialog.Content class="h-[88vh] overflow-hidden p-0 sm:max-w-[1120px]">
+    <div class="grid h-full min-h-0 grid-cols-[236px_1fr]">
+      <aside class="flex min-h-0 flex-col border-r border-border/60 bg-muted/20">
+        <Dialog.Header class="border-b border-border/60 p-4">
+          <div class="flex items-center gap-3">
+            <img
+              src="/brand/logo.png"
+              alt="Graphini"
+              class="size-8 rounded-md border border-border/60" />
+            <div class="min-w-0">
+              <Dialog.Title class="truncate text-sm font-semibold">Settings</Dialog.Title>
+              <Dialog.Description class="text-[11px] text-muted-foreground">
+                Graphini preferences
+              </Dialog.Description>
+            </div>
+          </div>
+        </Dialog.Header>
 
-    <div class="space-y-4 py-3">
-      <!-- Model Access Card -->
-      <div
-        class="space-y-3 rounded-xl border border-border/50 bg-muted/5 p-3.5 dark:border-border/30 dark:bg-white/[0.02]">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <div class="flex size-6 items-center justify-center rounded-lg bg-violet-500/10">
-              <Power class="size-3 text-violet-500" />
-            </div>
-            <div>
-              <span class="text-xs font-semibold text-foreground">Model Access</span>
-              <p class="text-[10px] text-muted-foreground/60">
-                Manage the models shown in chat. Admin-only controls live here now.
-              </p>
-            </div>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <Badge variant="outline" class="text-[10px]">{enabledModels.length} models</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              class="h-7 gap-1 text-[10px]"
-              disabled={enabledModelsLoading}
-              onclick={loadEnabledModels}>
-              <RefreshCw class="size-3 {enabledModelsLoading ? 'animate-spin' : ''}" />
-              Refresh
-            </Button>
-          </div>
-        </div>
-
-        <div class="grid gap-2 md:grid-cols-3">
-          <div class="rounded-lg border border-border/40 bg-background/80 p-3">
-            <div class="mb-2 flex items-center justify-between gap-2">
-              <div>
-                <div
-                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  OpenRouter
-                </div>
-                <p class="text-[10px] text-muted-foreground/60">Routing and broad model access.</p>
-              </div>
-              <Badge variant="outline" class="text-[8px]">
-                {aiSettings.value.openrouterApiKey ? 'Saved locally' : 'Not set locally'}
-              </Badge>
-            </div>
-            <div class="flex gap-2">
-              <Input
-                class="h-8 min-w-0 font-mono text-[11px]"
-                type="password"
-                autocomplete="off"
-                placeholder="sk-or-v1-..."
-                bind:value={openRouterApiKeyInput}
-                onkeydown={(event) => {
-                  if (event.key === 'Enter') saveProviderApiKey('openrouter');
-                }} />
-              <Button
-                size="sm"
-                class="h-8 shrink-0 gap-1 text-[10px]"
-                disabled={apiKeySaving || !openRouterApiKeyInput.trim()}
-                onclick={() => saveProviderApiKey('openrouter')}>
-                {#if apiKeySaving}
-                  <RefreshCw class="size-3 animate-spin" />
-                {:else}
-                  <Save class="size-3" />
-                {/if}
-              </Button>
-            </div>
-          </div>
-
-          <div class="rounded-lg border border-border/40 bg-background/80 p-3">
-            <div class="mb-2 flex items-center justify-between gap-2">
-              <div>
-                <div
-                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  OpenAI
-                </div>
-                <p class="text-[10px] text-muted-foreground/60">Direct GPT models and tools.</p>
-              </div>
-              <Badge variant="outline" class="text-[8px]">
-                {aiSettings.value.openaiApiKey ? 'Saved locally' : 'Not set locally'}
-              </Badge>
-            </div>
-            <div class="flex gap-2">
-              <Input
-                class="h-8 min-w-0 font-mono text-[11px]"
-                type="password"
-                autocomplete="off"
-                placeholder="sk-proj-..."
-                bind:value={openAiApiKeyInput}
-                onkeydown={(event) => {
-                  if (event.key === 'Enter') saveProviderApiKey('openai');
-                }} />
-              <Button
-                size="sm"
-                class="h-8 shrink-0 gap-1 text-[10px]"
-                disabled={apiKeySaving || !openAiApiKeyInput.trim()}
-                onclick={() => saveProviderApiKey('openai')}>
-                {#if apiKeySaving}
-                  <RefreshCw class="size-3 animate-spin" />
-                {:else}
-                  <Save class="size-3" />
-                {/if}
-              </Button>
-            </div>
-          </div>
-
-          <div class="rounded-lg border border-border/40 bg-background/80 p-3">
-            <div class="mb-2 flex items-center justify-between gap-2">
-              <div>
-                <div
-                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  Anthropic
-                </div>
-                <p class="text-[10px] text-muted-foreground/60">Direct Claude reasoning models.</p>
-              </div>
-              <Badge variant="outline" class="text-[8px]">
-                {aiSettings.value.anthropicApiKey ? 'Saved locally' : 'Not set locally'}
-              </Badge>
-            </div>
-            <div class="flex gap-2">
-              <Input
-                class="h-8 min-w-0 font-mono text-[11px]"
-                type="password"
-                autocomplete="off"
-                placeholder="sk-ant-..."
-                bind:value={anthropicApiKeyInput}
-                onkeydown={(event) => {
-                  if (event.key === 'Enter') saveProviderApiKey('anthropic');
-                }} />
-              <Button
-                size="sm"
-                class="h-8 shrink-0 gap-1 text-[10px]"
-                disabled={apiKeySaving || !anthropicApiKeyInput.trim()}
-                onclick={() => saveProviderApiKey('anthropic')}>
-                {#if apiKeySaving}
-                  <RefreshCw class="size-3 animate-spin" />
-                {:else}
-                  <Save class="size-3" />
-                {/if}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {#if modelAdminError}
-          <div
-            class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-700 dark:text-amber-300">
-            {modelAdminError}
-          </div>
-        {/if}
-        {#if modelAdminNotice}
-          <div
-            class="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-700 dark:text-emerald-300">
-            {modelAdminNotice}
-          </div>
-        {/if}
-
-        <div class="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
-          <div class="overflow-hidden rounded-lg border border-border/40 bg-background/80">
-            <div class="flex items-center justify-between border-b border-border/40 px-3 py-2">
-              <span class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
-                >Enabled Models</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="h-6 gap-1 text-[10px]"
-                onclick={async () => {
-                  for (const model of enabledModels.filter((item) => item.is_enabled)) {
-                    await toggleEnabledModel(model.model_id, false);
-                  }
-                }}>
-                <EyeOff class="size-3" /> Disable All
-              </Button>
-            </div>
-            <div class="max-h-[360px] overflow-auto">
-              {#if enabledModelsLoading}
-                <div class="flex items-center justify-center py-10">
-                  <RefreshCw class="size-5 animate-spin text-muted-foreground" />
-                </div>
-              {:else if enabledModels.length === 0}
-                <div class="p-6 text-center text-[11px] text-muted-foreground">
-                  No enabled models yet. Import one from OpenRouter.
-                </div>
-              {:else}
-                <div class="divide-y divide-border/40">
-                  {#each enabledModels as model (model.model_id)}
-                    <div class="flex items-center justify-between gap-3 px-3 py-2.5">
-                      <div class="min-w-0 flex-1">
-                        <div class="truncate text-[11px] font-semibold text-foreground">
-                          {model.model_name}
-                        </div>
-                        <div class="truncate font-mono text-[9px] text-muted-foreground/70">
-                          {model.model_id}
-                        </div>
-                        <div class="mt-1 flex flex-wrap items-center gap-1">
-                          <Badge variant="secondary" class="text-[8px]"
-                            >{model.provider || 'openrouter'}</Badge>
-                          <Badge variant="outline" class="text-[8px]"
-                            >{model.category || 'General'}</Badge>
-                          {#if model.is_free}
-                            <Badge variant="default" class="text-[8px]">Free</Badge>
-                          {/if}
-                          {#if model.tool_support}
-                            <Badge variant="outline" class="text-[8px]">Tools</Badge>
-                          {/if}
-                        </div>
-                      </div>
-                      <div class="flex shrink-0 items-center gap-1">
-                        <span class="text-[10px] text-muted-foreground"
-                          >{model.gems_per_message ?? 2} gems</span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          class="size-7 p-0"
-                          title={model.is_enabled ? 'Disable' : 'Enable'}
-                          onclick={() => toggleEnabledModel(model.model_id, !model.is_enabled)}>
-                          <Power
-                            class="size-3.5 {model.is_enabled
-                              ? 'text-emerald-500'
-                              : 'text-muted-foreground/50'}" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          class="size-7 p-0 text-red-500"
-                          title="Delete"
-                          onclick={() => deleteEnabledModel(model.model_id)}>
-                          <Trash2 class="size-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          </div>
-
-          <div class="overflow-hidden rounded-lg border border-border/40 bg-background/80">
-            <div class="space-y-2 border-b border-border/40 p-3">
-              <div class="flex items-center justify-between gap-2">
-                <span
-                  class="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
-                  >OpenRouter Import</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  class="h-6 gap-1 text-[10px]"
-                  disabled={openRouterLoading}
-                  onclick={loadOpenRouterModels}>
-                  <RefreshCw class="size-3 {openRouterLoading ? 'animate-spin' : ''}" />
-                  Load
-                </Button>
-              </div>
-              <div class="relative">
-                <Search
-                  class="absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground/50" />
-                <Input
-                  class="h-8 pl-7 text-[11px]"
-                  placeholder="Search Claude, GPT, GLM, MiniMax..."
-                  bind:value={openRouterSearch} />
-              </div>
-            </div>
-            <div class="max-h-[360px] overflow-auto">
-              {#if openRouterLoading}
-                <div class="flex items-center justify-center py-10">
-                  <RefreshCw class="size-5 animate-spin text-muted-foreground" />
-                </div>
-              {:else if openRouterModels.length === 0}
-                <div class="p-6 text-center text-[11px] text-muted-foreground">
-                  Load OpenRouter models to import tool-capable options.
-                </div>
-              {:else}
-                <div class="divide-y divide-border/40">
-                  {#each filteredOpenRouterModels as model (model.id)}
-                    {@const imported = isOpenRouterImported(model.id)}
-                    <div class="flex items-center justify-between gap-3 px-3 py-2.5">
-                      <div class="min-w-0 flex-1">
-                        <div class="truncate text-[11px] font-semibold text-foreground">
-                          {model.name || model.id}
-                        </div>
-                        <div class="truncate font-mono text-[9px] text-muted-foreground/70">
-                          {model.id}
-                        </div>
-                        <div class="mt-1 text-[9px] text-muted-foreground/60">
-                          {model.context_length
-                            ? `${(model.context_length / 1000).toFixed(0)}k context`
-                            : 'Context unknown'}
-                        </div>
-                      </div>
-                      {#if imported}
-                        <Badge variant="secondary" class="shrink-0 text-[8px]">
-                          <Check class="mr-1 size-3" /> Imported
-                        </Badge>
-                      {:else}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          class="h-7 shrink-0 gap-1 text-[10px]"
-                          onclick={() => importOpenRouterModel(model)}>
-                          <Download class="size-3" /> Import
-                        </Button>
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tools Configuration Card -->
-      <div
-        class="space-y-2.5 rounded-xl border border-border/50 bg-muted/5 p-3.5 dark:border-border/30 dark:bg-white/[0.02]">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <div class="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10">
-              <Wrench class="size-3 text-indigo-500" />
-            </div>
-            <span class="text-xs font-semibold text-foreground">AI Tools</span>
-            <span
-              class="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-              {toolsConfig.filter((t) => t.enabled).length}/{toolsConfig.length}
-            </span>
-          </div>
-          <div class="flex items-center gap-1">
+        <nav class="flex-1 space-y-1 overflow-y-auto p-2">
+          {#each settingsTabs as tab (tab.id)}
+            {@const Icon = tab.icon}
             <button
               type="button"
-              class="rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-indigo-500/10 hover:text-indigo-500"
-              title="Enable all tools"
-              onclick={() => toolsStore.enableAll()}>
-              All On
+              class="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors {activeTab ===
+              tab.id
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+              onclick={() => (activeTab = tab.id)}>
+              <Icon class="mt-0.5 size-4 shrink-0" />
+              <span class="min-w-0">
+                <span class="block text-xs font-medium">{tab.label}</span>
+                <span class="block truncate text-[10px] text-muted-foreground"
+                  >{tab.description}</span>
+              </span>
             </button>
-            <button
-              type="button"
-              class="rounded-md p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-              title="Reset to defaults"
-              onclick={() => toolsStore.reset()}>
-              <RotateCcw class="size-3" />
-            </button>
+          {/each}
+        </nav>
+
+        <div class="border-t border-border/60 p-3">
+          <Button
+            size="sm"
+            variant="outline"
+            class="h-8 w-full justify-start gap-2 text-xs"
+            onclick={downloadAppState}
+            title="Export all app state as JSON">
+            <Download class="size-3.5" />
+            Export settings
+          </Button>
+        </div>
+      </aside>
+
+      <section class="flex min-h-0 flex-col">
+        <div class="flex h-14 items-center justify-between border-b border-border/60 px-5">
+          <div>
+            <h2 class="text-sm font-semibold">
+              {settingsTabs.find((tab) => tab.id === activeTab)?.label}
+            </h2>
+            <p class="text-[11px] text-muted-foreground">
+              {settingsTabs.find((tab) => tab.id === activeTab)?.description}
+            </p>
           </div>
+          <Button class="h-8 text-xs" onclick={() => onOpenChange(false)}>Done</Button>
         </div>
 
-        {#each TOOL_CATEGORIES as cat}
-          {@const catTools = toolsConfig.filter((t) => t.category === cat.id)}
-          {#if catTools.length > 0}
-            <div class="space-y-1.5">
-              <div class="flex items-center gap-1.5 px-0.5">
-                <div class="h-px flex-1 bg-border/40"></div>
-                <span
-                  class="text-[9px] font-semibold tracking-wider text-muted-foreground/50 uppercase">
-                  {cat.label}
-                </span>
-                <div class="h-px flex-1 bg-border/40"></div>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5">
+          {#if activeTab === 'theme'}
+            <div class="max-w-2xl space-y-5">
+              <div class="space-y-2">
+                <div class="text-xs font-medium">Theme</div>
+                <div class="grid grid-cols-3 gap-2">
+                  {#each themeOptions as option (option.value)}
+                    {@const Icon = option.icon}
+                    <button
+                      type="button"
+                      class="flex h-20 flex-col items-center justify-center gap-2 rounded-md border text-xs transition-colors {uiSettings
+                        .value.theme === option.value
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border bg-background hover:bg-muted/60'}"
+                      aria-pressed={uiSettings.value.theme === option.value}
+                      onclick={() => setThemePreference(option.value)}>
+                      <Icon class="size-4" />
+                      {option.label}
+                    </button>
+                  {/each}
+                </div>
               </div>
-              {#each catTools as t}
-                <button
-                  type="button"
-                  class="flex w-full items-center justify-between rounded-lg border border-border/30 bg-background/80 px-3 py-2 text-left transition-all duration-150 hover:border-border/50 hover:bg-muted/30 dark:border-border/20 dark:bg-white/[0.02] dark:hover:bg-white/[0.04]"
-                  onclick={() => toolsStore.toggle(t.id)}>
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-[11px] font-semibold text-foreground/90">{t.label}</span>
-                      {#if !t.enabled}
-                        <span
-                          class="rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[8px] font-semibold text-orange-500 dark:text-orange-400"
-                          >OFF</span>
-                      {/if}
+
+              <div class="divide-y divide-border rounded-md border border-border">
+                <label class="flex items-center justify-between gap-4 p-3">
+                  <span>
+                    <span class="block text-xs font-medium">Show reasoning</span>
+                    <span class="text-[11px] text-muted-foreground"
+                      >Display visible reasoning summaries in chat.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={uiSettings.value.showReasoning}
+                    onchange={(event) =>
+                      uiSettings.update((settings) => ({
+                        ...settings,
+                        showReasoning: event.currentTarget.checked
+                      }))} />
+                </label>
+                <label class="flex items-center justify-between gap-4 p-3">
+                  <span>
+                    <span class="block text-xs font-medium">Auto-scroll chat</span>
+                    <span class="text-[11px] text-muted-foreground"
+                      >Keep the newest assistant response in view.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={uiSettings.value.autoScroll}
+                    onchange={(event) =>
+                      uiSettings.update((settings) => ({
+                        ...settings,
+                        autoScroll: event.currentTarget.checked
+                      }))} />
+                </label>
+                <label class="flex items-center justify-between gap-4 p-3">
+                  <span>
+                    <span class="block text-xs font-medium">Compact mode</span>
+                    <span class="text-[11px] text-muted-foreground"
+                      >Use tighter spacing in dense work areas.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={uiSettings.value.compactMode}
+                    onchange={(event) =>
+                      uiSettings.update((settings) => ({
+                        ...settings,
+                        compactMode: event.currentTarget.checked
+                      }))} />
+                </label>
+              </div>
+            </div>
+          {:else if activeTab === 'models'}
+            <div class="space-y-5">
+              <div class="grid gap-3 lg:grid-cols-3">
+                <div class="rounded-md border border-border p-3">
+                  <div class="mb-3 flex items-center justify-between">
+                    <span class="text-xs font-medium">OpenRouter</span>
+                    <Badge variant="outline" class="text-[10px]"
+                      >{aiSettings.value.openrouterApiKey ? 'Saved' : 'Not set'}</Badge>
+                  </div>
+                  <div class="flex gap-2">
+                    <Input
+                      class="h-8 font-mono text-[11px]"
+                      type="password"
+                      autocomplete="off"
+                      placeholder="sk-or-v1-..."
+                      bind:value={openRouterApiKeyInput}
+                      onkeydown={(event) =>
+                        event.key === 'Enter' && saveProviderCredential('openrouter')} />
+                    <Button
+                      size="sm"
+                      class="h-8 px-2"
+                      disabled={apiKeySaving || !openRouterApiKeyInput.trim()}
+                      onclick={() => saveProviderCredential('openrouter')}
+                      ><Save class="size-3.5" /></Button>
+                  </div>
+                </div>
+                <div class="rounded-md border border-border p-3">
+                  <div class="mb-3 flex items-center justify-between">
+                    <span class="text-xs font-medium">OpenAI</span>
+                    <Badge variant="outline" class="text-[10px]"
+                      >{aiSettings.value.openaiApiKey ? 'Saved' : 'Not set'}</Badge>
+                  </div>
+                  <div class="flex gap-2">
+                    <Input
+                      class="h-8 font-mono text-[11px]"
+                      type="password"
+                      autocomplete="off"
+                      placeholder="sk-proj-..."
+                      bind:value={openAiApiKeyInput}
+                      onkeydown={(event) =>
+                        event.key === 'Enter' && saveProviderCredential('openai')} />
+                    <Button
+                      size="sm"
+                      class="h-8 px-2"
+                      disabled={apiKeySaving || !openAiApiKeyInput.trim()}
+                      onclick={() => saveProviderCredential('openai')}
+                      ><Save class="size-3.5" /></Button>
+                  </div>
+                </div>
+                <div class="rounded-md border border-border p-3">
+                  <div class="mb-3 flex items-center justify-between">
+                    <span class="text-xs font-medium">Anthropic</span>
+                    <Badge variant="outline" class="text-[10px]"
+                      >{aiSettings.value.anthropicApiKey || aiSettings.value.anthropicAuthToken
+                        ? 'Saved'
+                        : 'Not set'}</Badge>
+                  </div>
+                  <div class="space-y-2">
+                    <div class="flex gap-2">
+                      <Input
+                        class="h-8 font-mono text-[11px]"
+                        type="password"
+                        autocomplete="off"
+                        placeholder="sk-ant-..."
+                        bind:value={anthropicApiKeyInput}
+                        onkeydown={(event) =>
+                          event.key === 'Enter' && saveProviderCredential('anthropic')} />
+                      <Button
+                        size="sm"
+                        class="h-8 px-2"
+                        disabled={apiKeySaving || !anthropicApiKeyInput.trim()}
+                        onclick={() => saveProviderCredential('anthropic')}
+                        ><Save class="size-3.5" /></Button>
                     </div>
-                    <div class="mt-0.5 text-[10px] leading-tight text-muted-foreground/60">
-                      {t.description}
+                    <div class="flex gap-2">
+                      <Input
+                        class="h-8 font-mono text-[11px]"
+                        type="password"
+                        autocomplete="off"
+                        placeholder="OAuth/OAT token"
+                        bind:value={anthropicAuthTokenInput}
+                        onkeydown={(event) =>
+                          event.key === 'Enter' &&
+                          saveProviderCredential('anthropic', 'auth_token')} />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        class="h-8 px-2"
+                        disabled={apiKeySaving || !anthropicAuthTokenInput.trim()}
+                        onclick={() => saveProviderCredential('anthropic', 'auth_token')}
+                        ><Save class="size-3.5" /></Button>
                     </div>
                   </div>
-                  <div
-                    class="ml-3 flex-shrink-0 transition-colors {t.enabled
-                      ? 'text-indigo-500'
-                      : 'text-muted-foreground/30'}">
-                    {#if t.enabled}
-                      <ToggleRight class="size-5" />
+                </div>
+              </div>
+
+              {#if modelAdminError}
+                <div
+                  class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  {modelAdminError}
+                </div>
+              {/if}
+              {#if modelAdminNotice}
+                <div
+                  class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                  {modelAdminNotice}
+                </div>
+              {/if}
+
+              <div class="grid min-h-[420px] gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <div class="overflow-hidden rounded-md border border-border">
+                  <div class="flex h-10 items-center justify-between border-b border-border px-3">
+                    <span class="text-xs font-medium">Enabled Models</span>
+                    <div class="flex items-center gap-2">
+                      <Badge variant="outline" class="text-[10px]">{enabledModels.length}</Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        class="h-7 gap-1 text-[11px]"
+                        onclick={loadEnabledModels}>
+                        <RefreshCw class="size-3 {enabledModelsLoading ? 'animate-spin' : ''}" /> Refresh
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        class="h-7 gap-1 text-[11px]"
+                        onclick={async () => {
+                          for (const model of enabledModels.filter((item) => item.is_enabled)) {
+                            await toggleEnabledModel(model.model_id, false);
+                          }
+                        }}>
+                        <EyeOff class="size-3" /> Disable all
+                      </Button>
+                    </div>
+                  </div>
+                  <div class="max-h-[520px] overflow-auto">
+                    {#if enabledModelsLoading}
+                      <div class="flex items-center justify-center py-12">
+                        <RefreshCw class="size-5 animate-spin text-muted-foreground" />
+                      </div>
+                    {:else if enabledModels.length === 0}
+                      <div class="p-8 text-center text-xs text-muted-foreground">
+                        No enabled models yet.
+                      </div>
                     {:else}
-                      <ToggleLeft class="size-5" />
+                      <div class="divide-y divide-border">
+                        {#each enabledModels as model (model.model_id)}
+                          <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                            <div class="min-w-0 flex-1">
+                              <div class="truncate text-xs font-medium">{model.model_name}</div>
+                              <div class="truncate font-mono text-[10px] text-muted-foreground">
+                                {model.model_id}
+                              </div>
+                              <div class="mt-1 flex flex-wrap gap-1">
+                                <Badge variant="secondary" class="text-[9px]"
+                                  >{model.provider || 'openrouter'}</Badge>
+                                {#if model.tool_support}<Badge variant="outline" class="text-[9px]"
+                                    >Tools</Badge
+                                  >{/if}
+                                {#if model.is_free}<Badge variant="default" class="text-[9px]"
+                                    >Free</Badge
+                                  >{/if}
+                              </div>
+                            </div>
+                            <div class="flex shrink-0 items-center gap-1">
+                              <span class="text-[10px] text-muted-foreground"
+                                >{model.gems_per_message ?? 2} gems</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                class="size-7 p-0"
+                                title={model.is_enabled ? 'Disable' : 'Enable'}
+                                onclick={() =>
+                                  toggleEnabledModel(model.model_id, !model.is_enabled)}>
+                                <Power
+                                  class="size-3.5 {model.is_enabled
+                                    ? 'text-emerald-500'
+                                    : 'text-muted-foreground'}" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                class="size-7 p-0 text-red-500"
+                                title="Delete"
+                                onclick={() => deleteEnabledModel(model.model_id)}>
+                                <Trash2 class="size-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        {/each}
+                      </div>
                     {/if}
                   </div>
-                </button>
+                </div>
+
+                <div class="overflow-hidden rounded-md border border-border">
+                  <div class="space-y-3 border-b border-border p-3">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-medium">Model Search</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        class="h-7 gap-1 text-[11px]"
+                        disabled={providerModelsLoading}
+                        onclick={loadProviderModels}>
+                        <Search class="size-3" /> Search
+                      </Button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1">
+                      {#each modelSearchProviders as provider (provider.value)}
+                        <button
+                          type="button"
+                          class="rounded-md border px-2 py-1.5 text-[11px] transition-colors {modelSearchProvider ===
+                          provider.value
+                            ? 'border-foreground bg-foreground text-background'
+                            : 'border-border hover:bg-muted'}"
+                          aria-pressed={modelSearchProvider === provider.value}
+                          onclick={() => {
+                            modelSearchProvider = provider.value;
+                            providerModels = [];
+                          }}>
+                          {provider.label}
+                        </button>
+                      {/each}
+                    </div>
+                    <Input
+                      class="h-8 text-xs"
+                      placeholder="Search by model name, ID, or capability..."
+                      bind:value={providerModelSearch}
+                      onkeydown={(event) => event.key === 'Enter' && loadProviderModels()} />
+                  </div>
+                  <div class="max-h-[520px] overflow-auto">
+                    {#if providerModelsLoading}
+                      <div class="flex items-center justify-center py-12">
+                        <RefreshCw class="size-5 animate-spin text-muted-foreground" />
+                      </div>
+                    {:else if providerModels.length === 0}
+                      <div class="p-8 text-center text-xs text-muted-foreground">
+                        Search models from the selected provider.
+                      </div>
+                    {:else}
+                      <div class="divide-y divide-border">
+                        {#each filteredProviderModels as model (model.id)}
+                          {@const imported = isProviderModelImported(model.id)}
+                          <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                            <div class="min-w-0 flex-1">
+                              <div class="truncate text-xs font-medium">
+                                {model.name || model.id}
+                              </div>
+                              <div class="truncate font-mono text-[10px] text-muted-foreground">
+                                {model.id}
+                              </div>
+                              <div class="mt-1 text-[10px] text-muted-foreground">
+                                {model.contextWindow || model.context_length
+                                  ? `${((model.contextWindow || model.context_length) / 1000).toFixed(0)}k context`
+                                  : 'Context unknown'}
+                              </div>
+                            </div>
+                            {#if imported}
+                              <Badge variant="secondary" class="shrink-0 text-[9px]"
+                                ><Check class="mr-1 size-3" /> Imported</Badge>
+                            {:else}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                class="h-7 shrink-0 gap-1 text-[11px]"
+                                onclick={() => importProviderModel(model)}>
+                                <Download class="size-3" /> Import
+                              </Button>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            </div>
+          {:else if activeTab === 'voice'}
+            <div class="space-y-5">
+              {#if modelAdminError}
+                <div
+                  class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  {modelAdminError}
+                </div>
+              {/if}
+              {#if modelAdminNotice}
+                <div
+                  class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                  {modelAdminNotice}
+                </div>
+              {/if}
+
+              <div class="rounded-md border border-border p-4">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs font-medium">Voice Transcription Model</div>
+                    <div class="mt-1 text-[11px] text-muted-foreground">
+                      Used by the voice input API when converting microphone audio to text.
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-7 gap-1 text-[11px]"
+                    disabled={voiceSettingsLoading}
+                    onclick={loadVoiceSettings}>
+                    <RefreshCw class="size-3 {voiceSettingsLoading ? 'animate-spin' : ''}" /> Refresh
+                  </Button>
+                </div>
+
+                <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <div class="space-y-2">
+                    <Input
+                      class="h-8 font-mono text-[11px]"
+                      list="voice-model-options"
+                      placeholder="google/gemini-2.0-flash-001"
+                      bind:value={voiceModelInput}
+                      onkeydown={(event) => event.key === 'Enter' && saveVoiceSettings()} />
+                    <datalist id="voice-model-options">
+                      <option value="google/gemini-2.0-flash-001"></option>
+                      <option value="gemini-2.0-flash-lite"></option>
+                      {#each enabledModels as model (model.model_id)}
+                        <option value={model.model_id}>{model.model_name}</option>
+                      {/each}
+                    </datalist>
+                    <div class="text-[10px] text-muted-foreground">
+                      OpenRouter model IDs like google/gemini-2.0-flash-001 use the OpenRouter key.
+                      Gemini IDs like gemini-2.0-flash-lite use GEMINI_API_KEY.
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    class="h-8 gap-1 text-xs"
+                    disabled={voiceSettingsSaving || !voiceModelInput.trim()}
+                    onclick={saveVoiceSettings}>
+                    <Save class="size-3.5" /> Save
+                  </Button>
+                </div>
+              </div>
+            </div>
+          {:else if activeTab === 'tools'}
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-muted-foreground">
+                  {toolsConfig.filter((t) => t.enabled).length} of {toolsConfig.length} tools enabled
+                </div>
+                <div class="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    class="h-8 text-xs"
+                    onclick={() => toolsStore.enableAll()}>Enable all</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-8 gap-1 text-xs"
+                    onclick={() => toolsStore.reset()}><RotateCcw class="size-3" /> Reset</Button>
+                </div>
+              </div>
+
+              {#each TOOL_CATEGORIES as cat}
+                {@const catTools = toolsConfig.filter((t) => t.category === cat.id)}
+                {#if catTools.length > 0}
+                  <div class="overflow-hidden rounded-md border border-border">
+                    <div class="border-b border-border bg-muted/20 px-3 py-2 text-xs font-medium">
+                      {cat.label}
+                    </div>
+                    <div class="divide-y divide-border">
+                      {#each catTools as t}
+                        <button
+                          type="button"
+                          class="flex w-full items-center justify-between gap-4 px-3 py-2.5 text-left hover:bg-muted/40"
+                          onclick={() => toolsStore.toggle(t.id)}>
+                          <span class="min-w-0">
+                            <span class="block text-xs font-medium">{t.label}</span>
+                            <span class="block text-[11px] text-muted-foreground"
+                              >{t.description}</span>
+                          </span>
+                          <span class={t.enabled ? 'text-emerald-500' : 'text-muted-foreground'}>
+                            {#if t.enabled}<ToggleRight class="size-5" />{:else}<ToggleLeft
+                                class="size-5" />{/if}
+                          </span>
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
               {/each}
             </div>
-          {/if}
-        {/each}
+          {:else if activeTab === 'rules'}
+            <div class="grid gap-4 lg:grid-cols-2">
+              <div class="overflow-hidden rounded-md border border-border">
+                <div class="flex h-10 items-center justify-between border-b border-border px-3">
+                  <span class="flex items-center gap-2 text-xs font-medium"
+                    ><ShieldCheck class="size-3.5" /> Rules</span>
+                  <div class="flex gap-2">
+                    <Button size="sm" variant="outline" class="h-7 gap-1 text-[11px]"
+                      ><Download class="size-3" /> Import</Button>
+                    <Button size="sm" class="h-7 gap-1 text-[11px]"
+                      ><Plus class="size-3" /> Create</Button>
+                  </div>
+                </div>
+                <div class="divide-y divide-border">
+                  {#each personalization.rules as rule (rule.id)}
+                    <button
+                      type="button"
+                      class="flex w-full items-start justify-between gap-4 px-3 py-3 text-left hover:bg-muted/40"
+                      onclick={() => toggleRule(rule.id)}>
+                      <span class="min-w-0">
+                        <span class="block text-xs font-medium">{rule.name}</span>
+                        <span class="mt-1 block text-[11px] leading-5 text-muted-foreground"
+                          >{rule.body}</span>
+                        <span class="mt-2 block text-[10px] text-muted-foreground"
+                          >Source: {rule.source}</span>
+                      </span>
+                      <span class={rule.enabled ? 'text-emerald-500' : 'text-muted-foreground'}>
+                        {#if rule.enabled}<ToggleRight class="size-5" />{:else}<ToggleLeft
+                            class="size-5" />{/if}
+                      </span>
+                    </button>
+                  {:else}
+                    <div class="p-8 text-center text-xs text-muted-foreground">No rules yet.</div>
+                  {/each}
+                </div>
+              </div>
 
-        <p class="px-0.5 text-[10px] leading-relaxed text-muted-foreground/50">
-          Disabled tools won't be available to the AI during chat sessions.
-        </p>
-      </div>
-
-      <!-- Memory Section -->
-      <div
-        class="space-y-2.5 rounded-xl border border-border/50 bg-muted/5 p-3.5 dark:border-border/30 dark:bg-white/[0.02]">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <div class="flex size-6 items-center justify-center rounded-lg bg-emerald-500/10">
-              <BookOpen class="size-3 text-emerald-500" />
-            </div>
-            <span class="text-xs font-semibold text-foreground">AI Memories</span>
-            <span
-              class="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-              {memories.length}
-            </span>
-          </div>
-          <button
-            type="button"
-            class="rounded-md p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-            title="Refresh memories"
-            onclick={loadMemories}>
-            <RotateCcw class="size-3 {memoryLoading ? 'animate-spin' : ''}" />
-          </button>
-        </div>
-
-        {#if memoryLoading}
-          <div class="flex items-center justify-center py-4">
-            <span class="text-[10px] text-muted-foreground">Loading memories…</span>
-          </div>
-        {:else if memories.length === 0}
-          <div class="flex flex-col items-center gap-1 py-4 text-center">
-            <BookOpen class="size-4 text-muted-foreground/30" />
-            <span class="text-[10px] text-muted-foreground/60">No memories saved yet</span>
-            <span class="text-[9px] text-muted-foreground/40"
-              >The AI will remember things you tell it during chat</span>
-          </div>
-        {:else}
-          <div class="max-h-[200px] space-y-1.5 overflow-y-auto">
-            {#each memories as mem (mem.key)}
-              <div
-                class="group flex items-start gap-2 rounded-lg border border-border/30 bg-background/80 px-3 py-2 dark:border-border/20 dark:bg-white/[0.02]">
-                {#if editingKey === mem.key}
-                  <div class="flex-1 space-y-1.5">
-                    <span class="text-[10px] font-semibold text-foreground/70">{mem.key}</span>
-                    <textarea
-                      class="w-full resize-none rounded-md border border-border/50 bg-muted/30 px-2 py-1.5 text-[11px] text-foreground outline-none focus:border-indigo-500/50 dark:bg-white/[0.03]"
-                      rows="2"
-                      bind:value={editingValue}></textarea>
-                    <div class="flex gap-1">
-                      <button
-                        type="button"
-                        class="flex items-center gap-1 rounded-md bg-indigo-500/10 px-2 py-0.5 text-[9px] font-medium text-indigo-500 transition-colors hover:bg-indigo-500/20"
-                        onclick={() => saveMemory(mem.key, editingValue)}>
-                        <Save class="size-2.5" /> Save
-                      </button>
-                      <button
-                        type="button"
-                        class="rounded-md px-2 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-muted"
-                        onclick={() => {
-                          editingKey = null;
-                          editingValue = '';
-                        }}>
-                        Cancel
-                      </button>
+              <div class="overflow-hidden rounded-md border border-border">
+                <div class="flex h-10 items-center justify-between border-b border-border px-3">
+                  <span class="flex items-center gap-2 text-xs font-medium"
+                    ><FileText class="size-3.5" /> Skills</span>
+                  <div class="flex gap-2">
+                    <Button size="sm" variant="outline" class="h-7 gap-1 text-[11px]"
+                      ><Download class="size-3" /> Import</Button>
+                    <Button size="sm" class="h-7 gap-1 text-[11px]"
+                      ><Plus class="size-3" /> Create</Button>
+                  </div>
+                </div>
+                <div class="divide-y divide-border">
+                  {#each personalization.skills as skill (skill.id)}
+                    <button
+                      type="button"
+                      class="flex w-full items-start justify-between gap-4 px-3 py-3 text-left hover:bg-muted/40"
+                      onclick={() => toggleSkill(skill.id)}>
+                      <span class="min-w-0">
+                        <span class="block text-xs font-medium">{skill.name}</span>
+                        <span class="mt-1 block text-[11px] leading-5 text-muted-foreground"
+                          >{skill.description}</span>
+                        <span class="mt-2 block text-[10px] text-muted-foreground"
+                          >Source: {skill.source}</span>
+                      </span>
+                      <span class={skill.enabled ? 'text-emerald-500' : 'text-muted-foreground'}>
+                        {#if skill.enabled}<ToggleRight class="size-5" />{:else}<ToggleLeft
+                            class="size-5" />{/if}
+                      </span>
+                    </button>
+                  {:else}
+                    <div class="p-8 text-center text-xs text-muted-foreground">
+                      No skills imported yet.
                     </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          {:else if activeTab === 'memory'}
+            <div class="grid gap-4 lg:grid-cols-[360px_1fr]">
+              <div class="space-y-4">
+                <div class="divide-y divide-border rounded-md border border-border">
+                  <label class="flex items-center justify-between gap-4 p-3">
+                    <span>
+                      <span class="block text-xs font-medium">Auto-save memory</span>
+                      <span class="text-[11px] text-muted-foreground"
+                        >Allow the model to save useful user preferences.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={personalization.memoryAutoSave}
+                      onchange={(event) =>
+                        setMemoryPreference({ memoryAutoSave: event.currentTarget.checked })} />
+                  </label>
+                  <label class="flex items-center justify-between gap-4 p-3">
+                    <span>
+                      <span class="block text-xs font-medium">Review before save</span>
+                      <span class="text-[11px] text-muted-foreground"
+                        >Ask before writing new long-term memory.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={personalization.memoryReviewBeforeSave}
+                      onchange={(event) =>
+                        setMemoryPreference({
+                          memoryReviewBeforeSave: event.currentTarget.checked
+                        })} />
+                  </label>
+                </div>
+
+                <div class="rounded-md border border-border p-3">
+                  <div class="mb-2 text-xs font-medium">Save behavior</div>
+                  <div class="grid gap-2">
+                    {#each ['conservative', 'balanced', 'aggressive'] as mode}
+                      <button
+                        type="button"
+                        class="rounded-md border px-3 py-2 text-left text-xs capitalize transition-colors {personalization.memorySaveMode ===
+                        mode
+                          ? 'border-foreground bg-foreground text-background'
+                          : 'border-border hover:bg-muted'}"
+                        onclick={() =>
+                          setMemoryPreference({
+                            memorySaveMode: mode as 'conservative' | 'balanced' | 'aggressive'
+                          })}>
+                        {mode}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+
+              <div class="overflow-hidden rounded-md border border-border">
+                <div class="flex h-10 items-center justify-between border-b border-border px-3">
+                  <span class="flex items-center gap-2 text-xs font-medium"
+                    ><BookOpen class="size-3.5" /> Saved Memories</span>
+                  <button
+                    type="button"
+                    class="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="Refresh memories"
+                    onclick={loadMemories}>
+                    <RotateCcw class="size-3.5 {memoryLoading ? 'animate-spin' : ''}" />
+                  </button>
+                </div>
+
+                {#if memoryLoading}
+                  <div class="p-8 text-center text-xs text-muted-foreground">
+                    Loading memories...
+                  </div>
+                {:else if memories.length === 0}
+                  <div class="p-8 text-center text-xs text-muted-foreground">
+                    No memories saved yet.
                   </div>
                 {:else}
-                  <div class="min-w-0 flex-1">
-                    <div class="text-[10px] font-semibold text-foreground/80">{mem.key}</div>
-                    <div class="mt-0.5 text-[10px] leading-snug text-muted-foreground/70">
-                      {mem.value}
-                    </div>
-                    {#if mem.savedAt}
-                      <div class="mt-1 text-[8px] text-muted-foreground/40">
-                        {new Date(mem.savedAt).toLocaleDateString()}
+                  <div class="max-h-[420px] divide-y divide-border overflow-y-auto">
+                    {#each memories as mem (mem.key)}
+                      <div class="group flex items-start gap-3 px-3 py-3">
+                        {#if editingKey === mem.key}
+                          <div class="flex-1 space-y-2">
+                            <div class="text-xs font-medium">{mem.key}</div>
+                            <textarea
+                              class="min-h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-2 text-xs outline-none focus:border-foreground"
+                              bind:value={editingValue}></textarea>
+                            <div class="flex gap-2">
+                              <Button
+                                size="sm"
+                                class="h-7 gap-1 text-[11px]"
+                                onclick={() => saveMemory(mem.key, editingValue)}
+                                ><Save class="size-3" /> Save</Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                class="h-7 text-[11px]"
+                                onclick={() => {
+                                  editingKey = null;
+                                  editingValue = '';
+                                }}>Cancel</Button>
+                            </div>
+                          </div>
+                        {:else}
+                          <div class="min-w-0 flex-1">
+                            <div class="text-xs font-medium">{mem.key}</div>
+                            <div class="mt-1 text-[11px] leading-5 text-muted-foreground">
+                              {mem.value}
+                            </div>
+                            {#if mem.savedAt}<div class="mt-2 text-[10px] text-muted-foreground">
+                                {new Date(mem.savedAt).toLocaleDateString()}
+                              </div>{/if}
+                          </div>
+                          <div
+                            class="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              class="size-7 p-0"
+                              title="Edit"
+                              onclick={() => {
+                                editingKey = mem.key;
+                                editingValue = mem.value;
+                              }}><Pencil class="size-3.5" /></Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              class="size-7 p-0 text-red-500"
+                              title="Delete"
+                              onclick={() => deleteMemory(mem.key)}
+                              ><Trash2 class="size-3.5" /></Button>
+                          </div>
+                        {/if}
                       </div>
-                    {/if}
-                  </div>
-                  <div
-                    class="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button
-                      type="button"
-                      class="rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
-                      title="Edit"
-                      onclick={() => {
-                        editingKey = mem.key;
-                        editingValue = mem.value;
-                      }}>
-                      <Pencil class="size-3" />
-                    </button>
-                    <button
-                      type="button"
-                      class="rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-red-500/10 hover:text-red-500"
-                      title="Delete"
-                      onclick={() => deleteMemory(mem.key)}>
-                      <Trash2 class="size-3" />
-                    </button>
+                    {/each}
                   </div>
                 {/if}
+
+                <div class="border-t border-border p-3">
+                  <div class="mb-2 text-xs font-medium">Add memory</div>
+                  <div class="flex gap-2">
+                    <Input class="h-8 text-xs" placeholder="Key" bind:value={newMemoryKey} />
+                    <Input
+                      class="h-8 flex-[2] text-xs"
+                      placeholder="Value"
+                      bind:value={newMemoryValue} />
+                    <Button
+                      class="h-8 gap-1 text-xs"
+                      disabled={!newMemoryKey.trim() || !newMemoryValue.trim()}
+                      onclick={() => saveMemory(newMemoryKey.trim(), newMemoryValue.trim())}>
+                      <Save class="size-3.5" /> Add
+                    </Button>
+                  </div>
+                </div>
               </div>
-            {/each}
-          </div>
-        {/if}
-
-        <!-- Add new memory -->
-        <div class="space-y-1.5 border-t border-border/30 pt-2">
-          <span class="text-[9px] font-semibold tracking-wider text-muted-foreground/50 uppercase"
-            >Add Memory</span>
-          <div class="flex gap-1.5">
-            <input
-              type="text"
-              placeholder="Key (e.g. preferred_style)"
-              class="h-7 flex-1 rounded-md border border-border/40 bg-muted/20 px-2 text-[10px] text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-indigo-500/50 dark:bg-white/[0.03]"
-              bind:value={newMemoryKey} />
-            <input
-              type="text"
-              placeholder="Value"
-              class="h-7 flex-[2] rounded-md border border-border/40 bg-muted/20 px-2 text-[10px] text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-indigo-500/50 dark:bg-white/[0.03]"
-              bind:value={newMemoryValue} />
-            <button
-              type="button"
-              class="flex h-7 items-center gap-1 rounded-md bg-emerald-500/10 px-2.5 text-[10px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/20 disabled:opacity-40"
-              disabled={!newMemoryKey.trim() || !newMemoryValue.trim()}
-              onclick={() => saveMemory(newMemoryKey.trim(), newMemoryValue.trim())}>
-              <Save class="size-3" /> Add
-            </button>
-          </div>
+            </div>
+          {/if}
         </div>
-
-        <p class="px-0.5 text-[10px] leading-relaxed text-muted-foreground/50">
-          Memories help the AI remember your preferences across conversations.
-        </p>
-      </div>
+      </section>
     </div>
-
-    <Dialog.Footer class="flex items-center justify-between border-t border-border/30 pt-3">
-      <div class="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          class="h-8 gap-1.5 rounded-lg text-xs"
-          onclick={downloadAppState}
-          title="Export all app state as JSON">
-          <Download class="size-3.5" />
-          Export
-        </Button>
-        <span class="text-[9px] text-muted-foreground/40">Graphini v1.0</span>
-      </div>
-      <Button
-        class="h-8 rounded-lg bg-indigo-600 text-xs text-white hover:bg-indigo-700"
-        onclick={() => onOpenChange(false)}>Done</Button>
-    </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

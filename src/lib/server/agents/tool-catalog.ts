@@ -133,7 +133,8 @@ export const graphiniMcpTools = [
     description: 'Replace the full active Mermaid diagram. Input must be Mermaid syntax only.',
     inputSchema: objectSchema(
       z.object({
-        content: z.string().min(1)
+        content: z.string().min(1),
+        purpose: z.string().optional()
       })
     ),
     name: 'diagramWrite',
@@ -196,31 +197,34 @@ export const graphiniMcpTools = [
     title: 'Error Checker'
   },
   {
-    annotations: { destructiveHint: true, title: 'Auto Styler' },
-    description: 'Apply Mermaid style directives with a selected palette.',
+    annotations: { readOnlyHint: true, title: 'Style Search' },
+    description:
+      'Search Mermaid style palettes and return patch suggestions without mutating the diagram.',
     inputSchema: objectSchema(
       z.object({
-        palette: z.enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome']).optional(),
-        preserveExisting: z.boolean().optional()
+        limit: z.number().int().min(1).max(30).optional(),
+        palette: z.enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome']).optional()
       })
     ),
-    name: 'autoStyler',
-    title: 'Auto Styler'
+    name: 'styleSearch',
+    title: 'Style Search'
   },
   {
-    annotations: { destructiveHint: true, openWorldHint: true, title: 'Iconifier' },
+    annotations: { openWorldHint: true, readOnlyHint: true, title: 'Icon Search' },
     description:
-      'Add or remove visual icons on diagram nodes using local and Iconify icon catalogs.',
+      'Search local and Iconify icon candidates for Mermaid nodes without mutating the diagram.',
     inputSchema: objectSchema(
       z.object({
-        mode: z.enum(['all', 'selected', 'remove']),
-        nodes: z.array(z.string()).optional(),
-        removeAll: z.boolean().optional(),
-        removeFromNodes: z.array(z.string()).optional()
+        colorMode: z.enum(['any', 'color', 'noncolor']).optional(),
+        includeWebSuggestions: z.boolean().optional(),
+        limit: z.number().int().min(1).max(30).optional(),
+        nodeIds: z.array(z.string()).optional(),
+        query: z.string().optional(),
+        webLimit: z.number().int().min(0).max(5).optional()
       })
     ),
-    name: 'iconifier',
-    title: 'Iconifier'
+    name: 'iconSearch',
+    title: 'Icon Search'
   },
   {
     annotations: { title: 'Long Term Memory' },
@@ -305,6 +309,22 @@ export const graphiniMcpTools = [
     ),
     name: 'planner',
     title: 'Planner'
+  },
+  {
+    annotations: { readOnlyHint: true, title: 'Thinking' },
+    description:
+      'Record a concise public thinking checkpoint before complex, ambiguous, or tool-heavy work.',
+    inputSchema: objectSchema(
+      z.object({
+        confidence: z.enum(['low', 'medium', 'high']).optional(),
+        focus: z.string().min(1),
+        nextAction: z.string().optional(),
+        summary: z.string().min(1),
+        toolsConsidered: z.array(z.string()).max(8).optional()
+      })
+    ),
+    name: 'thinking',
+    title: 'Thinking'
   },
   {
     annotations: { readOnlyHint: true, title: 'Self Critique' },
@@ -447,6 +467,7 @@ export const agentToolNames = {
   'document-agent': ['markdownRead', 'markdownWrite', 'fileManager', 'actionItemExtractor'],
   orchestrator: [
     'askQuestions',
+    'thinking',
     'planner',
     'planWithProgress',
     'sequentialThinking',
@@ -455,16 +476,9 @@ export const agentToolNames = {
     'subagentFanout',
     'subagentAssemble'
   ],
-  planner: ['planner', 'planWithProgress', 'sequentialThinking'],
+  planner: ['thinking', 'planner', 'planWithProgress', 'sequentialThinking'],
   'research-agent': ['webSearch', 'fileManager'],
-  'visual-polish': [
-    'diagramRead',
-    'diagramWrite',
-    'diagramPatch',
-    'autoStyler',
-    'iconifier',
-    'errorChecker'
-  ]
+  'visual-polish': ['diagramRead', 'diagramPatch', 'styleSearch', 'iconSearch', 'errorChecker']
 } satisfies Record<GraphiniAgentId, string[]>;
 
 export function listMcpTools(): McpToolDescriptor[] {

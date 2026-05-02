@@ -97,6 +97,7 @@
               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
           )}
           title="Chat History"
+          aria-label="Chat history"
           onclick={() => (showHistory = !showHistory)}>
           <History class="size-3.5" />
         </button>
@@ -104,6 +105,7 @@
           type="button"
           class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
           title="New Chat"
+          aria-label="New chat"
           onclick={() => onNewChat?.()}>
           <Plus class="size-3.5" />
         </button>
@@ -111,6 +113,7 @@
           type="button"
           class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           title="Clear Chat"
+          aria-label="Clear chat"
           onclick={() => onClearChat?.()}>
           <Trash2 class="size-3.5" />
         </button>
@@ -122,12 +125,12 @@
   {#if showHistory}
     <div class="border-b border-border bg-muted/10">
       <div class="flex items-center justify-between px-3 py-1.5">
-        <span class="text-[10px] font-medium text-muted-foreground"
-          >History</span>
+        <span class="text-[10px] font-medium text-muted-foreground">History</span>
         <div class="flex items-center gap-1">
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            aria-label="New chat"
             onclick={handleNewChatFromHistory}>
             <Plus class="size-3" />
             New
@@ -136,6 +139,7 @@
             type="button"
             class="flex size-5 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
             title="Delete all"
+            aria-label="Delete all conversations"
             onclick={handleDeleteAllConversations}>
             <Trash2 class="size-3" />
           </button>
@@ -158,34 +162,33 @@
           </div>
         {:else}
           {#each conversationsStore.list as conv (conv.id)}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class={cn(
-                'group flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/40',
+                'group flex w-full items-center gap-1 px-3 py-1.5 transition-colors hover:bg-muted/40',
                 conv.id === conversationsStore.activeId && 'bg-accent'
-              )}
-              onclick={() => handleSelectConversation(conv.id)}
-              onkeydown={(e) => {
-                if (e.key === 'Enter') handleSelectConversation(conv.id);
-              }}
-              role="button"
-              tabindex="0">
-              <MessageSquare class="size-3 flex-shrink-0 text-muted-foreground" />
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1">
-                  <span class="truncate text-[11px] font-medium text-foreground"
-                    >{conv.title || 'Untitled'}</span>
-                  {#if conv.is_pinned}<Pin class="size-2.5 flex-shrink-0 text-primary" />{/if}
-                  {#if conv.is_archived}<Archive
-                      class="size-2.5 flex-shrink-0 text-muted-foreground" />{/if}
-                </div>
-                <span class="text-[9px] text-muted-foreground"
-                  >{formatConvTime(conv.updated_at)}</span>
-              </div>
+              )}>
               <button
                 type="button"
-                class="flex size-5 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-all group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                onclick={() => handleSelectConversation(conv.id)}>
+                <MessageSquare class="size-3 flex-shrink-0 text-muted-foreground" />
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1">
+                    <span class="truncate text-[11px] font-medium text-foreground"
+                      >{conv.title || 'Untitled'}</span>
+                    {#if conv.is_pinned}<Pin class="size-2.5 flex-shrink-0 text-primary" />{/if}
+                    {#if conv.is_archived}<Archive
+                        class="size-2.5 flex-shrink-0 text-muted-foreground" />{/if}
+                  </div>
+                  <span class="text-[9px] text-muted-foreground"
+                    >{formatConvTime(conv.updated_at)}</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                class="flex size-5 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-[background-color,color,opacity] duration-150 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
                 title="Delete"
+                aria-label="Delete conversation"
                 onclick={(e) => handleDeleteConversation(e, conv.id)}>
                 <Trash2 class="size-2.5" />
               </button>
@@ -202,8 +205,7 @@
       {@render children()}
     {:else}
       <div class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <div
-          class="flex size-12 items-center justify-center rounded-xl bg-muted">
+        <div class="flex size-12 items-center justify-center rounded-xl bg-muted">
           <img src="/brand/logo.png" alt="Graphini" class="size-6" />
         </div>
         <div>

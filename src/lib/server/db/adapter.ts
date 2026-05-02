@@ -155,6 +155,18 @@ export interface DatabaseAdapter {
     credits_charged?: number;
     metadata?: Record<string, unknown>;
   }): Promise<Message>;
+  createMessages(
+    messages: {
+      conversation_id: string;
+      role: Message['role'];
+      content: string;
+      parts?: unknown;
+      model_used?: string;
+      tokens_used?: number;
+      credits_charged?: number;
+      metadata?: Record<string, unknown>;
+    }[]
+  ): Promise<Message[]>;
   listMessages(conversation_id: string, options?: PaginationOptions): Promise<Message[]>;
   deleteMessage(id: string): Promise<void>;
 

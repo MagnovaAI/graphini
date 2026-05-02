@@ -11,6 +11,7 @@ export interface ToolConfig {
   description: string;
   category:
     | 'diagram'
+    | 'style'
     | 'icons'
     | 'search'
     | 'interaction'
@@ -53,7 +54,14 @@ const DEFAULT_TOOLS: ToolConfig[] = [
   },
   {
     category: 'icons',
-    description: 'Add or remove icons on diagram nodes',
+    description: 'Search icon candidates for diagram nodes before patching',
+    enabled: true,
+    id: 'iconSearch',
+    label: 'Icon Tool'
+  },
+  {
+    category: 'icons',
+    description: 'Attach resolved icons to diagram nodes after a diagram exists',
     enabled: true,
     id: 'iconifier',
     label: 'iconifier'
@@ -70,7 +78,7 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     description: 'Ask clarifying questions before creating diagrams',
     enabled: true,
     id: 'askQuestions',
-    label: 'askQuestions'
+    label: 'Question Tool'
   },
   {
     category: 'diagram',
@@ -91,11 +99,18 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     description: 'Validate diagram syntax and report errors',
     enabled: true,
     id: 'errorChecker',
-    label: 'errorChecker'
+    label: 'Error Checker'
   },
   {
-    category: 'diagram',
-    description: 'Automatically style nodes and subgraphs with harmonious colors',
+    category: 'style',
+    description: 'Search style palettes and patch suggestions before applying',
+    enabled: true,
+    id: 'styleSearch',
+    label: 'Style Tool'
+  },
+  {
+    category: 'style',
+    description: 'Automatically improve diagram styling and visual consistency',
     enabled: true,
     id: 'autoStyler',
     label: 'autoStyler'
@@ -127,6 +142,13 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     enabled: true,
     id: 'planner',
     label: 'planner'
+  },
+  {
+    category: 'intelligence',
+    description: 'Show a concise public thinking checkpoint before complex tool use',
+    enabled: true,
+    id: 'thinking',
+    label: 'thinking'
   },
   {
     category: 'intelligence',
@@ -209,18 +231,42 @@ const DEFAULT_TOOLS: ToolConfig[] = [
 
 const STORAGE_KEY = 'graphini_tools_config_v1';
 
-function loadToolsConfig(): ToolConfig[] {
-  if (typeof window === 'undefined') return [...DEFAULT_TOOLS];
+function cloneDefaultTools(): ToolConfig[] {
+  return DEFAULT_TOOLS.map((tool) => ({ ...tool }));
+}
+
+function applySavedToolsConfig(saved: Record<string, boolean> | null): ToolConfig[] {
+  if (!saved) return cloneDefaultTools();
+  return DEFAULT_TOOLS.map((t) => ({
+    ...t,
+    enabled: saved[t.id] !== undefined ? saved[t.id] : t.enabled
+  }));
+}
+
+function readSavedToolsConfig(): Record<string, boolean> | null {
+  if (typeof window === 'undefined') return null;
   try {
-    const saved = kv.get<Record<string, boolean>>('tools', STORAGE_KEY);
-    if (!saved) return [...DEFAULT_TOOLS];
-    return DEFAULT_TOOLS.map((t) => ({
-      ...t,
-      enabled: saved[t.id] !== undefined ? saved[t.id] : t.enabled
-    }));
+    return kv.get<Record<string, boolean>>('tools', STORAGE_KEY);
   } catch {
-    return [...DEFAULT_TOOLS];
+    return null;
   }
+}
+
+function loadToolsConfig(): ToolConfig[] {
+  if (typeof window === 'undefined') return cloneDefaultTools();
+  return applySavedToolsConfig(readSavedToolsConfig());
+}
+
+function syncToolsConfigFromKv() {
+  const saved = readSavedToolsConfig();
+  if (!saved) return;
+  tools = DEFAULT_TOOLS.map((t) => {
+    const current = tools.find((tool) => tool.id === t.id);
+    return {
+      ...t,
+      enabled: saved[t.id] !== undefined ? saved[t.id] : (current?.enabled ?? t.enabled)
+    };
+  });
 }
 
 function saveToolsConfig(tools: ToolConfig[]) {
@@ -255,11 +301,16 @@ export const toolsStore = {
   },
 
   getEnabledToolIds(): string[] {
+    syncToolsConfigFromKv();
     return tools.filter((t) => t.enabled).map((t) => t.id);
   },
 
+  syncFromKv() {
+    syncToolsConfigFromKv();
+  },
+
   reset() {
-    tools = [...DEFAULT_TOOLS];
+    tools = cloneDefaultTools();
     saveToolsConfig(tools);
   },
 
@@ -280,6 +331,7 @@ export const toolsStore = {
 
 export const TOOL_CATEGORIES: { id: string; label: string }[] = [
   { id: 'diagram', label: 'Diagram' },
+  { id: 'style', label: 'Style' },
   { id: 'icons', label: 'Icons' },
   { id: 'search', label: 'Search' },
   { id: 'interaction', label: 'Interaction' },

@@ -26,7 +26,6 @@
   import {
     AlertCircle,
     ArrowDown,
-    AtSign,
     BookOpen,
     Brain,
     Building2,
@@ -38,6 +37,7 @@
     Database,
     FileText,
     Gem,
+    GitBranch,
     Globe,
     Lightbulb,
     ListChecks,
@@ -70,13 +70,137 @@
     return workspaceId && diagramId ? `${workspaceId}:${diagramId}` : workspaceId || '_default';
   }
 
+  function getActiveWorkspaceTab() {
+    return workspaceStore.diagrams.find((diagram) => diagram.id === workspaceStore.activeDiagramId);
+  }
+
+  function getActiveWorkspaceEngine() {
+    return (
+      getActiveWorkspaceTab()?.engine ?? workspaceStore.workspace?.document?.engine ?? 'mermaid'
+    );
+  }
+
+  function isOutputForActiveTab(output: Record<string, unknown> | undefined) {
+    if (!output) return true;
+    const activeTab = getActiveWorkspaceTab();
+    const outputTabId = output.targetTabId;
+    const outputTabName = output.targetTabName;
+    if (typeof outputTabId === 'string' && activeTab?.id) return outputTabId === activeTab.id;
+    if (typeof outputTabName === 'string' && activeTab?.title) {
+      return outputTabName === activeTab.title;
+    }
+    return true;
+  }
+
+  function currentInputTargetsActiveTab(inputJson: string) {
+    const activeTab = getActiveWorkspaceTab();
+    const targetMatch = inputJson.match(/"targetTabName"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (!targetMatch || !activeTab?.title) return true;
+    return targetMatch[1].replace(/\\"/g, '"') === activeTab.title;
+  }
+
+  const mermaidDeclarationPattern =
+    /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)\b/i;
+
+  function extractStreamingJsonNumber(inputJson: string, key: string): number | null {
+    const match = inputJson.match(new RegExp(`"${key}"\\s*:\\s*(\\d+)`));
+    return match ? Number(match[1]) : null;
+  }
+
+  function buildDiagramPatchPreview(inputJson: string, replacement: string, previousCode: string) {
+    const startLine = extractStreamingJsonNumber(inputJson, 'startLine');
+    const endLine = extractStreamingJsonNumber(inputJson, 'endLine');
+    if (!startLine || !endLine || startLine > endLine || !previousCode.trim()) return null;
+
+    const lines = previousCode.split('\n');
+    if (endLine > lines.length) return null;
+
+    const replacementLines = replacement.split('\n');
+    const replacingWholeDocument = startLine === 1 && endLine === lines.length && lines.length > 1;
+    if (replacingWholeDocument && mermaidDeclarationPattern.test(replacement.trim())) return null;
+
+    const nextLines = [...lines];
+    nextLines.splice(startLine - 1, endLine - startLine + 1, ...replacementLines);
+    return nextLines.join('\n');
+  }
+
+  function previewDiagramToolInput(
+    toolName: string,
+    inputJson: string,
+    content: string,
+    artifactId: string
+  ) {
+    if (!content.trim() || !currentInputTargetsActiveTab(inputJson)) return false;
+    if (toolName === 'diagramWrite' && !mermaidDeclarationPattern.test(content.trim())) {
+      return false;
+    }
+
+    const nextCode =
+      toolName === 'diagramPatch'
+        ? buildDiagramPatchPreview(
+            inputJson,
+            content,
+            artifactMap[artifactId]?.previousCode || $stateStore.code || ''
+          )
+        : content;
+
+    if (!nextCode?.trim() || !mermaidDeclarationPattern.test(nextCode.trim())) return false;
+    inputStateStore.update((s) => ({
+      ...s,
+      code: nextCode,
+      updateDiagram: getActiveWorkspaceEngine() === 'mermaid'
+    }));
+    return true;
+  }
+
+  function getToolDisplayName(toolName: string) {
+    const names: Record<string, string> = {
+      actionItemExtractor: 'Action Items',
+      askQuestions: 'Question Tool',
+      autoStyler: 'Style Tool',
+      dataAnalyzer: 'Data Analyzer',
+      diagramDelete: 'Clear Diagram',
+      diagramPatch: 'Diagram Patch',
+      diagramRead: 'Diagram Read',
+      diagramWrite: 'Diagram Write',
+      errorChecker: 'Error Checker',
+      fileManager: 'Files',
+      gitGuard: 'Git Guard',
+      iconSearch: 'Icon Tool',
+      iconifier: 'Icon Tool',
+      longTermMemory: 'Memory',
+      planWithProgress: 'Plan Progress',
+      planner: 'Planner',
+      selfCritique: 'Review',
+      sequentialThinking: 'Thinking',
+      styleSearch: 'Style Tool',
+      subagentAssemble: 'Subagent Assemble',
+      subagentFanout: 'Subagent Fanout',
+      tableAnalytics: 'Table Analytics',
+      thinking: 'Thinking',
+      webSearch: 'Web Search'
+    };
+
+    return names[toolName] ?? toolName;
+  }
+
+  function applyToolSourceToActiveTab(content: string, output?: Record<string, unknown>) {
+    if (!isOutputForActiveTab(output)) return;
+    inputStateStore.update((s) => ({
+      ...s,
+      code: content,
+      updateDiagram: getActiveWorkspaceEngine() === 'mermaid'
+    }));
+    workspaceStore.markDirty();
+  }
+
   // Track current file to detect switches
   let currentFileId = getCurrentFileId();
   let fileEffectInitialized = false;
 
   // React to workspace switches.
   $effect(() => {
-    const newFileId = workspaceStore.workspace?.id || '_default';
+    const newFileId = getCurrentFileId();
     if (!fileEffectInitialized) {
       fileEffectInitialized = true;
       return;
@@ -118,6 +242,16 @@
   let dbSyncedMessageCount = 0;
   let dbSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  interface DbMessageRow {
+    content: string;
+    created_at: string;
+    id: string;
+    metadata: Record<string, unknown> | null;
+    model_used: string | null;
+    parts: unknown;
+    role: string;
+  }
+
   function getDbConversationId(): string | null {
     try {
       return kv.get<string>('chat', chatKey('dbConvId')) || null;
@@ -134,6 +268,55 @@
     } catch {
       /* ignore */
     }
+  }
+
+  function metadataOf(message: DbMessageRow): Record<string, unknown> {
+    return message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
+  }
+
+  function messagesFromDbRows(rows: DbMessageRow[]): Record<string, unknown>[] {
+    return rows.map((message) => {
+      const metadata = metadataOf(message);
+      return {
+        attachments: metadata.attachments || [],
+        content: message.content,
+        contextContent: metadata.contextContent,
+        id: typeof metadata.clientId === 'string' ? metadata.clientId : message.id,
+        model_used: message.model_used,
+        role: message.role,
+        timestamp: metadata.timestamp || new Date(message.created_at).getTime()
+      };
+    });
+  }
+
+  function partsFromDbRows(rows: DbMessageRow[]): Record<number, ContentPart[]> {
+    const restoredParts: Record<number, ContentPart[]> = {};
+    rows.forEach((message, index) => {
+      if (Array.isArray(message.parts)) restoredParts[index] = message.parts as ContentPart[];
+      else if (message.role === 'assistant' && message.content) {
+        restoredParts[index] = [{ type: 'text', text: message.content }];
+      }
+    });
+    return restoredParts;
+  }
+
+  function applyDbMessages(convId: string, rows: DbMessageRow[]) {
+    messages = messagesFromDbRows(rows);
+    messageParts = partsFromDbRows(rows);
+    dbConversationId = convId || null;
+    dbSyncedMessageCount = messages.length;
+    conversationStarted = messages.length > 0;
+  }
+
+  function clearCurrentFileChatCache() {
+    kv.delete('chat', chatKey('messages'));
+    kv.delete('chat', chatKey('parts'));
+    kv.delete('chat', chatKey('artifacts'));
+    kv.delete('chat', chatKey('reasoning'));
+    kv.delete('chat', chatKey('checkpoints'));
+    kv.delete('chat', chatKey('diagramCode'));
+    kv.delete('chat', chatKey('activeConversationId'));
+    kv.delete('chat', chatKey('dbConvId'));
   }
 
   async function ensureDbConversation(): Promise<string | null> {
@@ -206,10 +389,16 @@
         const rawContent = m.content as string | undefined;
         const content = rawContent && rawContent.trim() ? rawContent : '[tool call]';
         return {
-          role: m.role,
           content,
+          metadata: {
+            attachments: m.attachments,
+            clientId: typeof m.id === 'string' ? m.id : undefined,
+            contextContent: m.contextContent,
+            timestamp: m.timestamp
+          },
+          model_used: m.role === 'assistant' ? (m.model_used ?? selectedModelId) : undefined,
           parts: safeParts,
-          metadata: { timestamp: m.timestamp, attachments: m.attachments }
+          role: m.role
         };
       });
       const res = await fetch('/api/conversations/messages', {
@@ -242,28 +431,16 @@
       const res = await fetch(`/api/conversations/messages?conversation_id=${convId}`, {
         credentials: 'include'
       });
+      if (res.status === 404) {
+        clearCurrentFileChatCache();
+        setDbConversationId(null);
+        applyDbMessages('', []);
+        return true;
+      }
       if (!res.ok) return false;
       const data = await res.json();
-      if (!data.messages || data.messages.length === 0) return false;
-      messages = data.messages.map((m: Record<string, unknown>) => ({
-        role: m.role,
-        content: m.content,
-        timestamp:
-          (m.metadata as Record<string, unknown>)?.timestamp ||
-          new Date(m.created_at as string).getTime(),
-        attachments: (m.metadata as Record<string, unknown>)?.attachments || []
-      }));
-      // Restore parts from DB
-      const parts: Record<number, ContentPart[]> = {};
-      data.messages.forEach((m: Record<string, unknown>, i: number) => {
-        if (m.parts) parts[i] = m.parts as ContentPart[];
-        else if (m.role === 'assistant' && m.content)
-          parts[i] = [{ type: 'text', text: m.content as string }];
-      });
-      messageParts = parts;
-      dbConversationId = convId;
-      dbSyncedMessageCount = messages.length;
-      conversationStarted = messages.length > 0;
+      if (!Array.isArray(data.messages)) return false;
+      applyDbMessages(convId, data.messages as DbMessageRow[]);
       return true;
     } catch {
       return false;
@@ -282,7 +459,8 @@
     // Wait for KV store to initialize (loads cache from server), then restore chat
     const initAndRestore = async () => {
       // Ensure KV store cache is populated before reading from it
-      await kv.init();
+      await kv.init({ force: authStore.isLoggedIn });
+      toolsStore.syncFromKv();
       // Restore from KV cache (instant after init)
       restoreChatState();
 
@@ -314,13 +492,7 @@
       } else if (authStore.isInitialized && !authStore.isLoggedIn) {
         // Not logged in — clear any stale KV chat data and reset to clean start
         try {
-          kv.delete('chat', chatKey('messages'));
-          kv.delete('chat', chatKey('parts'));
-          kv.delete('chat', chatKey('artifacts'));
-          kv.delete('chat', chatKey('reasoning'));
-          kv.delete('chat', chatKey('checkpoints'));
-          kv.delete('chat', chatKey('diagramCode'));
-          kv.set('chat', chatKey('activeConversationId'), null);
+          clearCurrentFileChatCache();
         } catch {
           /* ignore */
         }
@@ -528,6 +700,27 @@
   }
   // Artifacts stored by ID for quick lookup
   let artifactMap = $state<Record<string, Artifact>>({});
+  let artifactIdsByToolCall = $state<Record<string, string>>({});
+
+  function getToolCallId(value: unknown): string {
+    if (typeof value === 'string' && value.trim()) return value;
+    if (typeof value === 'number') return String(value);
+    if (currentToolCallId) return currentToolCallId;
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function getArtifactIdForToolCall(toolName: string, toolCallId: unknown): string {
+    const callId = getToolCallId(toolCallId);
+    const key = `${toolName}:${callId}`;
+    const existing = artifactIdsByToolCall[key];
+    if (existing) return existing;
+
+    const safeToolName = toolName.replace(/[^a-z0-9_-]/gi, '-');
+    const safeCallId = callId.replace(/[^a-z0-9_-]/gi, '-');
+    const artifactId = `artifact-${safeToolName}-${safeCallId}`;
+    artifactIdsByToolCall = { ...artifactIdsByToolCall, [key]: artifactId };
+    return artifactId;
+  }
 
   interface SubagentAssignment {
     allowedTools?: string[];
@@ -550,7 +743,7 @@
     | { type: 'text'; text: string }
     | { type: 'thinking'; id: string }
     | { type: 'artifact'; artifactId: string }
-    | { type: 'reasoning'; id: string }
+    | { type: 'reasoning'; id: string; text: string; status: 'running' | 'done' }
     | { type: 'error'; error: string; userMessage?: string }
     | {
         type: 'questionnaire';
@@ -590,6 +783,16 @@
         isStreaming?: boolean;
       };
 
+  type PatchChainPart = Extract<ContentPart, { type: 'artifact' }>;
+  type DisplayContentPart =
+    | ContentPart
+    | {
+        type: 'tool-chain';
+        id: string;
+        parts: PatchChainPart[];
+        status: 'running' | 'done';
+      };
+
   function messageKey(message: Record<string, unknown>, index: number) {
     return String(message.id ?? `${message.role ?? 'message'}:${message.timestamp ?? index}`);
   }
@@ -602,7 +805,8 @@
     );
   }
 
-  function contentPartKey(part: ContentPart, index: number) {
+  function contentPartKey(part: DisplayContentPart, index: number) {
+    if (part.type === 'tool-chain') return part.id;
     if (part.type === 'artifact') return part.artifactId;
     if ('id' in part) return part.id;
     if (part.type === 'text') return `text:${part.text.slice(0, 40)}:${index}`;
@@ -610,13 +814,71 @@
     return `part:${index}`;
   }
 
+  function isPatchChainPart(part: ContentPart): part is PatchChainPart {
+    return part.type === 'artifact' && artifactMap[part.artifactId]?.title === 'Diagram Patch';
+  }
+
+  function chainDisplayParts(parts: ContentPart[]): DisplayContentPart[] {
+    const chained: DisplayContentPart[] = [];
+    let pending: PatchChainPart[] = [];
+
+    const flushPending = () => {
+      if (pending.length === 1) {
+        chained.push(pending[0]);
+      } else if (pending.length > 1) {
+        const first = pending[0];
+        const last = pending[pending.length - 1];
+        chained.push({
+          id: `tool-chain:${'id' in first ? first.id : first.artifactId}:${'id' in last ? last.id : last.artifactId}:${pending.length}`,
+          parts: pending,
+          status: pending.some((part) => toolPartStatus(part) === 'running') ? 'running' : 'done',
+          type: 'tool-chain'
+        });
+      }
+      pending = [];
+    };
+
+    for (const part of parts) {
+      if (isPatchChainPart(part)) {
+        pending.push(part);
+      } else {
+        flushPending();
+        chained.push(part);
+      }
+    }
+    flushPending();
+
+    return chained;
+  }
+
+  function toolPartStatus(part: PatchChainPart): 'running' | 'done' {
+    return artifactMap[part.artifactId]?.isStreaming ? 'running' : 'done';
+  }
+
+  function toolPartLabel(part: PatchChainPart): string {
+    return artifactMap[part.artifactId]?.title || 'Artifact';
+  }
+
+  function toolPartSummary(part: PatchChainPart): string {
+    const artifact = artifactMap[part.artifactId];
+    if (!artifact) return 'artifact';
+    const lines = artifact.code ? artifact.code.split('\n').length : 0;
+    const operation = artifact.operation ? `${artifact.operation}` : 'update';
+    return `${operation}${lines ? ` · ${lines} line${lines !== 1 ? 's' : ''}` : ''}`;
+  }
+
+  function toolPartDetails(part: PatchChainPart): string[] {
+    const artifact = artifactMap[part.artifactId];
+    if (!artifact?.code) return [];
+    return artifact.code
+      .split('\n')
+      .slice(0, 8)
+      .map((line, index) => `${index + 1}: ${line}`);
+  }
+
   function isInternalReasoningStreamPart(data: { type?: string }): boolean {
     const type = data.type ?? '';
     return (
-      type === 'reasoning' ||
-      type === 'reasoning-start' ||
-      type === 'reasoning-delta' ||
-      type === 'reasoning-end' ||
       type === 'thinking' ||
       type === 'thinking-start' ||
       type === 'thinking-delta' ||
@@ -626,6 +888,18 @@
 
   function removeThinkingPart(parts: ContentPart[]): ContentPart[] {
     return parts.filter((part) => part.type !== 'thinking');
+  }
+
+  function finalizeReasoningParts(parts: ContentPart[]): ContentPart[] {
+    let changed = false;
+    const finalized = parts.map((part) => {
+      if (part.type === 'reasoning' && part.status === 'running') {
+        changed = true;
+        return { ...part, status: 'done' };
+      }
+      return part;
+    });
+    return changed ? finalized : parts;
   }
 
   interface QuestionnaireQuestion {
@@ -672,6 +946,7 @@
   let currentToolCallId = $state<string | null>(null);
   let currentToolName = $state('');
   let currentToolInputJson = $state('');
+  let currentReasoningId = $state<string | null>(null);
   let streamCanvasTimer: ReturnType<typeof setTimeout> | null = null;
   let currentArtifactId = $state<string | null>(null);
   // Track whether the last part for the current message is text (to append to it)
@@ -715,6 +990,9 @@
   let abortController: AbortController | null = $state(null);
 
   let selectedModel = $derived(modelsStore.selectedModel ?? modelsStore.models[0]);
+  let attachmentAccept = $derived(
+    `${selectedModel?.imageSupport ? 'image/*,' : ''}.pdf,.txt,.md,.markdown`
+  );
   let hasMessages = $derived(messages.length > 0);
   let hasDiagram = $derived(($stateStore.code || '').trim().length > 20);
 
@@ -873,33 +1151,26 @@
   }
 
   // Context usage tracking
-  const CONTEXT_WINDOW = 128000; // default context window in tokens
+  const FALLBACK_CONTEXT_WINDOW = 128000;
+  let contextWindow = $derived(
+    selectedModel?.contextWindow || selectedModel?.maxTokens || FALLBACK_CONTEXT_WINDOW
+  );
   let estimatedTokens = $derived.by(() => {
     let total = 0;
     for (const msg of messages) {
-      total += Math.ceil((msg.content?.length || 0) / 3.5);
+      const content = String(msg.contextContent || msg.content || '');
+      total += Math.ceil(content.length / 3.5);
     }
     // Add current diagram code tokens
     const diagramCode = $stateStore.code || '';
     total += Math.ceil(diagramCode.length / 3.5);
     return total;
   });
-  let contextPercent = $derived(
-    Math.min(100, Math.round((estimatedTokens / CONTEXT_WINDOW) * 100))
-  );
-  let contextColor = $derived(
-    contextPercent > 80
-      ? 'text-red-500'
-      : contextPercent > 50
-        ? 'text-amber-500'
-        : 'text-emerald-500'
-  );
-  let contextStrokeColor = $derived(
-    contextPercent > 80
-      ? 'stroke-red-500'
-      : contextPercent > 50
-        ? 'stroke-amber-500'
-        : 'stroke-emerald-500'
+  let contextPercent = $derived(Math.min(100, Math.round((estimatedTokens / contextWindow) * 100)));
+  let contextTitle = $derived(
+    `${estimatedTokens.toLocaleString()} / ${contextWindow.toLocaleString()} tokens (${contextPercent}% used)${
+      selectedModel?.name ? ` · ${selectedModel.name}` : ''
+    }`
   );
 
   // Save chat state to localStorage (full state including artifacts) — per-file
@@ -908,6 +1179,8 @@
       // Save messages (include attachments for user messages)
       const simpleMessages = messages.map((m: Record<string, unknown>) => {
         const msg: Record<string, unknown> = { id: m.id, role: m.role, content: m.content };
+        if (m.contextContent) msg.contextContent = m.contextContent;
+        if (m.model_used) msg.model_used = m.model_used;
         if ((m.attachments as Record<string, unknown>[] | undefined)?.length) {
           msg.attachments = (m.attachments as Record<string, unknown>[]).map(
             (a: Record<string, unknown>) => ({
@@ -1052,12 +1325,7 @@
     dbSyncedMessageCount = 0;
     // Clear persisted state for current file
     try {
-      kv.delete('chat', chatKey('messages'));
-      kv.delete('chat', chatKey('parts'));
-      kv.delete('chat', chatKey('artifacts'));
-      kv.delete('chat', chatKey('reasoning'));
-      kv.delete('chat', chatKey('checkpoints'));
-      kv.delete('chat', chatKey('diagramCode'));
+      clearCurrentFileChatCache();
       const newId = uuidv4();
       sessionId = newId;
       kv.set('chat', chatKey('sessionId'), newId);
@@ -1095,18 +1363,13 @@
     try {
       kv.set('chat', chatKey('sessionId'), newId);
       // Clear persisted state so restore doesn't bring back old data
-      kv.delete('chat', chatKey('messages'));
-      kv.delete('chat', chatKey('parts'));
-      kv.delete('chat', chatKey('artifacts'));
-      kv.delete('chat', chatKey('reasoning'));
-      kv.delete('chat', chatKey('checkpoints'));
-      kv.delete('chat', chatKey('diagramCode'));
+      clearCurrentFileChatCache();
     } catch {
       /* ignore */
     }
     // Persist the active conversation ID as null (new chat)
     try {
-      kv.set('chat', chatKey('activeConversationId'), null);
+      kv.delete('chat', chatKey('activeConversationId'));
     } catch {
       /* ignore */
     }
@@ -1159,24 +1422,7 @@
       if (!res.ok) return;
       const data = await res.json();
       if (!data.messages || data.messages.length === 0) return;
-      messages = data.messages.map((m: Record<string, unknown>) => ({
-        role: m.role,
-        content: m.content,
-        timestamp:
-          (m.metadata as Record<string, unknown>)?.timestamp ||
-          new Date(m.created_at as string).getTime(),
-        attachments: (m.metadata as Record<string, unknown>)?.attachments || []
-      }));
-      // Restore parts from DB
-      const parts: Record<number, ContentPart[]> = {};
-      data.messages.forEach((m: Record<string, unknown>, i: number) => {
-        if (m.parts) parts[i] = m.parts as ContentPart[];
-        else if (m.role === 'assistant' && m.content)
-          parts[i] = [{ type: 'text', text: m.content as string }];
-      });
-      messageParts = parts;
-      dbSyncedMessageCount = messages.length;
-      conversationStarted = messages.length > 0;
+      applyDbMessages(convId, data.messages as DbMessageRow[]);
       // Save to KV so it persists on refresh
       saveChatState();
       // Scroll to bottom after loading
@@ -1363,9 +1609,14 @@
       const formData = new FormData();
       formData.append('file', blob, file.filename || 'attachment');
       formData.append('sessionId', sessionId);
+      formData.append('supportsImages', selectedModel?.imageSupport ? 'true' : 'false');
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       if (!res.ok) {
-        console.error('Upload failed:', res.status);
+        const message = await res.text().catch(() => '');
+        console.error('Upload failed:', res.status, message);
+        if (message) {
+          fileError = message;
+        }
         return null;
       }
       const result = await res.json();
@@ -1402,24 +1653,6 @@
       return;
     }
 
-    // Soft gems check — prompt refill if no gems (skip for repair)
-    const balance = authStore.credits?.balance ?? 0;
-    if (balance <= 0 && !isRepair) {
-      messages = [
-        ...messages,
-        { id: uuidv4(), role: 'user', content: text },
-        {
-          id: uuidv4(),
-          role: 'assistant',
-          content:
-            "💎 **You're out of gems!** You need gems to use the AI assistant. Click the button below or the gems icon in the toolbar to refill."
-        }
-      ];
-      window.dispatchEvent(new CustomEvent('open-refill-gems'));
-      inputText = '';
-      return;
-    }
-
     // --- Process files FIRST (lock send button) ---
     let fileContents: Record<string, unknown>[] = [];
     if (files.length > 0) {
@@ -1431,12 +1664,32 @@
         console.error('File processing error:', err);
       }
       isProcessingFiles = false;
+      if (fileContents.length !== files.length) {
+        fileError =
+          fileError ||
+          'One or more attachments could not be processed. Use Markdown, text, PDF, or an image with a vision-capable model.';
+        if (!text && fileContents.length === 0) return;
+      }
     }
 
     // Save checkpoint: capture diagram state before this user message
     const currentCode = $stateStore.code || '';
+    let diagramMutationSucceeded = false;
+    let diagramPreviewApplied = false;
+    let streamFinished = false;
     const userMsgIndex = messages.length;
     checkpoints = [...checkpoints, { code: currentCode, messageIndex: userMsgIndex }];
+
+    const restoreUncommittedDiagramPreview = () => {
+      if (!diagramPreviewApplied || diagramMutationSucceeded) return;
+      inputStateStore.update((s) => ({
+        ...s,
+        code: currentCode,
+        updateDiagram: getActiveWorkspaceEngine() === 'mermaid'
+      }));
+      workspaceStore.markDirty();
+      diagramPreviewApplied = false;
+    };
 
     // Build context prefix if elements are selected
     let contextPrefix = '';
@@ -1473,6 +1726,16 @@
         };
       });
     }
+
+    // Build the message content with attachment context before it is persisted.
+    let fullMessage = contextPrefix + (text || '');
+    for (const fc of fileContents) {
+      if (fc.extractedText) {
+        fullMessage += `\n\n--- Attached file: ${fc.filename} ---\n${fc.extractedText}\n--- End of ${fc.filename} ---`;
+      }
+    }
+    userMessage.contextContent = fullMessage;
+
     messages = [...messages, userMessage];
     inputText = '';
     isLoading = true;
@@ -1480,7 +1743,15 @@
     // Auto-create conversation on first message
     if (!conversationStarted) {
       conversationStarted = true;
-      conversationTitle = text.length > 50 ? text.slice(0, 50) + '...' : text;
+      const attachmentTitle =
+        fileContents.length > 0
+          ? `Attachment: ${fileContents.map((file) => file.filename).join(', ')}`
+          : 'New chat';
+      conversationTitle = text
+        ? text.length > 50
+          ? `${text.slice(0, 50)}…`
+          : text
+        : attachmentTitle;
       window.dispatchEvent(
         new CustomEvent('conversation-created', {
           detail: { sessionId, title: conversationTitle }
@@ -1490,34 +1761,41 @@
     currentToolCallId = null;
     currentToolName = '';
     currentToolInputJson = '';
+    currentReasoningId = null;
     currentArtifactId = null;
+    artifactIdsByToolCall = {};
     lastPartWasText = false;
     scrollToBottom();
 
-    const assistantMessage = { id: uuidv4(), role: 'assistant', content: '' };
+    const assistantMessage = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: '',
+      model_used: selectedModelId
+    };
     messages = [...messages, assistantMessage];
     const assistantIndex = messages.length - 1;
     messageParts[assistantIndex] = [{ type: 'thinking', id: `thinking-${assistantMessage.id}` }];
 
     abortController = new AbortController();
 
-    // Build the message content with file context (all files are now text)
-    let fullMessage = contextPrefix + (text || '');
-    for (const fc of fileContents) {
-      if (fc.extractedText) {
-        fullMessage += `\n\n--- Attached file: ${fc.filename} ---\n${fc.extractedText}\n--- End of ${fc.filename} ---`;
-      }
-    }
-
-    const sendRequest = () =>
-      fetch('/api/chat', {
+    const sendRequest = () => {
+      const activeDbConversationId = dbConversationId;
+      const activeTab = getActiveWorkspaceTab();
+      const activeEngine = getActiveWorkspaceEngine();
+      return fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          currentDiagram: $stateStore.code,
+          activeTabEngine: activeEngine,
+          activeTabId: activeTab?.id,
+          activeTabName: activeTab?.title,
+          conversationId: activeDbConversationId,
+          currentCode: $stateStore.code,
+          currentDiagram: activeEngine === 'mermaid' ? $stateStore.code : '',
           currentMarkdown: documentMarkdownStore.value,
           enabledTools: toolsStore.getEnabledToolIds(),
-          engine: workspaceStore.workspace?.document?.engine ?? 'mermaid',
+          engine: activeEngine,
           isRepair,
           message: fullMessage,
           messages: messages
@@ -1526,20 +1804,31 @@
               (m: Record<string, unknown>) =>
                 m.role === 'user' || (m.role === 'assistant' && m.content)
             )
-            .map((m: Record<string, unknown>) => ({ role: m.role, content: m.content })),
+            .map((m: Record<string, unknown>) => ({
+              role: m.role,
+              content: m.contextContent || m.content
+            })),
           model: selectedModelId,
-          sessionId: sessionId
+          sessionId: sessionId,
+          workspaceTabs: workspaceStore.diagrams.map((tab) => ({
+            engine: tab.engine,
+            id: tab.id,
+            title: tab.title
+          }))
         }),
         signal: abortController?.signal
       });
+    };
 
-    sendRequest()
+    ensureDbConversation()
+      .then(() => sendRequest())
       .then(async (res) => {
         if (!res.ok) {
           // Try to parse error body for specific messages
+          let errMsg = `API error ${res.status}`;
           try {
             const errBody = await res.json();
-            const errMsg = errBody?.message || errBody?.error || '';
+            errMsg = errBody?.message || errBody?.error || errMsg;
             if (
               errMsg.toLowerCase().includes('insufficient gems') ||
               errMsg.toLowerCase().includes('out of gems')
@@ -1560,7 +1849,7 @@
           } catch {
             /* ignore */
           }
-          throw new Error(`API error ${res.status}`);
+          throw new Error(errMsg);
         }
 
         const reader = res.body?.getReader();
@@ -1611,8 +1900,67 @@
                       messages = messages;
                     }
                     scrollToBottom();
+                  } else if (data.type === 'reasoning-start') {
+                    const parts = removeThinkingPart(messageParts[assistantIndex] || []);
+                    const reasoningId = `reasoning-${data.id || currentToolCallId || Date.now()}`;
+                    currentReasoningId = reasoningId;
+                    if (
+                      !parts.some((part) => part.type === 'reasoning' && part.id === reasoningId)
+                    ) {
+                      parts.push({
+                        id: reasoningId,
+                        status: 'running',
+                        text: '',
+                        type: 'reasoning'
+                      });
+                    }
+                    messageParts[assistantIndex] = [...parts];
+                    lastPartWasText = false;
+                    scrollToBottom();
+                  } else if (data.type === 'reasoning-delta') {
+                    const reasoningId = data.id
+                      ? `reasoning-${data.id}`
+                      : (currentReasoningId ?? `reasoning-${currentToolCallId || Date.now()}`);
+                    currentReasoningId = reasoningId;
+                    const parts = removeThinkingPart(messageParts[assistantIndex] || []);
+                    const idx = parts.findIndex(
+                      (part) => part.type === 'reasoning' && part.id === reasoningId
+                    );
+                    const delta = data.delta || '';
+                    if (idx >= 0 && parts[idx].type === 'reasoning') {
+                      const currentText = parts[idx].text || '';
+                      parts[idx] = {
+                        ...parts[idx],
+                        text: `${currentText}${delta}`
+                      };
+                    } else {
+                      parts.push({
+                        id: reasoningId,
+                        status: 'running',
+                        text: delta,
+                        type: 'reasoning'
+                      });
+                    }
+                    messageParts[assistantIndex] = [...parts];
+                    lastPartWasText = false;
+                    scrollToBottom();
+                  } else if (data.type === 'reasoning-end') {
+                    const reasoningId = data.id
+                      ? `reasoning-${data.id}`
+                      : (currentReasoningId ?? `reasoning-${currentToolCallId || Date.now()}`);
+                    const parts = messageParts[assistantIndex] || [];
+                    const idx = parts.findIndex(
+                      (part) => part.type === 'reasoning' && part.id === reasoningId
+                    );
+                    if (idx >= 0 && parts[idx].type === 'reasoning') {
+                      parts[idx] = { ...parts[idx], status: 'done' };
+                      messageParts[assistantIndex] = [...parts];
+                    }
+                    currentReasoningId = null;
+                    lastPartWasText = false;
+                    scrollToBottom();
                   } else if (isInternalReasoningStreamPart(data)) {
-                    // Provider reasoning is internal and must not be shown or persisted.
+                    // Provider-specific hidden thinking markers are not user-visible.
                     lastPartWasText = false;
                   } else if (data.type === 'tool-input-start') {
                     messageParts[assistantIndex] = removeThinkingPart(
@@ -1634,13 +1982,13 @@
                     };
                     const op = opMap[currentToolName] || 'update';
                     const titleMap: Record<string, string> = {
-                      codePatch: 'codePatch',
-                      codeRead: 'codeRead',
-                      codeWrite: 'codeWrite',
-                      diagramDelete: 'Clearing Diagram',
-                      diagramPatch: 'Patching Diagram',
-                      diagramRead: 'Reading Diagram',
-                      diagramWrite: 'Writing Diagram'
+                      codePatch: 'Code Patch',
+                      codeRead: 'Code Read',
+                      codeWrite: 'Code Write',
+                      diagramDelete: 'Diagram Delete',
+                      diagramPatch: 'Diagram Patch',
+                      diagramRead: 'Diagram Read',
+                      diagramWrite: 'Diagram Write'
                     };
 
                     if (
@@ -1649,50 +1997,36 @@
                       currentToolName === 'codeWrite' ||
                       currentToolName === 'codePatch'
                     ) {
-                      // Reuse existing artifact card in same assistant message if one exists
+                      currentArtifactId = getArtifactIdForToolCall(
+                        currentToolName,
+                        currentToolCallId
+                      );
+                      const prevCode =
+                        currentToolName === 'codeWrite' || currentToolName === 'codePatch'
+                          ? artifactMap[currentArtifactId]?.code || ''
+                          : $stateStore.code || '';
                       const parts = messageParts[assistantIndex] || [];
-                      const existingAid = (() => {
-                        for (const p of parts) {
-                          if (p.type === 'artifact' && artifactMap[p.artifactId])
-                            return p.artifactId;
-                        }
-                        return null;
-                      })();
-                      if (existingAid) {
-                        // Reuse existing artifact — update in-place
-                        currentArtifactId = existingAid;
-                        artifactMap[currentArtifactId] = {
-                          ...artifactMap[currentArtifactId],
-                          code: '',
-                          errors: undefined,
-                          hasErrors: false,
-                          isStreaming: true,
-                          language:
-                            currentToolName === 'codeWrite' || currentToolName === 'codePatch'
-                              ? artifactMap[currentArtifactId].language || 'text'
-                              : 'mermaid',
-                          operation: op,
-                          previousCode:
-                            artifactMap[currentArtifactId].code || $stateStore.code || '',
-                          title: titleMap[currentToolName] || 'Processing'
-                        };
-                        artifactMap = { ...artifactMap };
-                      } else {
-                        currentArtifactId = `artifact-${currentToolCallId}`;
-                        const prevCode = $stateStore.code || '';
-                        artifactMap[currentArtifactId] = {
-                          code: '',
-                          id: currentArtifactId,
-                          isStreaming: true,
-                          language:
-                            currentToolName === 'codeWrite' || currentToolName === 'codePatch'
-                              ? 'text'
-                              : 'mermaid',
-                          operation: op,
-                          previousCode: prevCode,
-                          title: titleMap[currentToolName] || 'Processing'
-                        };
-                        artifactMap = { ...artifactMap };
+                      artifactMap[currentArtifactId] = {
+                        code: '',
+                        errors: undefined,
+                        hasErrors: false,
+                        id: currentArtifactId,
+                        isStreaming: true,
+                        language:
+                          currentToolName === 'codeWrite' || currentToolName === 'codePatch'
+                            ? artifactMap[currentArtifactId]?.language || 'text'
+                            : 'mermaid',
+                        operation: op,
+                        previousCode: prevCode,
+                        title: titleMap[currentToolName] || 'Processing'
+                      };
+                      artifactMap = { ...artifactMap };
+                      if (
+                        !parts.some(
+                          (part) =>
+                            part.type === 'artifact' && part.artifactId === currentArtifactId
+                        )
+                      ) {
                         parts.push({ type: 'artifact', artifactId: currentArtifactId });
                         messageParts[assistantIndex] = [...parts];
                       }
@@ -1712,7 +2046,8 @@
                       questionnaireResponses[qId] = {};
                       scrollToBottom();
                     } else if (currentToolName === 'codeRead') {
-                      const aid = `code-read-${currentToolCallId || Date.now()}`;
+                      const aid = getArtifactIdForToolCall(currentToolName, currentToolCallId);
+                      currentArtifactId = aid;
                       const parts = messageParts[assistantIndex] || [];
                       artifactMap[aid] = {
                         code: '',
@@ -1721,7 +2056,7 @@
                         language: 'text',
                         operation: 'read',
                         previousCode: '',
-                        title: 'codeRead'
+                        title: 'Reading Code'
                       };
                       artifactMap = { ...artifactMap };
                       parts.push({ type: 'artifact', artifactId: aid });
@@ -1878,12 +2213,15 @@
                         scrollToBottom();
                       }
                     } else if (
-                      currentArtifactId &&
-                      (currentToolName === 'diagramWrite' ||
-                        currentToolName === 'diagramPatch' ||
-                        currentToolName === 'codeWrite' ||
-                        currentToolName === 'codePatch')
+                      currentToolName === 'diagramWrite' ||
+                      currentToolName === 'diagramPatch' ||
+                      currentToolName === 'codeWrite' ||
+                      currentToolName === 'codePatch'
                     ) {
+                      const artifactId = getArtifactIdForToolCall(
+                        currentToolName,
+                        currentToolCallId
+                      );
                       const contentMatch = currentToolInputJson.match(
                         /"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/
                       );
@@ -1897,25 +2235,35 @@
                           .replace(/\\"/g, '"')
                           .replace(/\\\\/g, '\\');
 
-                        if (rawCode.trim() && artifactMap[currentArtifactId]) {
-                          artifactMap[currentArtifactId] = {
-                            ...artifactMap[currentArtifactId],
+                        if (rawCode.trim() && artifactMap[artifactId]) {
+                          artifactMap[artifactId] = {
+                            ...artifactMap[artifactId],
                             code: rawCode,
                             language:
                               languageMatch?.[1] ||
-                              artifactMap[currentArtifactId].language ||
+                              artifactMap[artifactId].language ||
                               (currentToolName.startsWith('code') ? 'text' : 'mermaid')
                           };
                           artifactMap = { ...artifactMap };
-                          // Live canvas preview: debounce update to canvas during streaming
+                          // Live canvas preview: diagramWrite streams full source; diagramPatch streams
+                          // replacement lines, so preview it against the original active diagram.
                           if (
                             currentToolName === 'diagramWrite' ||
                             currentToolName === 'diagramPatch'
                           ) {
                             if (streamCanvasTimer) clearTimeout(streamCanvasTimer);
                             streamCanvasTimer = setTimeout(() => {
-                              inputStateStore.update((s) => ({ ...s, code: rawCode }));
-                            }, 300);
+                              if (
+                                previewDiagramToolInput(
+                                  currentToolName,
+                                  currentToolInputJson,
+                                  rawCode,
+                                  artifactId
+                                )
+                              ) {
+                                diagramPreviewApplied = true;
+                              }
+                            }, 120);
                           }
                           scrollToBottom();
                         }
@@ -1930,22 +2278,40 @@
                       if (idx >= 0) {
                         // Try to extract meaningful info from streaming JSON
                         let liveMsg = '';
-                        if (currentToolName === 'autoStyler') {
+                        if (currentToolName === 'autoStyler' || currentToolName === 'styleSearch') {
                           const palMatch = currentToolInputJson.match(
                             /"palette"\s*:\s*"((?:[^"\\]|\\.)*)"/
                           );
-                          if (palMatch) liveMsg = `Applying ${palMatch[1]} palette…`;
-                        } else if (currentToolName === 'iconifier') {
-                          const modeMatch = currentToolInputJson.match(
-                            /"mode"\s*:\s*"((?:[^"\\]|\\.)*)"/
+                          liveMsg = palMatch
+                            ? `Searching ${palMatch[1]} styles…`
+                            : 'Searching styles…';
+                        } else if (
+                          currentToolName === 'iconifier' ||
+                          currentToolName === 'iconSearch'
+                        ) {
+                          const queryMatch = currentToolInputJson.match(
+                            /"query"\s*:\s*"((?:[^"\\]|\\.)*)"/
                           );
-                          if (modeMatch) liveMsg = `Mode: ${modeMatch[1]}`;
+                          liveMsg = queryMatch
+                            ? `Searching icons: ${queryMatch[1].replace(/\\"/g, '"')}…`
+                            : 'Searching icons…';
                         } else if (currentToolName === 'planner') {
                           const taskMatch = currentToolInputJson.match(
                             /"task"\s*:\s*"((?:[^"\\]|\\.)*)"/
                           );
                           if (taskMatch)
                             liveMsg = `Planning: ${taskMatch[1].replace(/\\"/g, '"').slice(0, 60)}…`;
+                        } else if (currentToolName === 'thinking') {
+                          const focusMatch = currentToolInputJson.match(
+                            /"focus"\s*:\s*"((?:[^"\\]|\\.)*)"/
+                          );
+                          const summaryMatch = currentToolInputJson.match(
+                            /"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/
+                          );
+                          if (summaryMatch)
+                            liveMsg = `Thinking: ${summaryMatch[1].replace(/\\"/g, '"').slice(0, 60)}…`;
+                          else if (focusMatch)
+                            liveMsg = `Thinking about ${focusMatch[1].replace(/\\"/g, '"').slice(0, 50)}…`;
                         } else if (currentToolName === 'selfCritique') {
                           const targetMatch = currentToolInputJson.match(
                             /"target"\s*:\s*"((?:[^"\\]|\\.)*)"/
@@ -2017,7 +2383,7 @@
                       const readFrom = output.readFrom || 1;
                       const readTo = output.readTo || 0;
                       const totalLines = output.totalLines || 0;
-                      const aid = `read-${data.toolCallId || Date.now()}`;
+                      const aid = getArtifactIdForToolCall(toolName, data.toolCallId);
 
                       // Client-side validation using real mermaid parser
                       let readErrors: string[] = [];
@@ -2044,13 +2410,15 @@
                         previousCode: '',
                         readFrom,
                         readTo,
-                        title: readHasErrors ? 'Errors Found' : 'Current Diagram',
+                        title: 'Diagram Read',
                         totalLines
                       };
                       artifactMap = { ...artifactMap };
                       const parts = messageParts[assistantIndex] || [];
-                      parts.push({ type: 'artifact', artifactId: aid });
-                      messageParts[assistantIndex] = [...parts];
+                      if (!parts.some((p) => p.type === 'artifact' && p.artifactId === aid)) {
+                        parts.push({ type: 'artifact', artifactId: aid });
+                        messageParts[assistantIndex] = [...parts];
+                      }
                       lastPartWasText = false;
                       scrollToBottom();
                     } else if (
@@ -2060,10 +2428,7 @@
                         toolName === 'codeWrite' ||
                         toolName === 'codePatch')
                     ) {
-                      const aid =
-                        currentArtifactId && artifactMap[currentArtifactId]
-                          ? currentArtifactId
-                          : `code-${data.toolCallId || Date.now()}`;
+                      const aid = getArtifactIdForToolCall(toolName, data.toolCallId);
                       const codeContent = output.content || '';
                       artifactMap[aid] = {
                         code: codeContent,
@@ -2079,7 +2444,12 @@
                         previousCode: artifactMap[aid]?.previousCode || '',
                         readFrom: output.readFrom,
                         readTo: output.readTo,
-                        title: toolName,
+                        title:
+                          toolName === 'codeRead'
+                            ? 'Code Read'
+                            : toolName === 'codePatch'
+                              ? 'Code Patch'
+                              : 'Code Write',
                         totalLines: output.totalLines || output.lines
                       };
                       artifactMap = { ...artifactMap };
@@ -2087,6 +2457,13 @@
                       if (!parts.some((p) => p.type === 'artifact' && p.artifactId === aid)) {
                         parts.push({ type: 'artifact', artifactId: aid });
                         messageParts[assistantIndex] = [...parts];
+                      }
+                      if (
+                        output.success === true &&
+                        typeof output.content === 'string' &&
+                        (toolName === 'codeWrite' || toolName === 'codePatch')
+                      ) {
+                        applyToolSourceToActiveTab(output.content, output);
                       }
                       scrollToBottom();
                     } else if (
@@ -2097,65 +2474,36 @@
                         toolName === 'diagramPatch' ||
                         toolName === 'diagramDelete')
                     ) {
+                      diagramMutationSucceeded = true;
                       const diagramCode = output.content;
-                      if (currentArtifactId && artifactMap[currentArtifactId]) {
-                        artifactMap[currentArtifactId] = {
-                          ...artifactMap[currentArtifactId],
-                          code: diagramCode,
-                          isStreaming: false,
-                          title:
-                            toolName === 'diagramWrite'
-                              ? 'Diagram Created'
-                              : toolName === 'diagramPatch'
-                                ? 'Diagram Patched'
-                                : 'Diagram Updated'
-                        };
-                        artifactMap = { ...artifactMap };
-                      } else {
-                        // Try to reuse existing artifact in same message
-                        const parts = messageParts[assistantIndex] || [];
-                        const existingAidOut = (() => {
-                          for (const p of parts) {
-                            if (p.type === 'artifact' && artifactMap[p.artifactId])
-                              return p.artifactId;
-                          }
-                          return null;
-                        })();
-                        const titleStr =
+                      const aid = getArtifactIdForToolCall(toolName, data.toolCallId);
+                      const titleStr =
+                        toolName === 'diagramWrite'
+                          ? 'Diagram Write'
+                          : toolName === 'diagramPatch'
+                            ? 'Diagram Patch'
+                            : 'Diagram Delete';
+                      artifactMap[aid] = {
+                        code: diagramCode,
+                        id: aid,
+                        isStreaming: false,
+                        language: artifactMap[aid]?.language || 'mermaid',
+                        operation:
                           toolName === 'diagramWrite'
-                            ? 'Diagram Created'
+                            ? 'create'
                             : toolName === 'diagramPatch'
-                              ? 'Diagram Patched'
-                              : 'Diagram Updated';
-                        if (existingAidOut) {
-                          artifactMap[existingAidOut] = {
-                            ...artifactMap[existingAidOut],
-                            code: diagramCode,
-                            isStreaming: false,
-                            title: titleStr
-                          };
-                          artifactMap = { ...artifactMap };
-                        } else {
-                          const aid = `result-${data.toolCallId || Date.now()}`;
-                          artifactMap[aid] = {
-                            code: diagramCode,
-                            id: aid,
-                            isStreaming: false,
-                            operation:
-                              toolName === 'diagramWrite'
-                                ? 'create'
-                                : toolName === 'diagramPatch'
-                                  ? 'patch'
-                                  : 'update',
-                            previousCode: $stateStore.code || '',
-                            title: titleStr
-                          };
-                          artifactMap = { ...artifactMap };
-                          parts.push({ type: 'artifact', artifactId: aid });
-                          messageParts[assistantIndex] = [...parts];
-                        }
+                              ? 'patch'
+                              : 'update',
+                        previousCode: artifactMap[aid]?.previousCode || $stateStore.code || '',
+                        title: titleStr
+                      };
+                      artifactMap = { ...artifactMap };
+                      const parts = messageParts[assistantIndex] || [];
+                      if (!parts.some((p) => p.type === 'artifact' && p.artifactId === aid)) {
+                        parts.push({ type: 'artifact', artifactId: aid });
+                        messageParts[assistantIndex] = [...parts];
                       }
-                      inputStateStore.update((s) => ({ ...s, code: diagramCode }));
+                      applyToolSourceToActiveTab(diagramCode, output);
                       scrollToBottom();
 
                       // Post-write validation: check if the written code has errors
@@ -2170,10 +2518,9 @@
                             (parseErr instanceof Error ? parseErr.message : String(parseErr)) ||
                             'Invalid Mermaid syntax';
                           // Update artifact to show error
-                          const errArtifactId = currentArtifactId || Object.keys(artifactMap).pop();
-                          if (errArtifactId && artifactMap[errArtifactId]) {
-                            artifactMap[errArtifactId] = {
-                              ...artifactMap[errArtifactId],
+                          if (artifactMap[aid]) {
+                            artifactMap[aid] = {
+                              ...artifactMap[aid],
                               hasErrors: true,
                               errors: [errMsg],
                               title: 'Errors Found'
@@ -2217,7 +2564,7 @@
                       }
                       messageParts[assistantIndex] = [...parts];
                       if (output.content && typeof output.content === 'string') {
-                        inputStateStore.update((s) => ({ ...s, code: output.content }));
+                        applyToolSourceToActiveTab(output.content, output);
                       }
                       scrollToBottom();
                     }
@@ -2250,7 +2597,7 @@
                       }
                       messageParts[assistantIndex] = [...parts];
                       if (output.content && typeof output.content === 'string') {
-                        inputStateStore.update((s) => ({ ...s, code: output.content }));
+                        applyToolSourceToActiveTab(output.content, output);
                       }
                       scrollToBottom();
                     }
@@ -2360,6 +2707,7 @@
                           gitGuard: output.clean
                             ? 'Git safety check passed'
                             : `${output.changedPaths?.length || 0} changed path(s) detected`,
+                          iconSearch: output.summary || 'Icon suggestions ready',
                           longTermMemory: output.message || 'Memory accessed',
                           planWithProgress: output.progress || output.message || 'Plan updated',
                           planner: output.task
@@ -2369,13 +2717,17 @@
                           sequentialThinking: output.isComplete
                             ? `Thinking complete (${output.totalThoughts} steps)`
                             : `Thought ${output.thoughtNumber}/${output.totalThoughts}`,
+                          styleSearch: output.summary || 'Style suggestions ready',
                           subagentAssemble: output.integrationPlan
                             ? `Assembled ${output.integrationPlan.length} agent output(s)`
                             : 'Agent work assembled',
                           subagentFanout: output.assignments
                             ? `Ran ${output.assignments.length} subagent(s)`
                             : 'Subagents spawned',
-                          tableAnalytics: output.summary || 'Analysis complete'
+                          tableAnalytics: output.summary || 'Analysis complete',
+                          thinking: output.summary
+                            ? `Thinking: ${output.summary.slice(0, 70)}${output.summary.length > 70 ? '…' : ''}`
+                            : 'Thinking checkpoint ready'
                         };
                         // Build details array for dropdown
                         let toolDetails: string[] = [];
@@ -2411,6 +2763,47 @@
                                     (imp.title as string) ||
                                     JSON.stringify(imp)
                             );
+                        } else if (toolName === 'thinking') {
+                          if (output.focus) toolDetails.push(`Focus: ${output.focus}`);
+                          if (output.summary) toolDetails.push(output.summary);
+                          if (output.toolsConsidered?.length) {
+                            toolDetails.push(`Tools: ${output.toolsConsidered.join(', ')}`);
+                          }
+                          if (output.nextAction) toolDetails.push(`Next: ${output.nextAction}`);
+                          if (output.confidence)
+                            toolDetails.push(`Confidence: ${output.confidence}`);
+                        } else if (toolName === 'styleSearch') {
+                          if (output.palette) toolDetails.push(`Palette: ${output.palette}`);
+                          if (output.suggestedPatch) {
+                            toolDetails.push(
+                              `Patch: lines ${output.suggestedPatch.startLine}-${output.suggestedPatch.endLine}`
+                            );
+                          }
+                          if (output.styleLines?.length) {
+                            toolDetails.push(
+                              ...output.styleLines.slice(0, 8).map((line: string) => line.trim())
+                            );
+                          }
+                        } else if (toolName === 'iconSearch') {
+                          if (output.suggestions?.length) {
+                            toolDetails.push(
+                              ...output.suggestions
+                                .slice(0, 8)
+                                .map(
+                                  (item: {
+                                    colorMode?: string;
+                                    confidence?: number;
+                                    iconId?: string;
+                                    nodeId: string;
+                                    source?: string;
+                                    status: string;
+                                  }) =>
+                                    item.status === 'matched'
+                                      ? `${item.nodeId}: ${item.iconId} (${item.colorMode || 'any'}, ${item.source || 'local'}, ${Math.round((item.confidence || 0) * 100)}%)`
+                                      : `${item.nodeId}: no match`
+                                )
+                            );
+                          }
                         } else if (toolName === 'gitGuard') {
                           if (output.requestedPaths?.length) {
                             toolDetails.push(`Requested: ${output.requestedPaths.join(', ')}`);
@@ -2588,6 +2981,7 @@
                       /* ignore parse errors */
                     }
                   } else if (data.type === 'done' || data.type === 'finish') {
+                    streamFinished = true;
                     messageParts[assistantIndex] = removeThinkingPart(
                       messageParts[assistantIndex] || []
                     );
@@ -2611,28 +3005,34 @@
                     }
                     artifactMap = { ...artifactMap };
                     currentArtifactId = null;
+                    currentReasoningId = null;
                     // Finalize any still-streaming questionnaires
-                    const doneParts = messageParts[assistantIndex] || [];
-                    let qChanged = false;
+                    const currentDoneParts = messageParts[assistantIndex] || [];
+                    const doneParts = finalizeReasoningParts(currentDoneParts);
+                    let partsChanged = doneParts !== currentDoneParts;
                     for (let pi = 0; pi < doneParts.length; pi++) {
                       if (
                         doneParts[pi].type === 'questionnaire' &&
                         (doneParts[pi] as ContentPart & { isStreaming?: boolean }).isStreaming
                       ) {
                         doneParts[pi] = { ...doneParts[pi], isStreaming: false } as ContentPart;
-                        qChanged = true;
+                        partsChanged = true;
                       }
                     }
-                    if (qChanged) messageParts[assistantIndex] = [...doneParts];
+                    if (partsChanged) messageParts[assistantIndex] = [...doneParts];
                     isLoading = false;
                     scrollToBottom();
                     return;
                   } else if (data.type === 'error') {
-                    const parts = removeThinkingPart(messageParts[assistantIndex] || []);
+                    restoreUncommittedDiagramPreview();
+                    const parts = finalizeReasoningParts(
+                      removeThinkingPart(messageParts[assistantIndex] || [])
+                    );
                     parts.push({ type: 'error', error: data.error, userMessage: text });
                     messageParts[assistantIndex] = [...parts];
                     isLoading = false;
                     abortController = null;
+                    currentReasoningId = null;
                     scrollToBottom();
                     return;
                   }
@@ -2647,21 +3047,34 @@
       .catch((err) => {
         if (err.name === 'AbortError') {
           // User cancelled - just stop
-          messageParts[assistantIndex] = removeThinkingPart(messageParts[assistantIndex] || []);
+          restoreUncommittedDiagramPreview();
+          messageParts[assistantIndex] = finalizeReasoningParts(
+            removeThinkingPart(messageParts[assistantIndex] || [])
+          );
           isLoading = false;
           abortController = null;
+          currentReasoningId = null;
           debouncedSaveChatState();
           return;
         }
-        const parts = removeThinkingPart(messageParts[assistantIndex] || []);
+        restoreUncommittedDiagramPreview();
+        const parts = finalizeReasoningParts(
+          removeThinkingPart(messageParts[assistantIndex] || [])
+        );
         parts.push({ type: 'error', error: err.message, userMessage: text });
         messageParts[assistantIndex] = [...parts];
         isLoading = false;
         abortController = null;
+        currentReasoningId = null;
         debouncedSaveChatState();
       })
       .finally(() => {
-        messageParts[assistantIndex] = removeThinkingPart(messageParts[assistantIndex] || []);
+        if (!streamFinished) {
+          restoreUncommittedDiagramPreview();
+        }
+        messageParts[assistantIndex] = finalizeReasoningParts(
+          removeThinkingPart(messageParts[assistantIndex] || [])
+        );
         for (const key of Object.keys(artifactMap)) {
           if (artifactMap[key].isStreaming) {
             artifactMap[key] = {
@@ -2676,6 +3089,7 @@
         }
         artifactMap = { ...artifactMap };
         currentArtifactId = null;
+        currentReasoningId = null;
         isLoading = false;
         abortController = null;
         scrollToBottom();
@@ -2696,53 +3110,25 @@
     onscroll={handleMessagesScroll}
     class="scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent relative flex-1 overflow-y-auto scroll-smooth">
     {#if !isDataReady}
-      <!-- Loading State — Data restoring -->
-      <div class="flex h-full flex-col items-center justify-center gap-4 px-6 py-8">
-        <div class="relative">
-          <img src="/brand/logo.png" alt="Graphini" class="size-12 rounded-xl opacity-60" />
-        </div>
-        <div class="flex items-center gap-2">
-          <div
-            class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/50"
-            style="animation-delay: 0ms">
-          </div>
-          <div
-            class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/50"
-            style="animation-delay: 150ms">
-          </div>
-          <div
-            class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/50"
-            style="animation-delay: 300ms">
-          </div>
-        </div>
-        <p class="text-[11px] text-muted-foreground/50">Restoring your session...</p>
+      <div
+        class="flex h-full items-center justify-center px-6 py-8 text-xs text-muted-foreground"
+        aria-live="polite">
+        Restoring session…
       </div>
     {:else if !hasMessages}
-      <!-- Empty State — Graphini Welcome -->
-      <div class="flex h-full flex-col items-center justify-center px-5 py-10">
-        <!-- Greeting -->
-        <div class="mb-8 text-center">
-          <h2 class="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            What will you diagram?
-          </h2>
-          <p class="mt-2 text-sm text-muted-foreground/70">
-            Describe it in plain English — I'll handle the rest.
-          </p>
-        </div>
-
-        <!-- Suggestion Cards -->
-        <div class="grid w-full max-w-lg grid-cols-2 gap-2.5 sm:grid-cols-3">
+      <div class="mx-auto flex h-full w-full max-w-3xl flex-col justify-end px-4 py-5">
+        <div class="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
           {#each suggestions as suggestion (suggestion.label)}
             <button
               type="button"
               onclick={() => {
                 handleSubmit({ text: suggestion.prompt });
               }}
-              class="group relative flex flex-col items-center gap-2 rounded-lg border border-border bg-card px-3 py-4 text-center transition-colors duration-150 hover:border-foreground/20 hover:bg-accent">
+              class="group flex h-10 min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 text-left text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-foreground/20 hover:bg-accent hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
+              aria-label={suggestion.label}>
               <suggestion.icon
-                class="h-6 w-6 text-foreground/70 transition-colors group-hover:text-foreground" />
-              <span class="text-xs font-medium text-foreground/80 group-hover:text-foreground"
-                >{suggestion.label}</span>
+                class="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
+              <span class="min-w-0 truncate">{suggestion.label}</span>
             </button>
           {/each}
         </div>
@@ -2773,62 +3159,22 @@
                     {#each message.attachments as att, attIdx (attachmentKey(att, attIdx))}
                       {#if att.mediaType?.startsWith('image/') && att.url}
                         <div
-                          class="h-[56px] w-[56px] overflow-hidden rounded-xl border border-border">
+                          class="h-12 w-12 overflow-hidden rounded-md border border-border"
+                          title={att.filename || 'Image'}>
                           <img
                             src={att.url}
                             alt={att.filename || 'Image'}
                             class="h-full w-full object-cover" />
                         </div>
                       {:else}
-                        {@const ext = (att.ext || '?').toLowerCase()}
-                        {@const isPdf = ext === 'pdf'}
-                        {@const isCode = [
-                          'js',
-                          'ts',
-                          'py',
-                          'json',
-                          'xml',
-                          'yaml',
-                          'yml',
-                          'csv'
-                        ].includes(ext)}
-                        {@const extBg = isPdf
-                          ? 'bg-destructive/10'
-                          : isCode
-                            ? 'bg-amber-500/15'
-                            : 'bg-muted'}
-                        {@const extText = isPdf
-                          ? 'text-destructive'
-                          : isCode
-                            ? 'text-foreground'
-                            : 'text-muted-foreground'}
-                        {@const iconColor = isPdf
-                          ? 'text-destructive'
-                          : isCode
-                            ? 'text-muted-foreground'
-                            : 'text-muted-foreground'}
                         <div
-                          class="flex h-[56px] w-[56px] flex-col items-center justify-center gap-0.5 rounded-xl border border-border bg-card"
+                          class="flex h-8 max-w-[220px] min-w-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[11px] text-muted-foreground"
                           title={att.filename}>
-                          <div
-                            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md {extBg}">
-                            <svg
-                              class="h-3.5 w-3.5 {iconColor}"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="1.5"
-                              viewBox="0 0 24 24">
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M7 21h10a2 2 0 002-2V9l-5-5H7a2 2 0 00-2 2v13a2 2 0 002 2zm5-16v4h4" />
-                            </svg>
-                          </div>
-                          <span
-                            class="block w-full truncate px-1 text-center text-[7px] leading-tight font-semibold text-foreground/80"
+                          <FileText class="size-3.5 shrink-0" />
+                          <span class="min-w-0 truncate text-foreground/80"
                             >{att.filename || 'File'}</span>
                           <span
-                            class="rounded px-0.5 text-[6px] font-bold tracking-wider {extBg} {extText}"
+                            class="shrink-0 rounded bg-muted px-1 py-px text-[9px] font-medium text-muted-foreground"
                             >{(att.ext || '?').toUpperCase()}</span>
                         </div>
                       {/if}
@@ -2837,7 +3183,7 @@
                 {/if}
                 {#if message.content}
                   <div
-                    class="inline-block rounded-2xl rounded-tr-sm bg-muted px-4 py-2.5 text-[13px] leading-relaxed text-foreground">
+                    class="inline-block rounded-lg rounded-tr-sm bg-muted px-3 py-2 text-[13px] leading-relaxed text-foreground">
                     {message.content}
                   </div>
                 {/if}
@@ -2848,16 +3194,181 @@
             <div>
               <div class="max-w-[95%] space-y-3">
                 {#if messageParts[i] && messageParts[i].length > 0}
-                  {#each messageParts[i] as part, pi (contentPartKey(part, pi))}
+                  {#each chainDisplayParts(messageParts[i]) as part, pi (contentPartKey(part, pi))}
                     {#if part.type === 'text' && part.text}
                       <div class="pl-3 text-[13px] leading-relaxed text-foreground/90">
                         <Response content={part.text} />
                       </div>
                     {:else if part.type === 'thinking'}
-                      <div class="flex items-center py-2 pl-3">
+                      <div class="flex items-center py-2 pl-3" aria-live="polite">
                         <span
-                          class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60"
-                          >Thinking...</span>
+                          class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60">
+                          Thinking…
+                        </span>
+                      </div>
+                    {:else if part.type === 'reasoning'}
+                      {@const reasoningIsStreaming =
+                        part.status === 'running' || (isLoading && i === messages.length - 1)}
+                      <div
+                        class="group overflow-hidden rounded-lg border border-border bg-muted/20 transition-all duration-200 hover:border-foreground/10">
+                        <button
+                          type="button"
+                          class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+                          onclick={(e) => {
+                            const body = (e.currentTarget as HTMLElement).nextElementSibling;
+                            if (body) body.classList.toggle('hidden');
+                            const chev = (e.currentTarget as HTMLElement).querySelector(
+                              '.reasoning-chevron'
+                            );
+                            if (chev) chev.classList.toggle('rotate-90');
+                          }}>
+                          <div
+                            class="flex size-5 shrink-0 items-center justify-center rounded-md bg-yellow-500/10 text-yellow-500">
+                            <Brain class="size-3 {reasoningIsStreaming ? 'animate-pulse' : ''}" />
+                          </div>
+                          <span class="flex-1 text-xs font-medium text-foreground/80">
+                            Model thinking
+                            <span class="ml-1 text-[10px] text-muted-foreground">
+                              · {reasoningIsStreaming ? 'streaming' : 'complete'}
+                            </span>
+                          </span>
+                          <div
+                            class="reasoning-chevron text-muted-foreground/40 transition-transform {reasoningIsStreaming
+                              ? 'rotate-90'
+                              : ''}">
+                            <ChevronRight class="size-3.5" />
+                          </div>
+                        </button>
+                        <div
+                          class="{reasoningIsStreaming
+                            ? ''
+                            : 'hidden'} border-t border-border px-3 py-2.5"
+                          style="max-height: 220px; overflow-y: auto;">
+                          <p
+                            class="text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/70">
+                            {part.text ||
+                              (reasoningIsStreaming
+                                ? 'Preparing reasoning summary…'
+                                : 'No reasoning summary returned.')}
+                          </p>
+                        </div>
+                      </div>
+                    {:else if part.type === 'tool-chain'}
+                      {@const runningCount = part.parts.filter(
+                        (toolPart) => toolPartStatus(toolPart) === 'running'
+                      ).length}
+                      <div
+                        class="group overflow-hidden rounded-lg border transition-all duration-200
+                        {part.status === 'running'
+                          ? 'border-border bg-muted/30'
+                          : 'border-border bg-muted/20 hover:border-foreground/10'}">
+                        <button
+                          type="button"
+                          class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+                          onclick={(e) => {
+                            const body = (e.currentTarget as HTMLElement).nextElementSibling;
+                            if (body) body.classList.toggle('hidden');
+                            const chev = (e.currentTarget as HTMLElement).querySelector(
+                              '.tool-chain-chevron'
+                            );
+                            if (chev) chev.classList.toggle('rotate-90');
+                          }}>
+                          <div
+                            class="flex size-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-500">
+                            <GitBranch
+                              class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                          </div>
+                          <span class="flex-1 text-xs font-medium text-foreground/80">
+                            Patch chain
+                            <span class="ml-1 text-[10px] text-muted-foreground">
+                              · {part.parts.length} patch{part.parts.length !== 1 ? 'es' : ''}
+                              {#if runningCount > 0}
+                                · {runningCount} running
+                              {:else}
+                                · complete
+                              {/if}
+                            </span>
+                          </span>
+                          {#if part.status === 'running'}
+                            {@const dotColor = 'bg-muted-foreground/40'}
+                            <div class="flex items-center gap-0.5">
+                              <span
+                                class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:0ms]"
+                              ></span>
+                              <span
+                                class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:150ms]"
+                              ></span>
+                              <span
+                                class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:300ms]"
+                              ></span>
+                            </div>
+                          {/if}
+                          <div
+                            class="tool-chain-chevron text-muted-foreground/40 transition-transform {part.status ===
+                            'running'
+                              ? 'rotate-90'
+                              : ''}">
+                            <ChevronRight class="size-3.5" />
+                          </div>
+                        </button>
+                        <div
+                          class="{part.status === 'running'
+                            ? ''
+                            : 'hidden'} border-t border-border px-3 py-2.5"
+                          style="max-height: 280px; overflow-y: auto;">
+                          <div class="space-y-0">
+                            {#each part.parts as toolPart, chainIdx (contentPartKey(toolPart, chainIdx))}
+                              {@const details = toolPartDetails(toolPart)}
+                              <div class="relative flex gap-2 pb-2 last:pb-0">
+                                <div class="relative flex w-5 shrink-0 justify-center">
+                                  {#if chainIdx < part.parts.length - 1}
+                                    <div class="absolute top-5 bottom-[-0.5rem] w-px bg-border">
+                                    </div>
+                                  {/if}
+                                  <div
+                                    class="relative z-10 flex size-5 items-center justify-center rounded-full border bg-background text-[10px] font-medium
+                                    {toolPartStatus(toolPart) === 'running'
+                                      ? 'border-primary text-primary'
+                                      : 'border-border text-muted-foreground'}">
+                                    {#if toolPartStatus(toolPart) === 'running'}
+                                      <span class="size-1.5 animate-pulse rounded-full bg-primary"
+                                      ></span>
+                                    {:else}
+                                      {chainIdx + 1}
+                                    {/if}
+                                  </div>
+                                </div>
+                                <div class="min-w-0 flex-1 rounded-md bg-background/45 px-2 py-1.5">
+                                  <div class="flex min-w-0 items-center gap-2 text-[11px]">
+                                    <span
+                                      class="min-w-0 flex-1 truncate font-medium text-foreground/75">
+                                      {toolPartLabel(toolPart)}
+                                    </span>
+                                    <span class="shrink-0 text-[10px] text-muted-foreground/60">
+                                      {toolPartSummary(toolPart)}
+                                    </span>
+                                  </div>
+                                  {#if details.length > 0}
+                                    <details class="mt-1.5">
+                                      <summary
+                                        class="cursor-pointer text-[10px] font-medium text-muted-foreground/70">
+                                        Preview
+                                      </summary>
+                                      <div class="mt-1 space-y-0.5">
+                                        {#each details as detail, detailIdx (`${detail}:${detailIdx}`)}
+                                          <div
+                                            class="truncate text-[10px] leading-relaxed text-muted-foreground/75">
+                                            {detail}
+                                          </div>
+                                        {/each}
+                                      </div>
+                                    </details>
+                                  {/if}
+                                </div>
+                              </div>
+                            {/each}
+                          </div>
+                        </div>
                       </div>
                     {:else if part.type === 'artifact' && artifactMap[part.artifactId]}
                       {@const artifact = artifactMap[part.artifactId]}
@@ -2921,7 +3432,10 @@
                         part.iconResults?.filter((ic) => ic.status === 'skipped').length || 0}
                       {@const removedCount =
                         part.iconResults?.filter((ic) => ic.status === 'removed').length || 0}
-                      {@const isIconifier = part.toolName === 'iconifier'}
+                      {@const isIconifier =
+                        part.toolName === 'iconifier' || part.toolName === 'iconSearch'}
+                      {@const isStyleTool =
+                        part.toolName === 'autoStyler' || part.toolName === 'styleSearch'}
                       {@const isSearch = part.toolName === 'webSearch'}
                       {@const isFileManager = part.toolName === 'fileManager'}
                       {@const isDiagramRead = part.toolName === 'diagramRead'}
@@ -2930,12 +3444,15 @@
                       {@const isChecker =
                         part.toolName === 'errorChecker' || part.toolName === 'selfCritique'}
                       {@const isAnalytics = part.toolName === 'tableAnalytics'}
+                      {@const isThinking =
+                        part.toolName === 'thinking' || part.toolName === 'sequentialThinking'}
+                      {@const toolDisplayName = getToolDisplayName(part.toolName)}
                       {@const toolIconColor = isDiagramRead
                         ? 'bg-blue-500/10 text-blue-500'
-                        : isIconifier
-                          ? 'bg-violet-500/10 text-violet-500'
-                          : part.toolName === 'autoStyler'
-                            ? 'bg-pink-500/10 text-pink-500'
+                        : isIconifier || isStyleTool
+                          ? 'bg-indigo-500/10 text-indigo-500'
+                          : part.toolName === 'askQuestions'
+                            ? 'bg-indigo-500/10 text-indigo-500'
                             : isSearch
                               ? 'bg-sky-500/10 text-sky-500'
                               : isFileManager
@@ -2956,7 +3473,7 @@
                                               ? 'bg-emerald-500/10 text-emerald-500'
                                               : isSubagent
                                                 ? 'bg-cyan-500/10 text-cyan-500'
-                                                : part.toolName === 'sequentialThinking'
+                                                : isThinking
                                                   ? 'bg-yellow-500/10 text-yellow-500'
                                                   : 'bg-muted text-muted-foreground'}
                       <div
@@ -2983,8 +3500,11 @@
                             {:else if isIconifier}
                               <Palette
                                 class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
-                            {:else if part.toolName === 'autoStyler'}
+                            {:else if isStyleTool}
                               <Paintbrush
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if part.toolName === 'askQuestions'}
+                              <MessageCircleQuestion
                                 class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isSearch}
                               <Globe
@@ -3016,7 +3536,7 @@
                             {:else if isSubagent}
                               <Network
                                 class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
-                            {:else if part.toolName === 'sequentialThinking'}
+                            {:else if isThinking}
                               <Lightbulb
                                 class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else}
@@ -3029,7 +3549,7 @@
                             {part.status === 'running'
                               ? 'text-foreground'
                               : 'text-muted-foreground'}">
-                            <span class="font-mono">{part.toolName}</span>
+                            <span>{toolDisplayName}</span>
                             <span class="ml-1 text-muted-foreground/70">
                               {#if part.status === 'running'}
                                 · {part.message && part.message !== part.toolName
@@ -3082,7 +3602,8 @@
                                 {#each part.subagents as agent (agent.id)}
                                   <div class="rounded-md bg-muted/35 px-2 py-1.5 text-[11px]">
                                     <div class="flex items-center gap-1.5">
-                                      <span class="font-medium text-cyan-500">{agent.role}</span>
+                                      <span class="font-medium text-foreground/70"
+                                        >{agent.role}</span>
                                       <span class="truncate text-muted-foreground/70"
                                         >{agent.id}</span>
                                       {#if agent.status}
@@ -3115,7 +3636,7 @@
                                     {/if}
                                     {#if agent.events?.length}
                                       <div
-                                        class="mt-1.5 space-y-0.5 border-l border-cyan-500/20 pl-2">
+                                        class="mt-1.5 space-y-0.5 border-l border-border/70 pl-2">
                                         {#each agent.events as event (`${event.at}:${event.label}`)}
                                           <div class="text-[10px] text-muted-foreground/70">
                                             {event.label}
@@ -3136,7 +3657,7 @@
                                     {#if agent.output}
                                       <details class="mt-1.5" open={part.status === 'done'}>
                                         <summary
-                                          class="cursor-pointer text-[10px] font-medium text-cyan-500/90">
+                                          class="cursor-pointer text-[10px] font-medium text-muted-foreground/70">
                                           Output
                                         </summary>
                                         <pre
@@ -3166,7 +3687,7 @@
                                   <div class="flex items-center gap-2 text-[11px]">
                                     <span
                                       class="shrink-0 {icon.status === 'added'
-                                        ? 'text-violet-500'
+                                        ? 'text-indigo-500'
                                         : icon.status === 'removed'
                                           ? 'text-red-400'
                                           : 'text-muted-foreground/40'}">
@@ -3179,10 +3700,11 @@
                                     <span class="font-medium text-foreground/70"
                                       >{icon.nodeId}</span>
                                     {#if icon.iconId}
-                                      <span class="truncate text-violet-500/70">{icon.iconId}</span>
+                                      <span class="truncate text-muted-foreground/70"
+                                        >{icon.iconId}</span>
                                       {#if icon.confidence !== undefined}
                                         <span
-                                          class="ml-auto text-[10px] text-violet-500/60 tabular-nums">
+                                          class="ml-auto text-[10px] text-muted-foreground/60 tabular-nums">
                                           {Math.round(icon.confidence * 100)}%
                                         </span>
                                       {/if}
@@ -3206,7 +3728,7 @@
                                     <span class="font-medium text-foreground/70"
                                       >{result.title}</span>
                                     {#if result.source}
-                                      <span class="ml-1 text-[10px] text-sky-400/60"
+                                      <span class="ml-1 text-[10px] text-muted-foreground/60"
                                         >{result.source}</span>
                                     {/if}
                                   </div>
@@ -3458,9 +3980,10 @@
                     {/if}
                   {/each}
                 {:else if isLoading && i === messages.length - 1}
-                  <div class="flex items-center py-2">
-                    <span class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60"
-                      >Thinking...</span>
+                  <div class="flex items-center py-2" aria-live="polite">
+                    <span class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60">
+                      Thinking…
+                    </span>
                   </div>
                 {/if}
               </div>
@@ -3476,6 +3999,7 @@
       <button
         type="button"
         onclick={scrollToBottom}
+        aria-label="Scroll to latest message"
         class="absolute -top-10 right-3 z-10 flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-foreground">
         <ArrowDown class="size-3.5" />
       </button>
@@ -3491,6 +4015,7 @@
         <span class="flex-1 truncate">{fileError}</span>
         <button
           type="button"
+          aria-label="Dismiss file error"
           class="shrink-0 text-red-400 hover:text-red-300"
           onclick={() => {
             fileError = null;
@@ -3502,8 +4027,8 @@
   <!-- Input Area -->
   <div class="mx-auto w-full max-w-3xl shrink-0 px-3 pt-1.5 pb-2 sm:px-4 sm:pt-2 sm:pb-3">
     <PromptInput
-      class="rounded-xl border border-border bg-background text-foreground transition-colors duration-150 focus-within:border-foreground/30"
-      accept="image/*,.pdf,.txt,.md,.json,.xml,.yaml,.yml,.html,.mmd,.mermaid,.svg,.log,.env,.toml,.ini,.cfg,.js,.ts,.py,.java,.c,.cpp,.h,.go,.rs,.rb,.php,.sh,.bat,.sql,.r,.swift,.kt,.csv,.xlsx,.xls"
+      class="rounded-lg border border-border bg-background text-foreground transition-colors duration-150 focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/10"
+      accept={attachmentAccept}
       multiple
       maxFileSize={20 * 1024 * 1024}
       onError={(err) => {
@@ -3515,30 +4040,6 @@
         }, 5000);
       }}
       onSubmit={(message) => handleSubmit(message)}>
-      <!-- Context indicator -->
-      {#if selectedContext.type && selectedContext.ids.length > 0}
-        <div class="flex items-center gap-1.5 border-b border-border px-3 py-1.5">
-          <div class="flex size-4 items-center justify-center rounded-full bg-muted">
-            <AtSign class="size-2.5 text-muted-foreground" />
-          </div>
-          <span class="text-[10px] font-medium text-foreground">
-            {selectedContext.ids.length}
-            {selectedContext.type}{selectedContext.ids.length > 1 ? 's' : ''} selected
-          </span>
-          <span class="truncate text-[10px] text-muted-foreground">
-            {selectedContext.label ||
-              selectedContext.ids.map((id) => svgIdToNodeName(id)).join(', ')}
-          </span>
-          <button
-            type="button"
-            class="ml-auto text-[9px] text-muted-foreground/60 transition-colors hover:text-foreground"
-            onclick={() => {
-              selectedContext = { type: null, label: '', ids: [] };
-            }}>
-            clear
-          </button>
-        </div>
-      {/if}
       <!-- Attachment previews -->
       <PromptInputAttachments>
         {#snippet children(file)}
@@ -3550,9 +4051,10 @@
           class="field-sizing-content min-h-10 w-full resize-none rounded-none border-none bg-transparent px-3.5 py-2.5 text-[13px] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0 sm:min-h-[44px] dark:bg-transparent"
           style="max-height: min(240px, 40vh);"
           name="message"
+          aria-label="Message"
           placeholder={selectedContext.type
-            ? `Ask about selected ${selectedContext.type}s...`
-            : 'Describe your diagram...'}
+            ? `Ask about the selected ${selectedContext.type}…`
+            : 'Describe your diagram…'}
           bind:value={inputText}
           disabled={isLoading}
           onkeydown={(e) => {
@@ -3569,7 +4071,10 @@
           <button
             type="button"
             class="flex size-7 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-            title="Attach files (max 20MB per file)"
+            title={selectedModel?.imageSupport
+              ? 'Attach images, PDFs, Markdown, or text files'
+              : 'Attach PDFs, Markdown, or text files'}
+            aria-label="Attach files"
             onclick={(e) => {
               e.preventDefault();
               const wrapper = (e.currentTarget as HTMLElement).closest('.mx-auto');
@@ -3586,6 +4091,7 @@
                 ? 'animate-pulse border-violet-500/40 bg-violet-500/10 text-violet-500'
                 : ''}"
               title={isImprovingPrompt ? 'Improving…' : 'Improve prompt'}
+              aria-label={isImprovingPrompt ? 'Improving prompt' : 'Improve prompt'}
               disabled={isImprovingPrompt || isLoading}
               onclick={improvePrompt}>
               {#if isImprovingPrompt}
@@ -3604,6 +4110,7 @@
               if (!open) modelSearchQuery = '';
             }}>
             <Popover.Trigger
+              aria-label="Select model"
               class="flex h-7 max-w-[180px] cursor-pointer items-center gap-1 rounded-full border border-border px-2 text-[10px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground">
               <Zap class="size-2.5 shrink-0" />
               <span class="truncate">
@@ -3621,7 +4128,8 @@
                 <input
                   type="text"
                   name="model-search"
-                  placeholder="Search models..."
+                  aria-label="Search models"
+                  placeholder="Search models…"
                   class="h-5 w-full bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/40"
                   bind:value={modelSearchQuery} />
               </div>
@@ -3634,7 +4142,7 @@
                       <div
                         class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground">
                       </div>
-                      Loading models...
+                      Loading models…
                     </div>
                   </div>
                 {:else if filteredModels.length === 0}
@@ -3691,7 +4199,8 @@
           <!-- Context usage -->
           <div
             class="flex size-7 items-center justify-center"
-            title="{estimatedTokens.toLocaleString()} / {CONTEXT_WINDOW.toLocaleString()} tokens ({contextPercent}% used)">
+            title={contextTitle}
+            aria-label={contextTitle}>
             <svg class="size-5" viewBox="0 0 36 36">
               <circle
                 cx="18"
@@ -3708,15 +4217,9 @@
                 fill="none"
                 stroke-width="3"
                 stroke-linecap="round"
-                class="{contextStrokeColor} transition-all duration-500"
+                class="stroke-black transition-all duration-500 dark:stroke-white"
                 stroke-dasharray="{contextPercent * 0.8796} 87.96"
                 transform="rotate(-90 18 18)" />
-              <text
-                x="18"
-                y="19"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                class="fill-current {contextColor} text-[10px] font-bold">{contextPercent}</text>
             </svg>
           </div>
         </PromptInputTools>
@@ -3735,6 +4238,7 @@
                 ? 'Transcribing…'
                 : 'Voice input'}
             disabled={isTranscribing}
+            aria-label={isRecording ? 'Stop recording' : 'Voice input'}
             onclick={() => {
               if (isRecording) stopRecording();
               else startRecording();
@@ -3767,7 +4271,9 @@
           {#if isProcessingFiles}
             <div
               class="flex size-8 items-center justify-center rounded-full"
-              title="Processing files...">
+              title="Processing files…"
+              role="status"
+              aria-label="Processing files">
               <div
                 class="size-3.5 animate-spin rounded-full border-2 border-amber-500/30 border-t-amber-500">
               </div>
@@ -3776,13 +4282,14 @@
             <button
               type="button"
               onclick={stopStream}
+              aria-label="Stop response"
               class="flex size-8 items-center justify-center rounded-full border border-border text-foreground transition-colors duration-150 hover:bg-accent">
               <Square class="size-2.5" fill="currentColor" />
             </button>
           {:else}
             <PromptInputSubmit
               status={chatStatus}
-              disabled={!inputText.trim()}
+              aria-label="Send message"
               class="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90" />
           {/if}
         </div>
@@ -3793,8 +4300,8 @@
 
 <style>
   .thinking-shimmer {
-    background: linear-gradient(90deg, currentColor 0%, var(--foreground) 40%, currentColor 80%);
-    background-size: 200% 100%;
+    background: linear-gradient(90deg, currentColor 0%, var(--foreground) 42%, currentColor 82%);
+    background-size: 220% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -3807,6 +4314,14 @@
     }
     100% {
       background-position: -200% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .thinking-shimmer {
+      animation: none;
+      background: none;
+      -webkit-text-fill-color: currentColor;
     }
   }
 </style>

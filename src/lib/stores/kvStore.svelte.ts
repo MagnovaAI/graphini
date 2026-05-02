@@ -5,9 +5,14 @@
  */
 
 const LS_PREFIX = 'kv::';
+const LOCAL_ONLY_CATEGORIES = new Set(['chat']);
 
 function cacheKey(category: string, key: string): string {
   return `${category}::${key}`;
+}
+
+function shouldSyncToServer(category: string): boolean {
+  return !LOCAL_ONLY_CATEGORIES.has(category);
 }
 
 function lsSet(ck: string, value: unknown): void {
@@ -61,16 +66,18 @@ class KvStore {
    * Initialize the KV store. Loads localStorage first (instant), then fetches
    * from /api/kv and merges server data on top.
    */
-  async init(): Promise<void> {
-    if (this.initialized) return;
-    if (this.initPromise) return this.initPromise;
+  async init(options: { force?: boolean } = {}): Promise<void> {
+    const force = options.force === true;
+    if (this.initialized && !force) return;
+    if (this.initPromise && !force) return this.initPromise;
+    if (this.initPromise && force) await this.initPromise;
 
     this.initPromise = (async () => {
       // Load localStorage first for instant availability
       this.lsLoadAll();
 
       try {
-        const res = await fetch('/api/kv', { credentials: 'include' });
+        const res = await fetch('/api/kv', { cache: 'no-store', credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           const entries = data.entries || [];
@@ -88,6 +95,7 @@ class KvStore {
       }
 
       this.initialized = true;
+      this.initPromise = null;
     })();
 
     return this.initPromise;
@@ -109,6 +117,7 @@ class KvStore {
     const ck = cacheKey(category, key);
     this.memCache.set(ck, value);
     lsSet(ck, value);
+    if (!shouldSyncToServer(category)) return;
     this.pendingWrites.set(ck, { category, key, value });
     this.hasPending = true;
     this.scheduleFlush();
@@ -124,6 +133,7 @@ class KvStore {
     this.pendingWrites.delete(ck);
     this.hasPending = this.pendingWrites.size > 0;
 
+    if (!shouldSyncToServer(category)) return;
     if (!this.isAuthenticated) return;
 
     fetch(`/api/kv?category=${encodeURIComponent(category)}&key=${encodeURIComponent(key)}`, {
@@ -173,8 +183,14 @@ class KvStore {
       return;
     }
 
-    const batch = Array.from(this.pendingWrites.values());
+    const batch = Array.from(this.pendingWrites.values()).filter((entry) =>
+      shouldSyncToServer(entry.category)
+    );
     this.pendingWrites.clear();
+    if (batch.length === 0) {
+      this.hasPending = false;
+      return;
+    }
 
     try {
       await fetch('/api/kv', {

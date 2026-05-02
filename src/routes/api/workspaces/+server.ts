@@ -45,7 +45,7 @@ const createWorkspaceSchema = z.object({
     .optional()
     .nullable(),
   document: z.record(z.string(), z.unknown()).optional(),
-  engine: z.enum(['mermaid', 'json', 'yaml']).default('mermaid')
+  engine: z.enum(['mermaid', 'json', 'yaml', 'markdown']).default('mermaid')
 });
 
 /** POST /api/workspaces — create a new diagram workspace */

@@ -6,7 +6,9 @@
   import { Toaster } from '$lib/components/ui/sonner/index.js';
   import { authStore } from '$lib/stores/auth.svelte.js';
   import { kv } from '$lib/stores/kvStore.svelte';
-  import { mode, ModeWatcher } from 'mode-watcher';
+  import { uiSettings } from '$lib/stores/settings.svelte';
+  import { toolsStore } from '$lib/stores/toolsStore.svelte';
+  import { mode, ModeWatcher, setMode } from 'mode-watcher';
   import { onMount, type Snippet } from 'svelte';
   import '../app.css';
 
@@ -15,12 +17,19 @@
   // Register KV store instance globally for synchronous access from .svelte.ts files
   (globalThis as any).__kvStoreModule = kv;
   // Initialize KV store (loads all user settings from Supabase)
-  kv.init();
+  kv.init().then(() => toolsStore.syncFromKv());
+
+  async function initializeClientState() {
+    await authStore.init();
+    await kv.init({ force: true });
+    toolsStore.syncFromKv();
+    setMode(uiSettings.value.theme);
+  }
 
   // This can be removed once https://github.com/sveltejs/kit/issues/1612 is fixed.
   onMount(() => {
     // Initialize auth store to check for existing session
-    authStore.init();
+    void initializeClientState();
 
     window.addEventListener('hashchange', () => {
       // Skip re-init if the hash was set programmatically by our own URL subscription

@@ -17,7 +17,7 @@ type CanvasElement = Record<string, any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CanvasConnection = Record<string, any>;
 
-export type DiagramEngine = 'mermaid' | 'json' | 'yaml';
+export type DiagramEngine = 'mermaid' | 'json' | 'yaml' | 'markdown';
 
 // ── Workspace Document (the JSONB blob) ────────────────────────────────────
 

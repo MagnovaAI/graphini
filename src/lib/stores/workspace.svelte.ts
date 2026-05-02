@@ -74,9 +74,41 @@ function createDiagram(
   };
 }
 
+function uniqueDiagramTitle(
+  title: string,
+  diagrams: Pick<WorkspaceDiagram, 'id' | 'title'>[],
+  excludeId?: string
+): string {
+  const baseTitle = title.trim() || 'Untitled';
+  const used = new Set(
+    diagrams
+      .filter((diagram) => diagram.id !== excludeId)
+      .map((diagram) => diagram.title.trim().toLowerCase())
+  );
+  if (!used.has(baseTitle.toLowerCase())) return baseTitle;
+
+  let suffix = 2;
+  let candidate = `${baseTitle} ${suffix}`;
+  while (used.has(candidate.toLowerCase())) {
+    suffix += 1;
+    candidate = `${baseTitle} ${suffix}`;
+  }
+  return candidate;
+}
+
+function normalizeDiagramTitles(diagrams: WorkspaceDiagram[]): WorkspaceDiagram[] {
+  const seen: WorkspaceDiagram[] = [];
+  return diagrams.map((diagram) => {
+    const title = uniqueDiagramTitle(diagram.title, seen);
+    const nextDiagram = title === diagram.title ? diagram : { ...diagram, title };
+    seen.push(nextDiagram);
+    return nextDiagram;
+  });
+}
+
 function normalizeDocument(document?: WorkspaceDocument): WorkspaceDocument {
   const base = document ?? DEFAULT_WORKSPACE_DOCUMENT;
-  const diagrams =
+  const diagrams = normalizeDiagramTitles(
     base.diagrams && base.diagrams.length > 0
       ? base.diagrams
       : [
@@ -93,7 +125,8 @@ function normalizeDocument(document?: WorkspaceDocument): WorkspaceDocument {
               mermaidCode: base.mermaidCode ?? ''
             }
           )
-        ];
+        ]
+  );
   const activeDiagramId =
     diagrams.find((diagram) => diagram.id === base.activeDiagramId)?.id ?? diagrams[0]?.id;
   const activeDiagram = diagrams.find((diagram) => diagram.id === activeDiagramId) ?? diagrams[0];
@@ -372,17 +405,23 @@ function hydrateActiveDiagram() {
 }
 
 function getDefaultSource(engine: DiagramEngine) {
+  if (engine === 'markdown')
+    return `# Untitled Markdown
+
+Write notes, specs, and docs here.
+`;
+
   if (engine === 'json')
     return JSON.stringify(
       {
-        title: 'New Blog Post',
-        content: 'This is the content of the blog post...',
-        publishedDate: '2023-08-25T15:00:00Z',
         author: {
           username: 'authoruser',
           email: 'author@example.com'
         },
-        tags: ['Technology', 'Programming']
+        content: 'This is the content of the blog post...',
+        publishedDate: '2023-08-25T15:00:00Z',
+        tags: ['Technology', 'Programming'],
+        title: 'New Blog Post'
       },
       null,
       2
@@ -404,7 +443,8 @@ tags:
 function addDiagram(engine: DiagramEngine, title: string) {
   if (!state.workspace) return null;
   const document = collectDocument();
-  const diagram = createDiagram(title, engine, {
+  const diagramTitle = uniqueDiagramTitle(title, document.diagrams ?? []);
+  const diagram = createDiagram(diagramTitle, engine, {
     files: {},
     mermaidCode: getDefaultSource(engine)
   });
@@ -439,13 +479,14 @@ function switchDiagram(id: string) {
 function renameDiagram(id: string, title: string) {
   if (!state.workspace || !title.trim()) return;
   const document = collectDocument();
+  const nextTitle = uniqueDiagramTitle(title, document.diagrams ?? [], id);
   state.workspace = {
     ...state.workspace,
     document: {
       ...document,
       diagrams: document.diagrams?.map((diagram) =>
         diagram.id === id
-          ? { ...diagram, title: title.trim(), updatedAt: new Date().toISOString() }
+          ? { ...diagram, title: nextTitle, updatedAt: new Date().toISOString() }
           : diagram
       )
     }
@@ -597,6 +638,7 @@ async function createWorkspace(
   title?: string,
   engine: DiagramEngine = 'mermaid'
 ): Promise<DiagramWorkspace | null> {
+  state.error = null;
   try {
     const res = await fetch('/api/workspaces', {
       method: 'POST',
@@ -604,9 +646,12 @@ async function createWorkspace(
       credentials: 'include',
       body: JSON.stringify({ title: title || 'Untitled Workspace', engine })
     });
-    if (res.ok) return res.json();
+    const data = await res.json().catch(() => null);
+    if (res.ok) return data as DiagramWorkspace;
+    state.error = data?.error || 'Failed to create workspace';
     return null;
-  } catch {
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : 'Failed to create workspace';
     return null;
   }
 }
@@ -677,46 +722,49 @@ async function listWorkspaces(options?: {
 // ── Exported Store ─────────────────────────────────────────────────────────
 
 export const workspaceStore = {
+  get activeDiagramId() {
+    return state.workspace?.document?.activeDiagramId ?? null;
+  },
   addChatMessage,
   addDiagram,
+  closeDiagram,
 
   // Dashboard operations
   create: createWorkspace,
-  closeDiagram,
   delete: deleteWorkspace,
   deleteFile,
+  get diagrams() {
+    return state.workspace?.document?.diagrams ?? [];
+  },
   duplicate: duplicateWorkspace,
+
+  get error() {
+    return state.error;
+  },
   get isActive() {
     return !!state.workspace;
   },
   get isDirty() {
     return state.dirty;
   },
-
   get isLoading() {
     return state.loading;
   },
   get isSaving() {
     return state.saving;
   },
-  get activeDiagramId() {
-    return state.workspace?.document?.activeDiagramId ?? null;
-  },
-  get diagrams() {
-    return state.workspace?.document?.diagrams ?? [];
-  },
   list: listWorkspaces,
   load,
   markDirty,
-  renameFile,
   renameDiagram,
+  renameFile,
   save,
   setActiveDiagramChatMessages,
   setActiveDiagramDocumentMarkdown,
-  switchDiagram,
   get state() {
     return state;
   },
+  switchDiagram,
   toggleStar,
   unload,
   updateFile,

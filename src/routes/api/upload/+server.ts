@@ -2,7 +2,6 @@ import { storeFile } from '$lib/server/file-store';
 import { loadOpenRouterApiKey } from '$lib/server/chat/model';
 import { error, json } from '@sveltejs/kit';
 import dotenv from 'dotenv';
-import * as XLSX from 'xlsx';
 import type { RequestHandler } from './$types';
 
 dotenv.config({ path: '.env.local' });
@@ -10,8 +9,8 @@ dotenv.config();
 
 /**
  * File upload endpoint - processes all files server-side.
- * Images are analyzed via a vision model and returned as text descriptions.
- * Documents (txt, md, csv, json) have their text extracted server-side.
+ * Images are analyzed via a vision model only when the selected chat model allows images.
+ * Documents (txt, md) have their text extracted server-side.
  * PDFs are parsed with pdf-parse for full text extraction.
  * All files are stored in the server-side file store for agent access.
  *
@@ -77,31 +76,6 @@ Be thorough and precise. This description will be used to recreate or reference 
   }
 }
 
-function csvToMarkdown(csvText: string, filename: string): string {
-  try {
-    const workbook = XLSX.read(csvText, { type: 'string' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: ''
-    }) as string[][];
-    if (rows.length === 0) return `# CSV: ${filename}\n\n_Empty file_`;
-    const header = rows[0].map((c: any) => String(c ?? ''));
-    const separator = header.map(() => '---');
-    const mdRows = [header.join(' | '), separator.join(' | ')];
-    for (let r = 1; r < rows.length; r++) {
-      mdRows.push(rows[r].map((c: any) => String(c ?? '')).join(' | '));
-    }
-    let md = `# CSV: ${filename} (${rows.length} rows, ${header.length} cols)\n\n| ${mdRows.join(' |\n| ')} |`;
-    if (md.length > 80000) {
-      md = md.slice(0, 80000) + `\n\n[... truncated, ${md.length - 80000} more characters]`;
-    }
-    return md;
-  } catch {
-    return csvText;
-  }
-}
-
 export const POST: RequestHandler = async ({ request }) => {
   try {
     const formData = await request.formData();
@@ -121,9 +95,14 @@ export const POST: RequestHandler = async ({ request }) => {
     const filename = file.name;
     const mediaType = file.type || 'application/octet-stream';
     const isImage = file.type.startsWith('image/');
+    const supportsImages = formData.get('supportsImages') === 'true';
 
     // For images: analyze with vision model, return text description + thumbnail URL
     if (isImage) {
+      if (!supportsImages) {
+        return error(415, 'Images are only supported when the selected model allows image input.');
+      }
+
       const buffer = await file.arrayBuffer();
       const base64 = Buffer.from(buffer).toString('base64');
       const dataUrl = `data:${mediaType};base64,${base64}`;
@@ -133,16 +112,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
       // Store image metadata for agent access
       const sessionId = (formData.get('sessionId') as string) || 'default';
-      const fileId = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await storeFile({
-        id: fileId,
+      const storedFile = storeFile({
+        buffer: Buffer.from(buffer),
+        extractedText: `[Image: ${filename}]\n${description}`,
         sessionId,
         filename,
-        mediaType,
-        type: 'image',
-        size: file.size,
-        extractedText: `[Image: ${filename}]\n${description}`,
-        storedAt: Date.now()
+        mimeType: mediaType,
+        originalName: filename
       });
 
       return json({
@@ -151,84 +127,29 @@ export const POST: RequestHandler = async ({ request }) => {
         filename,
         type: 'image',
         extractedText: `[Image: ${filename}]\n${description}`,
-        fileId,
+        fileId: storedFile.id,
         size: file.size
       });
     }
 
     // For text-based documents: extract text content
-    const textTypes = [
-      'text/plain',
-      'text/markdown',
-      'text/csv',
-      'text/html',
-      'application/json',
-      'application/xml',
-      'text/xml',
-      'application/x-yaml',
-      'text/yaml',
-      'application/javascript',
-      'text/javascript',
-      'application/typescript',
-      'text/typescript'
-    ];
+    const textTypes = ['text/plain', 'text/markdown'];
 
-    const textExtensions = [
-      '.txt',
-      '.md',
-      '.csv',
-      '.json',
-      '.xml',
-      '.yaml',
-      '.yml',
-      '.html',
-      '.mmd',
-      '.mermaid',
-      '.svg',
-      '.log',
-      '.env',
-      '.toml',
-      '.ini',
-      '.cfg',
-      '.js',
-      '.ts',
-      '.py',
-      '.java',
-      '.c',
-      '.cpp',
-      '.h',
-      '.go',
-      '.rs',
-      '.rb',
-      '.php',
-      '.sh',
-      '.bat',
-      '.sql',
-      '.r',
-      '.swift',
-      '.kt'
-    ];
+    const textExtensions = ['.txt', '.md', '.markdown'];
     const ext = '.' + filename.split('.').pop()?.toLowerCase();
     const isTextFile = textTypes.includes(mediaType) || textExtensions.includes(ext);
 
     if (isTextFile) {
       const text = await file.text();
-      // Convert CSV to markdown table for better AI consumption
-      let extractedText = text;
-      if (ext === '.csv' || mediaType === 'text/csv') {
-        extractedText = csvToMarkdown(text, filename);
-      }
+      const extractedText = text;
       const sessionId = (formData.get('sessionId') as string) || 'default';
-      const fileId = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await storeFile({
-        id: fileId,
+      const storedFile = storeFile({
+        buffer: Buffer.from(text),
+        extractedText,
         sessionId,
         filename,
-        mediaType,
-        type: 'document',
-        size: file.size,
-        extractedText,
-        storedAt: Date.now()
+        mimeType: mediaType,
+        originalName: filename
       });
 
       return json({
@@ -237,7 +158,7 @@ export const POST: RequestHandler = async ({ request }) => {
         filename,
         type: 'document',
         extractedText,
-        fileId,
+        fileId: storedFile.id,
         size: file.size
       });
     }
@@ -266,16 +187,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
       // Store file for agent access
       const sessionId = (formData.get('sessionId') as string) || 'default';
-      const fileId = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await storeFile({
-        id: fileId,
+      const storedFile = storeFile({
+        buffer,
+        extractedText: extractedText || `[PDF: ${filename}]`,
         sessionId,
         filename,
-        mediaType,
-        type: 'pdf',
-        size: file.size,
-        extractedText: extractedText || `[PDF: ${filename}]`,
-        storedAt: Date.now()
+        mimeType: mediaType,
+        originalName: filename
       });
 
       const summary =
@@ -289,80 +207,8 @@ export const POST: RequestHandler = async ({ request }) => {
         filename,
         type: 'pdf',
         extractedText: extractedText ? `${summary}\n\n${extractedText}` : summary,
-        fileId,
+        fileId: storedFile.id,
         pageCount,
-        size: file.size
-      });
-    }
-
-    // For Excel files (XLSX/XLS): parse all sheets into markdown tables
-    const isExcel =
-      mediaType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-      mediaType === 'application/vnd.ms-excel' ||
-      ext === '.xlsx' ||
-      ext === '.xls';
-    if (isExcel) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      let extractedText = '';
-      let sheetCount = 0;
-      try {
-        const workbook = XLSX.read(buffer, { type: 'buffer' });
-        sheetCount = workbook.SheetNames.length;
-        const parts: string[] = [];
-        for (const sheetName of workbook.SheetNames) {
-          const sheet = workbook.Sheets[sheetName];
-          const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
-            header: 1,
-            defval: ''
-          }) as string[][];
-          if (rows.length === 0) {
-            parts.push(`## Sheet: ${sheetName}\n\n_Empty sheet_`);
-            continue;
-          }
-          // Build markdown table
-          const header = rows[0].map((c: any) => String(c ?? ''));
-          const separator = header.map(() => '---');
-          const mdRows = [header.join(' | '), separator.join(' | ')];
-          for (let r = 1; r < rows.length; r++) {
-            mdRows.push(rows[r].map((c: any) => String(c ?? '')).join(' | '));
-          }
-          parts.push(
-            `## Sheet: ${sheetName} (${rows.length} rows, ${header.length} cols)\n\n| ${mdRows.join(' |\n| ')} |`
-          );
-        }
-        extractedText = `# Excel: ${filename} (${sheetCount} sheet${sheetCount > 1 ? 's' : ''}, ${(file.size / 1024).toFixed(1)}KB)\n\n${parts.join('\n\n')}`;
-        // Truncate very large files
-        if (extractedText.length > 80000) {
-          extractedText =
-            extractedText.slice(0, 80000) +
-            `\n\n[... truncated, ${extractedText.length - 80000} more characters]`;
-        }
-      } catch (xlsxErr) {
-        console.error('[upload] XLSX processing error:', xlsxErr);
-        extractedText = `[Excel file: ${filename} — parsing failed: ${xlsxErr instanceof Error ? xlsxErr.message : 'unknown error'}]`;
-      }
-
-      const sessionId = (formData.get('sessionId') as string) || 'default';
-      const fileId = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await storeFile({
-        id: fileId,
-        sessionId,
-        filename,
-        mediaType,
-        type: 'document',
-        size: file.size,
-        extractedText,
-        storedAt: Date.now()
-      });
-
-      return json({
-        url: null,
-        mediaType,
-        filename,
-        type: 'document',
-        extractedText,
-        fileId,
-        sheetCount,
         size: file.size
       });
     }
@@ -370,7 +216,7 @@ export const POST: RequestHandler = async ({ request }) => {
     // Unsupported file type - reject with error
     return error(
       415,
-      `Unsupported file type: ${ext || mediaType}. Accepted: images, PDFs, text/code files (.txt, .md, .json, .js, .ts, .py, .csv, .xlsx, etc.).`
+      `Unsupported file type: ${ext || mediaType}. Accepted: Markdown, text, PDF${supportsImages ? ', and images' : ''}.`
     );
   } catch (err) {
     console.error('Upload error:', err);
