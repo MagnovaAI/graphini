@@ -26,40 +26,30 @@
   import { conversationsStore } from '$lib/stores/conversations.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { kv } from '$lib/stores/kvStore.svelte';
-  import { panels, VISIBLE_PANEL_SWITCHER_IDS, type PanelId } from '$lib/stores/panels.svelte';
+  import { panels, type PanelId } from '$lib/stores/panels.svelte';
   import { cn } from '$lib/utils';
   import {
     AlertCircle,
     ArrowLeft,
     Braces,
-    Circle,
     Code2,
-    Diamond,
-    Download,
     FileCode2,
     FileText,
     GitBranch,
     Grid2x2,
-    Hand,
-    Hexagon,
     Layers,
     Loader2 as Loader2Spin,
     LogOut,
     Maximize2,
     MessageSquare,
-    MousePointer2,
     Network,
-    Pencil,
-    PenTool,
+    PanelLeftClose,
     Plus,
-    RectangleHorizontal,
     Scan,
     Settings,
-    Square,
-    Triangle,
+    Trash2,
     UserCircle,
     Workflow,
-    X,
     ZoomIn,
     ZoomOut
   } from 'lucide-svelte';
@@ -75,83 +65,6 @@
   // Workspace loading from route param
   let wsLoading = $state(true);
   let wsError = $state<string | null>(null);
-
-  function standardizeDiagramType(type: string): string {
-    const typeMap: Record<string, string> = {
-      block: 'block',
-      c4: 'c4',
-      class: 'classDiagram',
-      'class-diagram': 'classDiagram',
-      'entity-relationship': 'erDiagram',
-      er: 'erDiagram',
-      'flow-chart': 'flowchart',
-      flowchart: 'flowchart',
-      gantt: 'gantt',
-      'git-graph': 'gitGraph',
-      gitgraph: 'gitGraph',
-      journey: 'journey',
-      kanban: 'kanban',
-      mindmap: 'mindmap',
-      packet: 'packet',
-      pie: 'pie',
-      quadrant: 'quadrantChart',
-      'quadrant-chart': 'quadrantChart',
-      requirement: 'requirement',
-      sankey: 'sankey',
-      sequence: 'sequenceDiagram',
-      'sequence-diagram': 'sequenceDiagram',
-      state: 'stateDiagram',
-      'state-diagram': 'stateDiagram',
-      timeline: 'timeline',
-      treemap: 'treemap',
-      'user-journey': 'journey',
-      xy: 'xyChart',
-      'xy-chart': 'xyChart',
-      zenuml: 'zenuml'
-    };
-    return typeMap[type] || type;
-  }
-
-  const docURLBase = 'https://mermaid.js.org';
-  const docMap: Record<string, Record<string, string>> = {
-    architecture: { code: '/syntax/architecture.html' },
-    block: { code: '/syntax/block.html' },
-    c4: { code: '/syntax/c4.html' },
-    class: { code: '/syntax/classDiagram.html', config: '/syntax/classDiagram.html#configuration' },
-    er: {
-      code: '/syntax/entityRelationshipDiagram.html',
-      config: '/syntax/entityRelationshipDiagram.html#styling'
-    },
-    flowchart: { code: '/syntax/flowchart.html', config: '/syntax/flowchart.html#configuration' },
-    gantt: { code: '/syntax/gantt.html', config: '/syntax/gantt.html#configuration' },
-    gitGraph: {
-      code: '/syntax/gitgraph.html',
-      config: '/syntax/gitgraph.html#gitgraph-specific-configuration-options'
-    },
-    journey: { code: '/syntax/userJourney.html' },
-    kanban: { code: '/syntax/kanban.html', config: '/syntax/kanban.html#configuration-options' },
-    mindmap: { code: '/syntax/mindmap.html' },
-    packet: {
-      code: '/syntax/packet.html',
-      config: '/config/schema-docs/config-defs-packet-diagram-config.html'
-    },
-    pie: { code: '/syntax/pie.html', config: '/syntax/pie.html#configuration' },
-    quadrantChart: {
-      code: '/syntax/quadrantChart.html',
-      config: '/syntax/quadrantChart.html#chart-configurations'
-    },
-    requirement: { code: '/syntax/requirementDiagram.html' },
-    sankey: { code: '/syntax/sankey.html', config: '/syntax/sankey.html#configuration' },
-    sequence: {
-      code: '/syntax/sequenceDiagram.html',
-      config: '/syntax/sequenceDiagram.html#configuration'
-    },
-    stateDiagram: { code: '/syntax/stateDiagram.html' },
-    timeline: { code: '/syntax/timeline.html', config: '/syntax/timeline.html#themes' },
-    treemap: { code: '/syntax/treemap.html', config: '/syntax/treemap.html#configuration-options' },
-    xychart: { code: '/syntax/xyChart.html', config: '/syntax/xyChart.html#chart-configurations' },
-    zenuml: { code: '/syntax/zenuml.html' }
-  };
 
   let width = $state(0);
   let isMobile = $derived(width < 640);
@@ -191,49 +104,12 @@
     code: Code2,
     document: FileText
   };
-
-  // Drag-and-drop panel reordering
-  let dragPanelId = $state<PanelId | null>(null);
-  let dragOverPanelId = $state<PanelId | null>(null);
-
-  function handlePanelDragStart(e: DragEvent, id: PanelId) {
-    dragPanelId = id;
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', id);
-    }
-  }
-  function handlePanelDragOver(e: DragEvent, id: PanelId) {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    dragOverPanelId = id;
-  }
-  function handlePanelDrop(e: DragEvent, targetId: PanelId) {
-    e.preventDefault();
-    if (!dragPanelId || dragPanelId === targetId) {
-      dragPanelId = null;
-      dragOverPanelId = null;
-      return;
-    }
-    const order = [...panels.order];
-    const fromIdx = order.indexOf(dragPanelId);
-    const toIdx = order.indexOf(targetId);
-    if (fromIdx >= 0 && toIdx >= 0) {
-      order.splice(fromIdx, 1);
-      order.splice(toIdx, 0, dragPanelId);
-      panels.reorder(order);
-    }
-    dragPanelId = null;
-    dragOverPanelId = null;
-  }
-  function handlePanelDragEnd() {
-    dragPanelId = null;
-    dragOverPanelId = null;
-  }
+  const workspacePanelIds: PanelId[] = ['code', 'canvas'];
 
   // Modal states
   let isSettingsModalOpen = $state(false);
   let isShortcutsModalOpen = $state(false);
+  let isWorkspaceSidebarCollapsed = $state(loadUIState('workspaceSidebarCollapsed', false));
 
   // Canvas panel states
   let isColorPanelOpen = $state(false);
@@ -246,7 +122,6 @@
   }
 
   // Toolbar state
-  let currentState: unknown = $state(undefined);
   let currentLayout: LayoutOption = $state('dagre');
   let activeTool = $state<'select' | 'pan' | 'draw'>(loadUIState('activeTool', 'select'));
   let isGridVisible = $state(loadUIState('gridVisible', false));
@@ -286,19 +161,9 @@
     }, 300);
   });
 
-  const documentationURL = $derived.by(() => {
-    const { diagramType, editorMode } = currentState || {};
-    if (!diagramType) return { key: '', url: docURLBase };
-    const key = standardizeDiagramType(diagramType);
-    const docConfig = docMap[key] || { code: '' };
-    const url = docURLBase + (docConfig[editorMode] || docConfig.code || '');
-    return { key, url };
-  });
-
   const unsubscribe = (
     inputStateStore as unknown as { subscribe: (cb: (s: unknown) => void) => () => void }
   ).subscribe((state: unknown) => {
-    currentState = state;
     try {
       const config = JSON.parse(state.mermaid);
       currentLayout = config.layout === 'elk' ? 'elk' : 'dagre';
@@ -333,9 +198,9 @@
 
   onMount(() => {
     panels.setWorkspaceOrder();
-    panels.show('canvas');
-    panels.show('code');
     panels.show('chat');
+    panels.show('code');
+    panels.hide('canvas');
     panels.hide('document');
 
     // Load workspace from route param — always reload if ID changed
@@ -357,6 +222,7 @@
 
     const setup = async () => {
       await initHandler();
+      if (authStore.isLoggedIn) await conversationsStore.fetch();
       window.addEventListener('appinstalled', () => logEvent('pwaInstalled', { isMobile }));
     };
     setup();
@@ -517,7 +383,6 @@
     const newLine = `    ${nodeId}${open}New Node${close}`;
     const newCode = code.trimEnd() + '\n' + newLine + '\n';
     updateCodeStore({ code: newCode, updateDiagram: true });
-    showShapeDropdown = false;
   };
 
   const handleDelete = () => window.dispatchEvent(new CustomEvent('delete-selected'));
@@ -560,26 +425,32 @@
   // Layout dropdown state
   let showLayoutDropdown = $state(false);
 
-  // Shape dropdown state for plus button
-  let showShapeDropdown = $state(false);
-  const shapeOptions: { id: string; label: string; syntax: [string, string] }[] = [
-    { id: 'rect', label: 'Rectangle', syntax: ['[', ']'] },
-    { id: 'rounded', label: 'Rounded', syntax: ['(', ')'] },
-    { id: 'stadium', label: 'Stadium', syntax: ['([', '])'] },
-    { id: 'circle', label: 'Circle', syntax: ['((', '))'] },
-    { id: 'rhombus', label: 'Diamond', syntax: ['{', '}'] },
-    { id: 'hexagon', label: 'Hexagon', syntax: ['{{', '}}'] },
-    { id: 'trapezoid', label: 'Trapezoid', syntax: ['[/', '\\]'] },
-    { id: 'cylinder', label: 'Cylinder', syntax: ['[(', ')]'] },
-    { id: 'subroutine', label: 'Subroutine', syntax: ['[[', ']]'] },
-    { id: 'flag', label: 'Flag', syntax: ['>', ']'] }
-  ];
-
   const handleLayoutChange = (layout: LayoutOption) => {
     currentLayout = layout;
     setLayout(layout);
     showLayoutDropdown = false;
   };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  };
+
+  const zoomIn = () => {
+    panZoomState.zoomIn();
+    zoomLevel = Math.min(400, zoomLevel + 10);
+  };
+
+  const zoomOut = () => {
+    panZoomState.zoomOut();
+    zoomLevel = Math.max(25, zoomLevel - 10);
+  };
+
+  const resetView = () => {
+    panZoomState.reset();
+    zoomLevel = 100;
+  };
+
   let gridStyle = $state<'dots' | 'squares'>('dots');
   const cycleGrid = () => {
     if (!isGridVisible) {
@@ -605,8 +476,6 @@
     );
   };
 
-  const handleClearChat = () => chatComponent?.clearChat();
-  const handleNewChat = () => chatComponent?.newChat();
   const handleSendChatMessage = async (
     message: string,
     options?: { isRepair?: boolean }
@@ -620,8 +489,6 @@
     // No-op: workspace handles persistence
   }
 
-  let isRenamingInNavbar = $state(false);
-  let navbarRenameValue = $state('');
   interface WorkspaceTab {
     engine: DiagramEngine;
     id: string;
@@ -638,30 +505,50 @@
     document.title = `${name} — Graphini`;
   });
 
-  function startNavbarRename() {
-    navbarRenameValue =
-      workspaceTabs.find((tab) => tab.id === activeWorkspaceId)?.title || 'Untitled';
-    isRenamingInNavbar = true;
-  }
-
-  async function saveNavbarRename() {
-    if (!workspaceStore.workspace || !navbarRenameValue.trim()) {
-      isRenamingInNavbar = false;
-      return;
-    }
-    if (activeWorkspaceId) {
-      workspaceStore.renameDiagram(activeWorkspaceId, navbarRenameValue.trim());
-    }
-    isRenamingInNavbar = false;
+  function toggleWorkspaceSidebar() {
+    isWorkspaceSidebarCollapsed = !isWorkspaceSidebarCollapsed;
+    saveUIState('workspaceSidebarCollapsed', isWorkspaceSidebarCollapsed);
   }
 
   async function handleNewWorkspace(engine: DiagramEngine, title: string) {
     workspaceStore.addDiagram(engine, title);
   }
 
-  function handleSwitchTab(tab: WorkspaceTab) {
-    if (tab.id === activeWorkspaceId) return;
-    workspaceStore.switchDiagram(tab.id);
+  function showChatPanel() {
+    panels.toggle('chat');
+  }
+
+  function showCodePanel() {
+    panels.show('code');
+    panels.hide('canvas');
+    panels.hide('document');
+  }
+
+  function showPreviewPanel() {
+    panels.show('canvas');
+    panels.hide('code');
+    panels.hide('document');
+  }
+
+  async function startNewChat() {
+    conversationsStore.setActive(null);
+    panels.show('chat');
+    await chatComponent?.newChat();
+  }
+
+  async function selectConversation(id: string) {
+    conversationsStore.setActive(id);
+    panels.show('chat');
+    await chatComponent?.loadConversation(id);
+  }
+
+  async function deleteConversation(id: string) {
+    const wasActive = conversationsStore.activeId === id;
+    await conversationsStore.delete(id);
+    window.dispatchEvent(new CustomEvent('conversation-deleted', { detail: { id, wasActive } }));
+    if (wasActive) {
+      await startNewChat();
+    }
   }
 
   $effect(() => {
@@ -672,15 +559,10 @@
   });
 
   $effect(() => {
-    if (hasMandatoryFileViewer && !panels.panels.canvas.visible) {
+    if (hasMandatoryFileViewer && !panels.panels.canvas.visible && !panels.panels.code.visible) {
       panels.show('canvas');
     }
   });
-
-  function handleCloseTab(event: Event, tabId: string) {
-    event.stopPropagation();
-    workspaceStore.closeDiagram(tabId);
-  }
 </script>
 
 {#if !authStore.isInitialized || authStore.isLoading || wsLoading}
@@ -702,158 +584,175 @@
       <p class="mt-2 max-w-xs text-[13px] text-muted-foreground/70">{wsError}</p>
       <button
         class="mt-6 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground transition-all hover:bg-primary/90"
-        onclick={() => goto(resolve('/dashboard'))}>
+        onclick={() => goto(resolve('/app'))}>
         <ArrowLeft class="size-3.5" />
-        Back to Dashboard
+        Back to App
       </button>
     </div>
   </div>
 {:else if authStore.isLoggedIn}
-  <div class="flex h-screen flex-col overflow-hidden bg-background" bind:clientWidth={width}>
-    <!-- ═══ TOP HEADER BAR ═══ -->
-    <header class="flex h-12 items-center border-b border-border bg-card pr-3">
-      <div class="flex h-full min-w-0 flex-1 items-center">
-        <div class="flex h-full w-14 shrink-0 items-center justify-center border-r border-border">
-          <img src="/brand/logo.png" alt="Graphini" class="size-7" />
+  <div class="flex h-screen overflow-hidden bg-background" bind:clientWidth={width}>
+    <aside
+      class="workspace-sidebar {isWorkspaceSidebarCollapsed ? 'collapsed' : ''}"
+      aria-label="Workspace sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-header-row">
+          {#if isWorkspaceSidebarCollapsed}
+            <button
+              type="button"
+              class="sidebar-logo-button"
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+              onclick={toggleWorkspaceSidebar}>
+              <img src="/brand/logo.png" alt="" class="size-7" />
+            </button>
+          {:else}
+            <a href={resolve('/app')} class="brand-lockup" aria-label="Back to app">
+              <img src="/brand/logo.png" alt="" class="size-7 shrink-0" />
+              <span>Graphini</span>
+            </a>
+            <button
+              type="button"
+              class="sidebar-icon-action"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+              onclick={toggleWorkspaceSidebar}>
+              <PanelLeftClose class="size-4" />
+            </button>
+          {/if}
         </div>
 
-        <div class="tab-switcher" role="tablist" aria-label="Workspace files">
-          {#each workspaceTabs as tab (tab.id)}
-            {@const isActiveTab = tab.id === activeWorkspaceId}
-            {#if isActiveTab && isRenamingInNavbar}
-              <input
-                type="text"
-                bind:value={navbarRenameValue}
-                class="mx-1 h-8 w-52 rounded-md border border-border bg-background px-2.5 text-[11px] font-medium text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none"
-                onkeydown={(e) => {
-                  if (e.key === 'Enter') saveNavbarRename();
-                  if (e.key === 'Escape') isRenamingInNavbar = false;
-                }}
-                onblur={() => saveNavbarRename()} />
-            {:else}
-              <button
-                type="button"
-                class="workspace-tab {isActiveTab ? 'active' : ''}"
-                aria-selected={isActiveTab}
-                role="tab"
-                onclick={() => handleSwitchTab(tab)}
-                ondblclick={() => {
-                  if (isActiveTab) startNavbarRename();
-                }}
-                title={isActiveTab ? 'Double-click to rename' : `Open ${tab.title}`}>
-                {#if tab.engine === 'json'}
-                  <Braces class="size-3.5" />
-                {:else if tab.engine === 'yaml'}
-                  <FileCode2 class="size-3.5" />
-                {:else if tab.engine === 'markdown'}
-                  <FileText class="size-3.5" />
-                {:else}
-                  <Workflow class="size-3.5" />
-                {/if}
-                <span class="tab-title max-w-[160px] truncate">{tab.title}</span>
-                <span
-                  role="button"
-                  tabindex="0"
-                  class="tab-close"
-                  aria-label="Close {tab.title}"
-                  onkeydown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') handleCloseTab(e, tab.id);
-                  }}
-                  onclick={(e) => handleCloseTab(e, tab.id)}>
-                  <X class="size-3.5" />
-                </span>
-              </button>
-            {/if}
-          {/each}
-
+        <div class="sidebar-primary-actions">
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger class="workspace-tab" aria-label="New file" title="New file">
-              <Plus class="size-3.5" />
+            <DropdownMenu.Trigger
+              class="sidebar-new-button {isWorkspaceSidebarCollapsed ? 'compact' : ''}"
+              aria-label="New"
+              title="New">
+              <Plus class="size-3.5 shrink-0" />
+              {#if !isWorkspaceSidebarCollapsed}
+                <span>New</span>
+              {/if}
             </DropdownMenu.Trigger>
             <DropdownMenu.Content
               align="start"
-              sideOffset={5}
-              class="w-64 rounded-md border-border bg-card p-1 shadow-sm dark:border-white/10">
-              <DropdownMenu.Label class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                New file
-              </DropdownMenu.Label>
+              side={isWorkspaceSidebarCollapsed ? 'right' : 'bottom'}
+              sideOffset={8}
+              class="sidebar-create-menu">
+              <DropdownMenu.Item class="sidebar-create-item" onclick={startNewChat}>
+                <MessageSquare class="size-4" />
+                <span>New Chat</span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator />
               <DropdownMenu.Item
-                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                class="sidebar-create-item"
                 onclick={() => handleNewWorkspace('mermaid', 'Untitled Mermaid')}>
-                <Workflow class="mt-0.5 size-4" />
-                <span class="min-w-0">
-                  <span class="block text-sm font-medium">Mermaid</span>
-                  <span class="block text-xs text-muted-foreground">Diagram source and canvas</span>
-                </span>
+                <Workflow class="size-4" />
+                <span>Mermaid</span>
               </DropdownMenu.Item>
               <DropdownMenu.Item
-                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                class="sidebar-create-item"
                 onclick={() => handleNewWorkspace('markdown', 'Untitled Markdown')}>
-                <FileText class="mt-0.5 size-4" />
-                <span class="min-w-0">
-                  <span class="block text-sm font-medium">Markdown</span>
-                  <span class="block text-xs text-muted-foreground">Notes, specs, and docs</span>
-                </span>
+                <FileText class="size-4" />
+                <span>Markdown</span>
               </DropdownMenu.Item>
               <DropdownMenu.Item
-                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                class="sidebar-create-item"
                 onclick={() => handleNewWorkspace('json', 'Untitled JSON')}>
-                <Braces class="mt-0.5 size-4" />
-                <span class="min-w-0">
-                  <span class="block text-sm font-medium">JSON</span>
-                  <span class="block text-xs text-muted-foreground">Structured data viewer</span>
-                </span>
+                <Braces class="size-4" />
+                <span>JSON</span>
               </DropdownMenu.Item>
               <DropdownMenu.Item
-                class="rounded-md px-2 py-2 data-highlighted:bg-muted/60"
+                class="sidebar-create-item"
                 onclick={() => handleNewWorkspace('yaml', 'Untitled YAML')}>
-                <FileCode2 class="mt-0.5 size-4" />
-                <span class="min-w-0">
-                  <span class="block text-sm font-medium">YAML</span>
-                  <span class="block text-xs text-muted-foreground">Config and manifest files</span>
-                </span>
+                <FileCode2 class="size-4" />
+                <span>YAML</span>
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
+
+          <button
+            type="button"
+            class="panel-tab sidebar-chat-tab {isWorkspaceSidebarCollapsed ? 'compact' : ''} {panels
+              .panels.chat.visible
+              ? 'active'
+              : ''}"
+            aria-pressed={panels.panels.chat.visible}
+            title="Chat"
+            onclick={showChatPanel}>
+            <MessageSquare class="size-3.5 shrink-0" />
+            {#if !isWorkspaceSidebarCollapsed}
+              <span>Chat</span>
+            {/if}
+          </button>
+
+          <div class="sidebar-panel-toggles" aria-label="Workspace panels">
+            {#each workspacePanelIds as panelId (panelId)}
+              {@const Icon = panelIcons[panelId]}
+              {@const panelConfig = panels.panels}
+              {@const isActive = panelConfig[panelId].visible}
+              {@const label = panelConfig[panelId].label}
+              <button
+                type="button"
+                class="panel-tab {isWorkspaceSidebarCollapsed ? 'compact' : ''} {isActive
+                  ? 'active'
+                  : ''}"
+                aria-pressed={isActive}
+                title={label}
+                onclick={() => (panelId === 'code' ? showCodePanel() : showPreviewPanel())}>
+                <Icon class="size-3.5 shrink-0" />
+                {#if !isWorkspaceSidebarCollapsed}
+                  <span>{label}</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
         </div>
       </div>
 
-      <!-- Right: Actions -->
-      <div class="flex items-center gap-1">
-        <div
-          class="mr-1 hidden items-center gap-0.5 border border-border bg-card p-0.5 lg:flex dark:border-white/10">
-          {#each VISIBLE_PANEL_SWITCHER_IDS as panelId (panelId)}
-            {@const Icon = panelIcons[panelId]}
-            {@const panelConfig = panels.panels}
-            {@const isActive = panelConfig[panelId].visible}
-            {@const label = panelConfig[panelId].label}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-              class="flex items-center rounded-md transition-all duration-150
-              {dragOverPanelId === panelId && dragPanelId !== panelId
-                ? 'ring-2 ring-primary/40'
-                : ''}
-              {dragPanelId === panelId ? 'opacity-40' : ''}"
-              draggable="true"
-              ondragstart={(e) => handlePanelDragStart(e, panelId)}
-              ondragover={(e) => handlePanelDragOver(e, panelId)}
-              ondrop={(e) => handlePanelDrop(e, panelId)}
-              ondragend={handlePanelDragEnd}>
-              <button
-                type="button"
-                class="flex items-center gap-1.5 border-b-2 px-2.5 py-1.5 text-[11px] font-medium transition-colors duration-150
-                {isActive
-                  ? 'border-foreground text-foreground'
-                  : 'border-transparent text-muted-foreground/70 hover:bg-muted/30 hover:text-foreground'}"
-                title={label}
-                onclick={() => panels.toggle(panelId)}>
-                <Icon class="size-3.5" />
-                <span class="hidden xl:inline">{label}</span>
-              </button>
-            </div>
-          {/each}
+      {#if !isWorkspaceSidebarCollapsed}
+        <div class="conversation-list" aria-label="Chats">
+          {#if conversationsStore.isLoading}
+            <div class="conversation-empty">Loading chats...</div>
+          {:else if !authStore.isLoggedIn}
+            <div class="conversation-empty">Sign in to save chats</div>
+          {:else if conversationsStore.list.length === 0}
+            <div class="conversation-empty">No chats yet</div>
+          {:else}
+            {#each conversationsStore.list as conv (conv.id)}
+              <div
+                class="conversation-item {conv.id === conversationsStore.activeId ? 'active' : ''}">
+                <button
+                  type="button"
+                  class="conversation-select"
+                  title={conv.title || 'Untitled chat'}
+                  onclick={() => selectConversation(conv.id)}>
+                  {conv.title || 'Untitled chat'}
+                </button>
+                <button
+                  type="button"
+                  class="conversation-delete"
+                  aria-label="Delete chat"
+                  title="Delete chat"
+                  onclick={() => deleteConversation(conv.id)}>
+                  <Trash2 class="size-3.5" />
+                </button>
+              </div>
+            {/each}
+          {/if}
         </div>
-        <!-- User Auth -->
+      {/if}
+
+      <div class="sidebar-footer-row">
+        <button
+          type="button"
+          class="sidebar-footer-button"
+          title="Settings"
+          onclick={() => (isSettingsModalOpen = true)}>
+          <Settings class="size-4 shrink-0" />
+          {#if !isWorkspaceSidebarCollapsed}
+            <span>Settings</span>
+          {/if}
+        </button>
         {#if authStore.isLoggedIn}
           {@const initials = (authStore.user?.display_name || authStore.user?.email || 'U')
             .split(' ')
@@ -862,11 +761,22 @@
             .toUpperCase()
             .slice(0, 2)}
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger
-              class="flex size-8 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground ring-1 ring-border/50 transition-colors hover:ring-border focus:outline-none">
-              {initials}
+            <DropdownMenu.Trigger class="sidebar-footer-button" title="Account">
+              <span
+                class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                {initials}
+              </span>
+              {#if !isWorkspaceSidebarCollapsed}
+                <span class="min-w-0 flex-1 truncate text-left">
+                  {authStore.user?.display_name || authStore.user?.email || 'User'}
+                </span>
+              {/if}
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content align="end" class="w-56">
+            <DropdownMenu.Content
+              align="start"
+              side="right"
+              sideOffset={8}
+              class="sidebar-account-menu">
               <DropdownMenu.Label class="flex flex-col gap-0.5">
                 <span class="text-sm font-medium">{authStore.user?.display_name || 'User'}</span>
                 <span class="text-xs font-normal text-muted-foreground"
@@ -874,7 +784,7 @@
               </DropdownMenu.Label>
               <DropdownMenu.Separator />
               <DropdownMenu.Item
-                class="gap-2"
+                class="sidebar-create-item"
                 onclick={() => {
                   isSettingsModalOpen = true;
                 }}>
@@ -882,7 +792,7 @@
               </DropdownMenu.Item>
               <DropdownMenu.Separator />
               <DropdownMenu.Item
-                class="gap-2 text-red-500 focus:text-red-500"
+                class="sidebar-create-item text-red-500 focus:text-red-500"
                 onclick={() => authStore.logout()}>
                 <LogOut class="size-4" /><span>Sign out</span>
               </DropdownMenu.Item>
@@ -891,441 +801,262 @@
         {:else}
           <button
             type="button"
-            class="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-muted/80"
+            class="sidebar-footer-button"
             title="Sign in"
             onclick={() => authStore.login()}>
-            <UserCircle class="size-4" />
+            <UserCircle class="size-4 shrink-0" />
+            {#if !isWorkspaceSidebarCollapsed}
+              <span>Sign in</span>
+            {/if}
           </button>
         {/if}
       </div>
-    </header>
+    </aside>
 
-    <!-- ═══ MAIN CONTENT: DYNAMIC PANEL LAYOUT ═══ -->
-    <div class="flex flex-1 overflow-hidden" role="main">
-      {#each panels.order as panelId (panelId)}
-        {#if panels.panels[panelId].visible || panelId === 'chat'}
-          {#if panelId === 'canvas'}
-            <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-              <!-- Floating Vertical Canvas Toolbar -->
-              {#if isMermaidDiagram}
-                <div
-                  class="absolute top-1/2 left-3 z-30 flex -translate-y-1/2 flex-col gap-1 rounded-xl border border-border bg-card p-1.5 shadow-sm">
-                  <!-- Plus button with shape dropdown -->
-                  <div class="relative">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="toolbar-btn size-8"
-                      title="Add Node (N)"
-                      onclick={() => {
-                        showShapeDropdown = !showShapeDropdown;
-                        showLayoutDropdown = false;
-                      }}><Plus class="size-4" /></Button>
-                    {#if showShapeDropdown}
-                      <div
-                        class="absolute top-0 left-full z-50 ml-1.5 w-[200px] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-sm">
-                        <div class="mb-1 flex items-center justify-between px-1.5 py-0.5">
-                          <span class="text-[10px] font-medium text-muted-foreground"
-                            >Add Node</span>
-                          <button
-                            type="button"
-                            class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                            onclick={() => (showShapeDropdown = false)}>
-                            <X class="size-3" />
-                          </button>
+    <div class="flex min-w-0 flex-1 overflow-hidden">
+      <!-- ═══ MAIN CONTENT: DYNAMIC PANEL LAYOUT ═══ -->
+      <div class="flex flex-1 overflow-hidden" role="main">
+        {#each panels.order as panelId (panelId)}
+          {#if panels.panels[panelId].visible || panelId === 'chat'}
+            {#if panelId === 'canvas'}
+              <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+                <!-- Diagram View -->
+                <div class="relative flex-1 overflow-hidden">
+                  {#if isMermaidDiagram}
+                    <View
+                      {panZoomState}
+                      shouldShowGrid={isGridVisible}
+                      {gridStyle}
+                      bind:isRendering={isViewRendering}
+                      bind:renderError={viewRenderError} />
+                  {:else if isMarkdownDocument}
+                    <div class="h-full overflow-auto bg-background p-8">
+                      <article
+                        class="mx-auto min-h-full max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-sm">
+                        <div class="mb-5 flex items-center gap-2 border-b border-border pb-3">
+                          <FileText class="size-4 text-muted-foreground" />
+                          <span class="text-sm font-semibold text-foreground"
+                            >{activeDiagramTitle}</span>
+                          <span
+                            class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                            >Markdown</span>
                         </div>
-                        <div class="grid grid-cols-5 gap-1">
-                          {#each shapeOptions as shape (shape.label)}
-                            <button
-                              type="button"
-                              class="flex flex-col items-center justify-center gap-0.5 rounded-lg p-1.5 transition-colors hover:bg-accent"
-                              title={shape.label}
-                              onclick={() => handleAddNode(shape.syntax)}>
-                              {#if shape.id === 'rect'}
-                                <RectangleHorizontal class="size-4 text-muted-foreground" />
-                              {:else if shape.id === 'rounded'}
-                                <Square class="size-4 text-muted-foreground" />
-                              {:else if shape.id === 'circle'}
-                                <Circle class="size-4 text-muted-foreground" />
-                              {:else if shape.id === 'rhombus'}
-                                <Diamond class="size-4 text-muted-foreground" />
-                              {:else if shape.id === 'hexagon'}
-                                <Hexagon class="size-4 text-muted-foreground" />
-                              {:else if shape.id === 'trapezoid'}
-                                <Triangle class="size-4 text-muted-foreground" />
-                              {:else}
-                                <span
-                                  class="font-mono text-[9px] leading-none text-muted-foreground"
-                                  >{shape.syntax[0]}{shape.syntax[1]}</span>
-                              {/if}
-                              <span
-                                class="text-[7px] leading-none font-medium text-muted-foreground"
-                                >{shape.label}</span>
-                            </button>
-                          {/each}
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                  <div class="mx-1 h-px bg-border"></div>
-
-                  {#if documentationURL.key}
-                    <a
-                      href={documentationURL.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="toolbar-btn size-8"
-                      title="View {documentationURL.key} docs">
-                      <FileCode2 class="size-4" />
-                    </a>
-                    <div class="mx-1 h-px bg-border"></div>
-                  {/if}
-
-                  <!-- Tool selection buttons -->
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8 {activeTool === 'select' ? 'active' : ''}"
-                    title="Select (V)"
-                    onclick={() => handleToolSelect('select')}
-                    ><MousePointer2 class="size-4" /></Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8 {activeTool === 'pan' ? 'active' : ''}"
-                    title="Pan (H)"
-                    onclick={() => handleToolSelect('pan')}><Hand class="size-4" /></Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8 {activeTool === 'draw' ? 'active' : ''}"
-                    title="Draw (D)"
-                    onclick={() => handleToolSelect('draw')}><Pencil class="size-4" /></Button>
-                  <div class="mx-1 h-px bg-border"></div>
-
-                  <!-- Style and display options -->
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8 {isRoughMode ? 'active' : ''}"
-                    title="Hand-Drawn (R)"
-                    onclick={toggleRoughMode}><PenTool class="size-4" /></Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
-                    title="Grid (G)"
-                    onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
-                  <div class="mx-1 h-px bg-border"></div>
-
-                  <!-- Layout dropdown -->
-                  <div class="relative">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="toolbar-btn size-8 {currentLayout === 'dagre' ||
-                      currentLayout === 'elk'
-                        ? 'active'
-                        : ''}"
-                      title="Layout Options"
-                      onclick={() => {
-                        showLayoutDropdown = !showLayoutDropdown;
-                        showShapeDropdown = false;
-                      }}>
-                      <Workflow class="size-4" />
-                    </Button>
-                    {#if showLayoutDropdown}
-                      <div
-                        class="absolute top-0 left-full z-50 ml-1.5 w-32 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-sm">
-                        <div class="mb-0.5 flex items-center justify-between px-2 py-1">
-                          <span class="text-[10px] font-medium text-muted-foreground">Layout</span>
-                          <button
-                            type="button"
-                            class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                            onclick={() => (showLayoutDropdown = false)}>
-                            <X class="size-3" />
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          class={cn(
-                            'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
-                            currentLayout === 'dagre'
-                              ? 'bg-accent font-medium text-foreground'
-                              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          )}
-                          onclick={() => handleLayoutChange('dagre')}>
-                          <GitBranch class="size-3" />
-                          Dagre
-                        </button>
-                        <button
-                          type="button"
-                          class={cn(
-                            'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
-                            currentLayout === 'elk'
-                              ? 'bg-accent font-medium text-foreground'
-                              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          )}
-                          onclick={() => handleLayoutChange('elk')}>
-                          <Network class="size-3" />
-                          ELK
-                        </button>
-                      </div>
-                    {/if}
-                  </div>
-                  <div class="mx-1 h-px bg-border"></div>
-
-                  <!-- Export -->
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Export SVG (Ctrl+S)"
-                    onclick={handleExport}><Download class="size-4" /></Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Fullscreen"
-                    onclick={() => {
-                      if (document.fullscreenElement) document.exitFullscreen();
-                      else document.documentElement.requestFullscreen();
-                    }}><Maximize2 class="size-4" /></Button>
-                  <div class="mx-1 h-px bg-border"></div>
-
-                  <!-- Zoom controls at bottom -->
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Zoom In"
-                    onclick={() => {
-                      panZoomState.zoomIn();
-                      zoomLevel = Math.min(400, zoomLevel + 10);
-                    }}><ZoomIn class="size-4" /></Button>
-                  <div
-                    class="flex size-8 items-center justify-center rounded-[5px] text-[10px] font-medium text-muted-foreground tabular-nums">
-                    {zoomLevel}%
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Zoom Out"
-                    onclick={() => {
-                      panZoomState.zoomOut();
-                      zoomLevel = Math.max(25, zoomLevel - 10);
-                    }}><ZoomOut class="size-4" /></Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="toolbar-btn size-8"
-                    title="Reset View"
-                    onclick={() => {
-                      panZoomState.reset();
-                      zoomLevel = 100;
-                    }}><Scan class="size-4" /></Button>
-                </div>
-              {/if}
-
-              <!-- Diagram View -->
-              <div class="relative flex-1 overflow-hidden">
-                {#if isMermaidDiagram}
-                  <View
-                    {panZoomState}
-                    shouldShowGrid={$stateStore.grid}
-                    bind:isRendering={isViewRendering}
-                    bind:renderError={viewRenderError} />
-                {:else if isMarkdownDocument}
-                  <div class="h-full overflow-auto bg-background p-8">
-                    <article
-                      class="mx-auto min-h-full max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-sm">
-                      <div class="mb-5 flex items-center gap-2 border-b border-border pb-3">
-                        <FileText class="size-4 text-muted-foreground" />
-                        <span class="text-sm font-semibold text-foreground"
-                          >{activeDiagramTitle}</span>
-                        <span
-                          class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-                          >Markdown</span>
-                      </div>
-                      <pre
-                        class="font-sans text-sm leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
-                          'Start writing in the Code panel.'}</pre>
-                    </article>
-                  </div>
-                {:else}
-                  <StructuredGraphView
-                    engine={activeDiagramEngine}
-                    {panZoomState}
-                    title={activeDiagramTitle}
-                    source={$inputStateStore.code || ''} />
-                  <div
-                    class="absolute bottom-8 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-sm">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="toolbar-btn size-8"
-                      title="Zoom Out"
-                      onclick={() => {
-                        panZoomState.zoomOut();
-                        zoomLevel = Math.max(25, zoomLevel - 10);
-                      }}><ZoomOut class="size-4" /></Button>
-                    <div
-                      class="flex h-8 min-w-10 items-center justify-center rounded-[5px] px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums">
-                      {zoomLevel}%
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="toolbar-btn size-8"
-                      title="Zoom In"
-                      onclick={() => {
-                        panZoomState.zoomIn();
-                        zoomLevel = Math.min(400, zoomLevel + 10);
-                      }}><ZoomIn class="size-4" /></Button>
-                    <div class="mx-1 h-5 w-px bg-border"></div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="toolbar-btn size-8"
-                      title="Reset View"
-                      onclick={() => {
-                        panZoomState.reset();
-                        zoomLevel = 100;
-                      }}><Scan class="size-4" /></Button>
-                  </div>
-                {/if}
-                <ColorPanel bind:open={isColorPanelOpen} />
-                <IconPanel bind:open={isIconPanelOpen} />
-                <ElementToolbar />
-
-                <!-- Minimal render status indicator (top-right) -->
-                <div class="absolute top-3 right-3 z-20">
-                  {#if isMermaidDiagram && viewRenderError}
-                    <button
-                      type="button"
-                      class="flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 transition-colors hover:bg-red-500/25"
-                      title="Click to auto-fix: {viewRenderError}"
-                      onclick={async () => {
-                        const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
-                        await handleSendChatMessage(msg, { isRepair: true });
-                      }}>
-                      <span class="size-2 rounded-full bg-red-500"></span>
-                      <span
-                        class="max-w-[120px] truncate text-[10px] font-medium text-red-600 dark:text-red-400"
-                        >Error</span>
-                    </button>
-                  {:else if isViewRendering}
-                    <div class="rounded-full bg-amber-500/15 p-1.5" title="Rendering…">
-                      <span class="block size-2 animate-pulse rounded-full bg-amber-500"></span>
+                        <pre
+                          class="font-sans text-sm leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
+                            'Start writing in the Code panel.'}</pre>
+                      </article>
                     </div>
                   {:else}
-                    <div class="rounded-full bg-emerald-500/15 p-1.5" title="Ready">
-                      <span class="block size-2 rounded-full bg-emerald-500"></span>
+                    <StructuredGraphView
+                      engine={activeDiagramEngine}
+                      {panZoomState}
+                      shouldShowGrid={isGridVisible}
+                      {gridStyle}
+                      title={activeDiagramTitle}
+                      source={$inputStateStore.code || ''} />
+                  {/if}
+                  {#if !isMarkdownDocument}
+                    <div class="canvas-bottom-toolbar">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
+                        title={isGridVisible
+                          ? gridStyle === 'dots'
+                            ? 'Grid: dots'
+                            : 'Grid: squares'
+                          : 'Grid: off'}
+                        onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
+                      {#if isMermaidDiagram}
+                        <div class="relative">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            class="toolbar-btn active size-8"
+                            title="Layout Options"
+                            onclick={() => (showLayoutDropdown = !showLayoutDropdown)}>
+                            <Workflow class="size-4" />
+                          </Button>
+                          {#if showLayoutDropdown}
+                            <div class="layout-menu">
+                              <button
+                                type="button"
+                                class={cn(
+                                  'layout-menu-item',
+                                  currentLayout === 'dagre' && 'active'
+                                )}
+                                onclick={() => handleLayoutChange('dagre')}>
+                                <GitBranch class="size-3" />
+                                Dagre
+                              </button>
+                              <button
+                                type="button"
+                                class={cn('layout-menu-item', currentLayout === 'elk' && 'active')}
+                                onclick={() => handleLayoutChange('elk')}>
+                                <Network class="size-3" />
+                                ELK
+                              </button>
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="toolbar-btn size-8"
+                        title="Fullscreen"
+                        onclick={toggleFullscreen}><Maximize2 class="size-4" /></Button>
+                      <div class="toolbar-separator"></div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="toolbar-btn size-8"
+                        title="Zoom In"
+                        onclick={zoomIn}><ZoomIn class="size-4" /></Button>
+                      <div class="toolbar-zoom-label">{zoomLevel}%</div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="toolbar-btn size-8"
+                        title="Zoom Out"
+                        onclick={zoomOut}><ZoomOut class="size-4" /></Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="toolbar-btn size-8"
+                        title="Reset View"
+                        onclick={resetView}><Scan class="size-4" /></Button>
                     </div>
                   {/if}
+                  <ColorPanel bind:open={isColorPanelOpen} />
+                  <IconPanel bind:open={isIconPanelOpen} />
+                  <ElementToolbar />
+
+                  <!-- Minimal render status indicator (top-right) -->
+                  <div class="absolute top-3 right-3 z-20">
+                    {#if isMermaidDiagram && viewRenderError}
+                      <button
+                        type="button"
+                        class="flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 transition-colors hover:bg-red-500/25"
+                        title="Click to auto-fix: {viewRenderError}"
+                        onclick={async () => {
+                          const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
+                          await handleSendChatMessage(msg, { isRepair: true });
+                        }}>
+                        <span class="size-2 rounded-full bg-red-500"></span>
+                        <span
+                          class="max-w-[120px] truncate text-[10px] font-medium text-red-600 dark:text-red-400"
+                          >Error</span>
+                      </button>
+                    {:else if isViewRendering}
+                      <div class="rounded-full bg-amber-500/15 p-1.5" title="Rendering…">
+                        <span class="block size-2 animate-pulse rounded-full bg-amber-500"></span>
+                      </div>
+                    {:else}
+                      <div class="rounded-full bg-emerald-500/15 p-1.5" title="Ready">
+                        <span class="block size-2 rounded-full bg-emerald-500"></span>
+                      </div>
+                    {/if}
+                  </div>
                 </div>
               </div>
-            </div>
-          {:else if panelId === 'document'}
-            {#if isDocumentPanelRenderable}
+            {:else if panelId === 'document'}
+              {#if isDocumentPanelRenderable}
+                <div
+                  class="relative min-w-0 overflow-hidden border-l border-border"
+                  style="{panels.panels.canvas.visible
+                    ? `width: ${panels.panels.document.width}px;`
+                    : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels
+                    .canvas.visible
+                    ? '1 1 0%'
+                    : '0 0 auto'};">
+                  <PanelResizeHandle
+                    position="left"
+                    onResize={(delta) => handlePanelResize('document', delta)} />
+                  <DocumentPanel />
+                </div>
+              {/if}
+            {:else if panelId === 'code'}
               <div
                 class="relative min-w-0 overflow-hidden border-l border-border"
                 style="{panels.panels.canvas.visible
-                  ? `width: ${panels.panels.document.width}px;`
-                  : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels.canvas
+                  ? `width: ${panels.panels.code.width}px;`
+                  : ''} min-width: {panels.panels.code.minWidth}px; flex: {!panels.panels.canvas
                   .visible
                   ? '1 1 0%'
                   : '0 0 auto'};">
                 <PanelResizeHandle
                   position="left"
-                  onResize={(delta) => handlePanelResize('document', delta)} />
-                <DocumentPanel />
+                  onResize={(delta) => handlePanelResize('code', delta)} />
+                <div class="flex h-full flex-col bg-card">
+                  <div
+                    class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
+                    <div class="flex items-center gap-1.5">
+                      <Code2 class="size-4 text-muted-foreground" />
+                      <span class="text-xs font-semibold text-foreground">Code</span>
+                      <span class="text-[10px] text-muted-foreground">
+                        {#if !isMermaidDiagram}
+                          {activeDiagramEngine}
+                        {:else}
+                          {$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}
+                        {/if}
+                      </span>
+                    </div>
+                    {#if isMermaidDiagram}
+                      <div class="flex items-center gap-1">
+                        <button
+                          type="button"
+                          class="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
+                          onclick={() => {
+                            const currentMode = $stateStore.editorMode;
+                            const newMode = currentMode === 'code' ? 'config' : 'code';
+                            updateCodeStore({ editorMode: newMode });
+                          }}
+                          title="Switch between mermaid code and configuration">
+                          {$stateStore.editorMode === 'code' ? 'Config' : 'Code'}
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                  <div class="flex-1 overflow-hidden text-[12px]">
+                    <Editor
+                      onUpdate={(code) => {
+                        updateCodeStore({ code });
+                        ensureFileExists();
+                        workspaceStore.markDirty();
+                      }}
+                      language={activeDiagramEngine}
+                      showMermaidError={isMermaidDiagram}
+                      isMobile={width < 768}
+                      sendChatMessage={handleSendChatMessage} />
+                  </div>
+                </div>
+              </div>
+            {:else if panelId === 'chat'}
+              <div
+                class="relative flex min-w-0 flex-col overflow-hidden border-r border-border"
+                style="{!panels.panels.chat.visible ? 'display: none;' : ''}width: {panels.panels
+                  .chat.width}px; min-width: {panels.panels.chat.minWidth}px; flex: 0 0 auto;">
+                <PanelResizeHandle
+                  position="right"
+                  onResize={(delta) => handlePanelResize('chat', delta)} />
+                <header class="chat-header">
+                  <p class="workspace-title" translate="no">{activeDiagramTitle}</p>
+                </header>
+                <div class="min-h-0 flex-1">
+                  <ChatPanel onSelectConversation={(id) => chatComponent?.loadConversation(id)}>
+                    <div class="flex h-full flex-col">
+                      <div class="flex-1 overflow-hidden">
+                        <Chat bind:this={chatComponent} />
+                      </div>
+                    </div>
+                  </ChatPanel>
+                </div>
               </div>
             {/if}
-          {:else if panelId === 'code'}
-            <div
-              class="relative min-w-0 overflow-hidden border-l border-border"
-              style="{panels.panels.canvas.visible
-                ? `width: ${panels.panels.code.width}px;`
-                : ''} min-width: {panels.panels.code.minWidth}px; flex: {!panels.panels.canvas
-                .visible
-                ? '1 1 0%'
-                : '0 0 auto'};">
-              <PanelResizeHandle
-                position="left"
-                onResize={(delta) => handlePanelResize('code', delta)} />
-              <div class="flex h-full flex-col bg-card">
-                <div
-                  class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
-                  <div class="flex items-center gap-1.5">
-                    <Code2 class="size-4 text-muted-foreground" />
-                    <span class="text-xs font-semibold text-foreground">Code</span>
-                    <span class="text-[10px] text-muted-foreground">
-                      {#if !isMermaidDiagram}
-                        {activeDiagramEngine}
-                      {:else}
-                        {$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}
-                      {/if}
-                    </span>
-                  </div>
-                  {#if isMermaidDiagram}
-                    <div class="flex items-center gap-1">
-                      <button
-                        type="button"
-                        class="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
-                        onclick={() => {
-                          const currentMode = $stateStore.editorMode;
-                          const newMode = currentMode === 'code' ? 'config' : 'code';
-                          updateCodeStore({ editorMode: newMode });
-                        }}
-                        title="Switch between mermaid code and configuration">
-                        {$stateStore.editorMode === 'code' ? 'Config' : 'Code'}
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-                <div class="flex-1 overflow-hidden text-[12px]">
-                  <Editor
-                    onUpdate={(code) => {
-                      updateCodeStore({ code });
-                      ensureFileExists();
-                      workspaceStore.markDirty();
-                    }}
-                    language={activeDiagramEngine}
-                    showMermaidError={isMermaidDiagram}
-                    isMobile={width < 768}
-                    sendChatMessage={handleSendChatMessage} />
-                </div>
-              </div>
-            </div>
-          {:else if panelId === 'chat'}
-            <div
-              class="relative min-w-0 overflow-hidden border-l border-border"
-              style="{!panels.panels.chat.visible ? 'display: none;' : ''}{panels.panels.canvas
-                .visible
-                ? `width: ${panels.panels.chat.width}px;`
-                : ''} min-width: {panels.panels.chat.minWidth}px; flex: {!panels.panels.canvas
-                .visible
-                ? '1 1 0%'
-                : '0 0 auto'};">
-              <PanelResizeHandle
-                position="left"
-                onResize={(delta) => handlePanelResize('chat', delta)} />
-              <ChatPanel
-                onNewChat={handleNewChat}
-                onClearChat={handleClearChat}
-                onSelectConversation={(id) => chatComponent?.loadConversation(id)}>
-                <div class="flex h-full flex-col">
-                  <div class="flex-1 overflow-hidden">
-                    <Chat bind:this={chatComponent} />
-                  </div>
-                </div>
-              </ChatPanel>
-            </div>
           {/if}
-        {/if}
-      {/each}
+        {/each}
+      </div>
     </div>
   </div>
 
@@ -1426,40 +1157,241 @@
 <style>
   @reference "../../../app.css";
 
-  .tab-switcher {
-    @apply ml-2 flex h-full min-w-0 flex-1 items-end gap-0 overflow-x-auto border-b border-border bg-card dark:border-white/10;
+  .workspace-sidebar {
+    --workspace-sidebar-width: 256px;
+    --workspace-sidebar-collapsed-width: 64px;
+    --workspace-sidebar-control: 36px;
+
+    width: var(--workspace-sidebar-width);
+    @apply flex h-screen shrink-0 flex-col overflow-hidden border-r border-border bg-card transition-[width] duration-200 ease-out dark:border-white/10;
   }
 
-  :global(.workspace-tab) {
-    @apply flex h-9 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2.5 text-left text-[11px] font-medium transition-colors duration-150;
-    @apply text-muted-foreground hover:border-transparent hover:bg-background hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:outline-none;
+  .workspace-sidebar.collapsed {
+    width: var(--workspace-sidebar-collapsed-width);
   }
 
-  :global(.workspace-tab.active) {
-    @apply min-w-0 border-foreground bg-background text-foreground;
+  .sidebar-top {
+    @apply shrink-0 border-b border-border dark:border-white/10;
   }
 
-  .tab-title {
-    @apply text-[11px] font-medium tracking-normal text-current;
+  .sidebar-header-row {
+    @apply flex h-12 shrink-0 items-center justify-between gap-2 px-3;
   }
 
-  .tab-close {
-    @apply -mr-1 flex size-5 max-w-0 items-center justify-center overflow-hidden text-muted-foreground opacity-0 transition-all duration-150 ease-out;
-    @apply pointer-events-none hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 focus-visible:outline-none;
+  .workspace-sidebar.collapsed .sidebar-header-row {
+    @apply h-12 justify-center px-0;
   }
 
-  :global(.workspace-tab):hover .tab-close,
-  :global(.workspace-tab):focus-within .tab-close {
-    @apply pointer-events-auto max-w-5 opacity-100;
+  .brand-lockup {
+    @apply flex min-w-0 items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight text-foreground transition-opacity hover:opacity-80;
+  }
+
+  .sidebar-icon-action {
+    @apply flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
+  }
+
+  .sidebar-logo-button {
+    @apply flex size-10 items-center justify-center rounded-md transition-colors hover:bg-muted/60 focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
+  }
+
+  .workspace-sidebar.collapsed .sidebar-logo-button {
+    width: var(--workspace-sidebar-control);
+    height: var(--workspace-sidebar-control);
+  }
+
+  .sidebar-primary-actions {
+    @apply grid gap-2 p-2 pt-0;
+  }
+
+  .workspace-sidebar.collapsed .sidebar-primary-actions {
+    @apply justify-items-center gap-1 px-0 pt-0;
+  }
+
+  .sidebar-new-button {
+    grid-template-columns: 48px minmax(0, 1fr);
+    @apply grid h-8 w-full items-center rounded-md bg-primary text-left text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
+  }
+
+  .sidebar-new-button.compact {
+    width: var(--workspace-sidebar-control);
+    height: var(--workspace-sidebar-control);
+    @apply justify-center px-0;
+  }
+
+  .sidebar-new-button.compact {
+    grid-template-columns: 1fr;
+  }
+
+  :global(.workspace-sidebar .sidebar-new-button > svg) {
+    @apply justify-self-center;
+  }
+
+  :global(.workspace-sidebar .sidebar-new-button > span) {
+    @apply min-w-0 truncate;
+  }
+
+  :global(.sidebar-create-menu),
+  :global(.sidebar-account-menu) {
+    @apply w-56 rounded-md border-border bg-card p-1 text-foreground shadow-sm dark:border-white/10;
+  }
+
+  :global(.sidebar-create-menu) {
+    @apply w-52;
+  }
+
+  :global(.sidebar-create-item) {
+    @apply h-8 gap-2 rounded-md px-2 text-[12.5px] text-muted-foreground data-highlighted:bg-muted/60 data-highlighted:text-foreground;
+  }
+
+  :global(.sidebar-create-item svg) {
+    @apply text-muted-foreground;
+  }
+
+  .sidebar-panel-toggles {
+    @apply grid gap-0.5;
+  }
+
+  .sidebar-chat-tab {
+    @apply mb-1;
+  }
+
+  .workspace-sidebar.collapsed .sidebar-chat-tab {
+    @apply mb-1;
+  }
+
+  .panel-tab,
+  .sidebar-footer-button {
+    grid-template-columns: 48px minmax(0, 1fr);
+    @apply relative grid h-8 w-full min-w-0 items-center rounded-md text-left text-[12.5px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted/60 hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
+  }
+
+  :global(.workspace-sidebar .panel-tab > svg),
+  :global(.workspace-sidebar .sidebar-footer-button > svg),
+  :global(.workspace-sidebar .sidebar-footer-button > span:first-child) {
+    @apply justify-self-center;
+  }
+
+  :global(.workspace-sidebar .panel-tab > span),
+  :global(.workspace-sidebar .sidebar-footer-button > span:not(:first-child)) {
+    @apply min-w-0 truncate;
+  }
+
+  .panel-tab.active {
+    @apply bg-background text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))];
+  }
+
+  .panel-tab.active::before {
+    content: '';
+    @apply pointer-events-none absolute top-1/2 left-0 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-primary;
+  }
+
+  .workspace-sidebar.collapsed .panel-tab.active::before {
+    @apply hidden;
+  }
+
+  .panel-tab.compact,
+  .workspace-sidebar.collapsed .sidebar-footer-button {
+    width: var(--workspace-sidebar-control);
+    height: var(--workspace-sidebar-control);
+    @apply justify-center px-0;
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-list {
+    @apply min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-2;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .conversation-list::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .conversation-list::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+  }
+
+  .conversation-item {
+    @apply grid h-8 w-full min-w-0 grid-cols-[minmax(0,1fr)_28px] items-center rounded-md text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground;
+  }
+
+  .conversation-item.active {
+    @apply bg-background text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))];
+  }
+
+  .conversation-select {
+    @apply h-full min-w-0 truncate px-2 text-left focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
+  }
+
+  .conversation-delete {
+    @apply flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
+  }
+
+  .conversation-empty {
+    @apply px-2 py-3 text-[12px] text-muted-foreground;
+  }
+
+  .sidebar-footer-row {
+    @apply mt-auto grid shrink-0 gap-0.5 border-t border-border p-2 dark:border-white/10;
+  }
+
+  .workspace-sidebar.collapsed .sidebar-footer-row {
+    @apply justify-items-center px-0;
+  }
+
+  .chat-header {
+    @apply flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3;
+  }
+
+  .workspace-title {
+    @apply min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground;
+  }
+
+  .canvas-bottom-toolbar {
+    @apply absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card p-1 shadow-sm;
+  }
+
+  :global(.toolbar-btn) {
+    @apply text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground;
+  }
+
+  :global(.toolbar-btn.active) {
+    @apply bg-muted text-foreground;
+  }
+
+  .toolbar-separator {
+    @apply mx-1 h-5 w-px bg-border;
+  }
+
+  .toolbar-zoom-label {
+    @apply flex h-8 min-w-10 items-center justify-center rounded-[5px] px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums;
+  }
+
+  .layout-menu {
+    @apply absolute bottom-full left-1/2 z-50 mb-2 w-32 -translate-x-1/2 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-sm;
+  }
+
+  .layout-menu-item {
+    @apply flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground;
+  }
+
+  .layout-menu-item.active {
+    @apply bg-accent font-medium text-foreground;
   }
 
   @media (max-width: 767px) {
-    .workspace-tab {
-      @apply px-2;
+    .workspace-sidebar {
+      --workspace-sidebar-width: 232px;
+      --workspace-sidebar-collapsed-width: 56px;
     }
 
-    .tab-title {
-      @apply text-[11px];
+    .chat-header {
+      @apply px-2.5;
+    }
+
+    .canvas-bottom-toolbar {
+      @apply bottom-3;
     }
   }
 </style>

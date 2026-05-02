@@ -2,27 +2,19 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { conversationsStore } from '$lib/stores/conversations.svelte';
   import { cn } from '$lib/util';
-  import { Archive, History, MessageSquare, Pin, Plus, Trash2 } from 'lucide-svelte';
+  import { Archive, MessageSquare, Pin, Plus, Trash2 } from 'lucide-svelte';
   import type { Snippet } from 'svelte';
   import { onMount } from 'svelte';
 
   interface Props {
     children?: Snippet;
     onNewChat?: () => void;
-    onClearChat?: () => void;
     onSelectConversation?: (id: string) => void;
   }
 
-  let { children, onNewChat, onClearChat, onSelectConversation }: Props = $props();
+  let { children, onNewChat, onSelectConversation }: Props = $props();
 
   let showHistory = $state(false);
-
-  // Active conversation name
-  let activeChatName = $derived.by(() => {
-    if (!conversationsStore.activeId) return 'New Chat';
-    const conv = conversationsStore.list.find((c) => c.id === conversationsStore.activeId);
-    return conv?.title || 'Untitled';
-  });
 
   function formatConvTime(dateStr: string): string {
     const d = new Date(dateStr);
@@ -42,6 +34,10 @@
     conversationsStore.setActive(id);
     onSelectConversation?.(id);
     showHistory = false;
+  }
+
+  export function toggleHistory() {
+    showHistory = !showHistory;
   }
 
   async function handleNewChatFromHistory() {
@@ -80,47 +76,6 @@
 </script>
 
 <div class="flex h-full flex-col bg-background">
-  <!-- Header with active chat name and controls -->
-  <div class="border-b border-border px-3 py-2">
-    <div class="mx-auto flex min-h-6 max-w-3xl items-center gap-2">
-      <div class="flex min-w-0 flex-1 items-center gap-2">
-        <MessageSquare class="size-3.5 flex-shrink-0 text-muted-foreground" />
-        <span class="truncate text-xs font-semibold text-foreground">{activeChatName}</span>
-      </div>
-      <div class="flex items-center gap-1">
-        <button
-          type="button"
-          class={cn(
-            'flex size-7 items-center justify-center rounded-md transition-colors',
-            showHistory
-              ? 'bg-accent text-foreground'
-              : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-          )}
-          title="Chat History"
-          aria-label="Chat history"
-          onclick={() => (showHistory = !showHistory)}>
-          <History class="size-3.5" />
-        </button>
-        <button
-          type="button"
-          class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-          title="New Chat"
-          aria-label="New chat"
-          onclick={() => onNewChat?.()}>
-          <Plus class="size-3.5" />
-        </button>
-        <button
-          type="button"
-          class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-          title="Clear Chat"
-          aria-label="Clear chat"
-          onclick={() => onClearChat?.()}>
-          <Trash2 class="size-3.5" />
-        </button>
-      </div>
-    </div>
-  </div>
-
   <!-- History Panel (slides in from top) -->
   {#if showHistory}
     <div class="border-b border-border bg-muted/10">

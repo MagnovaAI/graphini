@@ -17,12 +17,16 @@
 
   let {
     engine,
+    gridStyle = 'dots',
     panZoomState,
+    shouldShowGrid = true,
     source,
     title = 'Untitled'
   }: {
     engine: Exclude<DiagramEngine, 'mermaid'>;
+    gridStyle?: 'dots' | 'squares';
     panZoomState?: PanZoomState;
+    shouldShowGrid?: boolean;
     source: string;
     title?: string;
   } = $props();
@@ -30,6 +34,7 @@
   let svgElement = $state<SVGSVGElement>();
   let collapsedBranchIds = $state(new Set<string>());
   let collapsedCardIds = $state(new Set<string>());
+  const gridPatternId = $derived(gridStyle === 'dots' ? 'structured-dots' : 'structured-squares');
 
   const parsed = $derived.by<ObjectGraph>(() => {
     try {
@@ -162,8 +167,13 @@
       <pattern id="structured-dots" width="16" height="16" patternUnits="userSpaceOnUse">
         <circle cx="1" cy="1" r="1" class="fill-muted-foreground/15" />
       </pattern>
+      <pattern id="structured-squares" width="30" height="30" patternUnits="userSpaceOnUse">
+        <path d="M 30 0 H 0 V 30" class="structured-grid-line" />
+      </pattern>
     </defs>
-    <rect width={layout.width} height={layout.height} fill="url(#structured-dots)" />
+    {#if shouldShowGrid}
+      <rect width={layout.width} height={layout.height} fill="url(#{gridPatternId})" />
+    {/if}
 
     {#each layout.edges as edge (edge.id)}
       <path
@@ -269,6 +279,11 @@
 
   .graph-edge {
     @apply fill-none stroke-slate-500/70 transition-[stroke,stroke-dasharray] duration-150 dark:stroke-slate-300/70;
+  }
+
+  .structured-grid-line {
+    @apply fill-none stroke-muted-foreground/15;
+    stroke-width: 1;
   }
 
   .graph-edge:hover {

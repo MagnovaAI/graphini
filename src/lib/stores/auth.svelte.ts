@@ -105,7 +105,7 @@ async function fetchMe(): Promise<void> {
 const AUTH_URL = 'https://auth.magnova.ai';
 
 function login(returnTo?: string): void {
-  const redirect = returnTo || `${window.location.origin}/dashboard`;
+  const redirect = returnTo || `${window.location.origin}/app`;
   window.location.href = `${AUTH_URL}/graphini?redirect=${encodeURIComponent(redirect)}`;
 }
 

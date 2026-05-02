@@ -26,7 +26,7 @@
   } from 'lucide-svelte';
 
   function gotoEdit(prompt: string) {
-    goto(resolve('/dashboard') + `?prompt=${encodeURIComponent(prompt)}`);
+    goto(resolve('/app') + `?prompt=${encodeURIComponent(prompt)}`);
   }
 
   const diagramTypes = [
@@ -220,7 +220,7 @@
         </p>
 
         <div class="action-row">
-          <a href={resolve('/dashboard')} class="primary-action">
+          <a href={resolve('/app')} class="primary-action">
             Open workspace
             <ArrowRight class="size-4" />
           </a>
@@ -242,7 +242,7 @@
       </div>
 
       <a
-        href={resolve('/dashboard')}
+        href={resolve('/app')}
         class="workspace-preview"
         aria-label="Open Graphini workspace">
         <img src="/demo2.png" alt="Graphini workspace with Mermaid editor and rendered diagram" />
@@ -308,7 +308,7 @@
           </article>
         {/each}
 
-        <a href={resolve('/dashboard')} class="text-link">
+        <a href={resolve('/app')} class="text-link">
           Create a diagram
           <Sparkles class="size-4" />
         </a>
@@ -369,7 +369,7 @@
         <span>&copy; {new Date().getFullYear()} Magnova</span>
       </div>
       <nav class="flex flex-wrap items-center gap-4">
-        <a href={resolve('/dashboard')}>Dashboard</a>
+        <a href={resolve('/app')}>App</a>
         <a href="https://github.com/omkarbhad/graphini" target="_blank" rel="noopener noreferrer">
           Source
         </a>

@@ -4,7 +4,7 @@ import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 // ── Types ──
 
 export type PanelId = 'canvas' | 'document' | 'code' | 'chat';
-export const VISIBLE_PANEL_SWITCHER_IDS: PanelId[] = ['code', 'chat'];
+export const VISIBLE_PANEL_SWITCHER_IDS: PanelId[] = ['code', 'canvas'];
 
 export interface PanelConfig {
   id: PanelId;
@@ -19,8 +19,8 @@ export interface PanelConfig {
 
 // ── Defaults ──
 
-const DEFAULT_ORDER: PanelId[] = ['canvas', 'document', 'code', 'chat'];
-export const WORKSPACE_PANEL_ORDER: PanelId[] = ['canvas', 'document', 'code', 'chat'];
+const DEFAULT_ORDER: PanelId[] = ['chat', 'code', 'canvas', 'document'];
+export const WORKSPACE_PANEL_ORDER: PanelId[] = ['chat', 'code', 'canvas', 'document'];
 
 const PANEL_DEFAULTS: Record<PanelId, Omit<PanelConfig, 'id'>> = {
   canvas: { flex: true, label: 'Canvas', maxWidth: 9999, minWidth: 200, visible: true, width: 0 },

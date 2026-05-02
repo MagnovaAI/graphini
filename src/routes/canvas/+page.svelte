@@ -5,10 +5,10 @@
 
   // /canvas is deprecated — editor lives at /workspace/{id}
   onMount(() => {
-    goto(resolve('/dashboard'), { replaceState: true });
+    goto(resolve('/app'), { replaceState: true });
   });
 </script>
 
 <div class="flex h-screen items-center justify-center bg-background">
-  <span class="text-sm text-muted-foreground">Redirecting to dashboard...</span>
+  <span class="text-sm text-muted-foreground">Redirecting to app...</span>
 </div>

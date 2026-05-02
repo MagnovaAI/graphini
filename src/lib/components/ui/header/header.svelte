@@ -27,7 +27,7 @@
   });
 
   const navLinks = [
-    { title: 'Workspace', href: '/dashboard' },
+    { title: 'Workspace', href: '/app' },
     { title: 'GitHub', href: 'https://github.com/omkarbhad/graphini', external: true }
   ];
 </script>
@@ -50,7 +50,7 @@
       <div class="hidden items-center gap-1 md:flex" aria-label="Primary navigation">
         {#each navLinks as link (link.title)}
           <a
-            href={link.external ? link.href : resolve(link.href as '/dashboard')}
+            href={link.external ? link.href : resolve(link.href as '/app')}
             target={link.external ? '_blank' : undefined}
             rel={link.external ? 'noopener noreferrer' : undefined}
             class="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
@@ -65,14 +65,14 @@
 
     <div class="hidden items-center gap-2 md:flex">
       {#if authStore.isLoggedIn}
-        <Button variant="outline" href={resolve('/dashboard')}>Dashboard</Button>
+        <Button variant="outline" href={resolve('/app')}>App</Button>
       {:else}
         <Button variant="ghost" onclick={() => authStore.login()}>
           <LogIn class="size-4" />
           Sign in
         </Button>
       {/if}
-      <Button href={resolve('/dashboard')}>
+      <Button href={resolve('/app')}>
         Open app
         <ArrowRight class="size-4" />
       </Button>
@@ -100,7 +100,7 @@
         <div class="grid gap-1" aria-label="Mobile navigation">
           {#each navLinks as link (link.title)}
             <a
-              href={link.external ? link.href : resolve(link.href as '/dashboard')}
+              href={link.external ? link.href : resolve(link.href as '/app')}
               target={link.external ? '_blank' : undefined}
               rel={link.external ? 'noopener noreferrer' : undefined}
               class="flex min-h-11 items-center justify-between rounded-md px-2 text-sm font-medium text-foreground transition-colors outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -120,8 +120,8 @@
 
         <div class="grid gap-2 border-t pt-4">
           {#if authStore.isLoggedIn}
-            <Button variant="outline" class="w-full bg-transparent" href={resolve('/dashboard')}>
-              Dashboard
+            <Button variant="outline" class="w-full bg-transparent" href={resolve('/app')}>
+              App
             </Button>
           {:else}
             <Button
@@ -132,7 +132,7 @@
               Sign in
             </Button>
           {/if}
-          <Button class="w-full" href={resolve('/dashboard')}>
+          <Button class="w-full" href={resolve('/app')}>
             Open app
             <ArrowRight class="size-4" />
           </Button>
