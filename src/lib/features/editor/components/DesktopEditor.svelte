@@ -278,8 +278,12 @@
       // Update editor text if it's different or if this is the first load
       const newText = (editorMode === 'code' ? code : mermaid) || '';
 
-      // Always update on first load or if text is different
-      if (currentText === '' || newText !== currentText) {
+      // Always update on first load or if text is different.
+      // Skip when the editor is focused — the user is typing and the store
+      // is just echoing our own onUpdate; calling setValue() here would
+      // collapse the undo stack and reset scroll/cursor to the top.
+      const editorHasFocus = editor.hasTextFocus();
+      if (currentText === '' || (newText !== currentText && !editorHasFocus)) {
         try {
           editor.setValue(newText);
           editor.setScrollTop(0);
@@ -292,6 +296,11 @@
         if (editorMode === 'code' && language === 'mermaid') {
           triggerValidation(newText);
         }
+      } else if (newText !== currentText && editorHasFocus) {
+        // User is typing; just keep our local mirror in sync without
+        // disturbing the editor view (the onDidChangeModelContent handler
+        // already triggered validation for this text).
+        currentText = newText;
       }
 
       // Display/clear errors

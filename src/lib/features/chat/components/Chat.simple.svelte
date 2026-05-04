@@ -14,6 +14,7 @@
   import type { PromptInputMessage } from '$lib/features/chat/components/ai-elements/prompt-input';
   import { Response } from '$lib/features/chat/components/ai-elements/response';
   import { parse as mermaidParse } from '$lib/features/diagram/mermaid';
+  import { canvasStatus } from '$lib/stores/canvasStatus.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { documentMarkdownStore } from '$lib/stores/documentStore.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
@@ -36,7 +37,6 @@
     ClipboardCheck,
     Database,
     FileText,
-    Gem,
     GitBranch,
     Globe,
     Lightbulb,
@@ -471,53 +471,59 @@
 
     // Wait for KV store to initialize (loads cache from server), then restore chat
     const initAndRestore = async () => {
-      // Ensure KV store cache is populated before reading from it
-      await kv.init({ force: authStore.isLoggedIn });
-      toolsStore.syncFromKv();
-      // Restore from KV cache (instant after init)
-      restoreChatState();
+      try {
+        // Ensure KV store cache is populated before reading from it
+        await kv.init({ force: authStore.isLoggedIn });
+        toolsStore.syncFromKv();
+        // Restore from KV cache (instant after init)
+        restoreChatState();
 
-      // Wait up to 3s for auth to initialize, then try DB restore to merge/override
-      for (let i = 0; i < 30; i++) {
-        if (authStore.isInitialized) break;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      if (authStore.isLoggedIn) {
-        // Check if there's a saved active conversation ID (from switching conversations)
-        const savedActiveConvId = kv.get<string | null>('chat', chatKey('activeConversationId'));
-        if (savedActiveConvId) {
-          // Load the specific conversation the user was viewing
-          setDbConversationId(savedActiveConvId);
-          const restored = await restoreChatFromDb();
-          if (restored) {
-            conversationStarted = messages.length > 0;
-            // Update conversationsStore active ID to match
-            const { conversationsStore } = await import('$lib/stores/conversations.svelte');
-            await conversationsStore.fetch();
-            conversationsStore.setActive(savedActiveConvId);
-          }
-        } else {
-          const restored = await restoreChatFromDb();
-          if (restored) {
-            conversationStarted = messages.length > 0;
-          }
+        // Wait up to 3s for auth to initialize, then try DB restore to merge/override
+        for (let i = 0; i < 30; i++) {
+          if (authStore.isInitialized) break;
+          await new Promise((r) => setTimeout(r, 100));
         }
-      } else if (authStore.isInitialized && !authStore.isLoggedIn) {
-        // Not logged in — clear any stale KV chat data and reset to clean start
-        try {
-          clearCurrentFileChatCache();
-        } catch {
-          /* ignore */
+        if (authStore.isLoggedIn) {
+          // Check if there's a saved active conversation ID (from switching conversations)
+          const savedActiveConvId = kv.get<string | null>('chat', chatKey('activeConversationId'));
+          if (savedActiveConvId) {
+            // Load the specific conversation the user was viewing
+            setDbConversationId(savedActiveConvId);
+            const restored = await restoreChatFromDb();
+            if (restored) {
+              conversationStarted = messages.length > 0;
+              // Update conversationsStore active ID to match
+              const { conversationsStore } = await import('$lib/stores/conversations.svelte');
+              await conversationsStore.fetch();
+              conversationsStore.setActive(savedActiveConvId);
+            }
+          } else {
+            const restored = await restoreChatFromDb();
+            if (restored) {
+              conversationStarted = messages.length > 0;
+            }
+          }
+        } else if (authStore.isInitialized && !authStore.isLoggedIn) {
+          // Not signed in (could be a guest or fully anonymous). Reset chat
+          // panel to a clean slate; guests still get their server messages
+          // via Stage 2 navigation logic, not via the legacy KV-restore path.
+          try {
+            clearCurrentFileChatCache();
+          } catch {
+            /* ignore */
+          }
+          messages = [];
+          messageParts = {};
+          artifactMap = {};
+          conversationStarted = false;
+          conversationTitle = null;
+          inputStateStore.update((s) => ({ ...s, code: '', updateDiagram: true }));
         }
-        messages = [];
-        messageParts = {};
-        artifactMap = {};
-        conversationStarted = false;
-        conversationTitle = null;
-        // Reset diagram to empty
-        inputStateStore.update((s) => ({ ...s, code: '', updateDiagram: true }));
+      } catch (err) {
+        console.error('[chat] initAndRestore failed:', err);
+      } finally {
+        isDataReady = true;
       }
-      isDataReady = true;
     };
     initAndRestore();
 
@@ -982,22 +988,27 @@
     );
   });
 
-  // Group models by category for organized display
+  // Group models by provider for the picker dropdown
   let groupedModels = $derived.by(() => {
     const groups: Record<string, typeof filteredModels> = {};
     for (const model of filteredModels) {
-      const cat = model.category || 'Other';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(model);
+      const key = model.provider || 'Other';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(model);
     }
-    // Sort categories: prioritize common ones
-    const order = ['fast', 'standard', 'powerful', 'reasoning', 'creative', 'other'];
+    // Stable alpha order, with selected model's provider first if any
+    const selectedProvider = modelsStore.selectedModel?.provider;
     return Object.entries(groups).sort(([a], [b]) => {
-      const ai = order.indexOf(a.toLowerCase());
-      const bi = order.indexOf(b.toLowerCase());
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      if (a === selectedProvider) return -1;
+      if (b === selectedProvider) return 1;
+      return a.localeCompare(b);
     });
   });
+
+  function providerLabel(name: string): string {
+    if (!name) return 'Other';
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
 
   let messagesContainer: HTMLDivElement;
   let abortController: AbortController | null = $state(null);
@@ -1212,14 +1223,13 @@
       });
       kv.set('chat', chatKey('messages', fileId), simpleMessages);
       const diagramId = getDiagramIdFromFileId(fileId);
-      const workspaceMessages =
-        simpleMessages.map((message: Record<string, unknown>) => ({
-          content: String(message.content ?? ''),
-          id: String(message.id ?? uuidv4()),
-          model_used: message.model_used as string | undefined,
-          role: (message.role as 'user' | 'assistant' | 'system') ?? 'user',
-          timestamp: String(message.timestamp ?? new Date().toISOString())
-        }));
+      const workspaceMessages = simpleMessages.map((message: Record<string, unknown>) => ({
+        content: String(message.content ?? ''),
+        id: String(message.id ?? uuidv4()),
+        model_used: message.model_used as string | undefined,
+        role: (message.role as 'user' | 'assistant' | 'system') ?? 'user',
+        timestamp: String(message.timestamp ?? new Date().toISOString())
+      }));
       if (diagramId) {
         workspaceStore.setDiagramChatMessages(diagramId, workspaceMessages);
       } else {
@@ -1563,7 +1573,7 @@
       scrollRafId = null;
       tick().then(() => {
         if (messagesContainer) {
-          messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
       });
     });
@@ -2721,6 +2731,14 @@
                               'Invalid Mermaid syntax';
                             checkerErrors = [{ line: 0, message: errMsg }];
                           }
+                          // If parser passed but the live canvas is failing to render,
+                          // surface that as the real error (parse passes != render passes).
+                          if (checkerValid && canvasStatus.renderError) {
+                            checkerValid = false;
+                            checkerErrors = [
+                              { line: 0, message: `Render error: ${canvasStatus.renderError}` }
+                            ];
+                          }
                         }
 
                         const doneLabel: Record<string, string> = {
@@ -2729,7 +2747,11 @@
                             : 'Extraction complete',
                           dataAnalyzer: output.summary || 'Analysis complete',
                           errorChecker: !checkerValid
-                            ? `Found ${checkerErrors.length} error(s)`
+                            ? checkerErrors[0]
+                              ? checkerErrors[0].line > 0
+                                ? `Line ${checkerErrors[0].line}: ${checkerErrors[0].message}`
+                                : checkerErrors[0].message
+                              : `Found ${checkerErrors.length} error(s)`
                             : 'No errors found ✓',
                           gitGuard: output.clean
                             ? 'Git safety check passed'
@@ -3143,7 +3165,11 @@
         Restoring session…
       </div>
     {:else if !hasMessages}
-      <div class="mx-auto flex h-full w-full max-w-3xl flex-col justify-end px-4 py-5">
+      <div class="mx-auto flex h-full w-full max-w-3xl flex-col justify-center gap-8 px-4 py-10">
+        <h2
+          class="text-center text-[28px] font-medium tracking-normal text-foreground sm:text-[32px]">
+          Where should we begin?
+        </h2>
         <div class="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
           {#each suggestions as suggestion (suggestion.label)}
             <button
@@ -3151,7 +3177,7 @@
               onclick={() => {
                 handleSubmit({ text: suggestion.prompt });
               }}
-              class="group flex h-10 min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 text-left text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-foreground/20 hover:bg-accent hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
+              class="group flex h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-3 text-left text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
               aria-label={suggestion.label}>
               <suggestion.icon
                 class="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
@@ -3162,7 +3188,7 @@
       </div>
     {:else}
       <!-- All Messages -->
-      <div class="mx-auto max-w-3xl space-y-5 px-4 py-4 sm:px-6 sm:py-5">
+      <div class="mx-auto max-w-3xl space-y-5 px-4 pt-4 pb-12 sm:px-6 sm:pt-5 sm:pb-14">
         {#each messages as message, i (messageKey(message, i))}
           {#if message.role === 'user'}
             <!-- User Bubble (right-aligned) with checkpoint undo -->
@@ -3487,7 +3513,7 @@
                                 : part.toolName === 'selfCritique'
                                   ? 'bg-rose-500/10 text-rose-500'
                                   : isChecker
-                                    ? 'bg-red-500/10 text-red-500'
+                                    ? 'bg-red-500/10 text-red-400'
                                     : part.toolName === 'planner'
                                       ? 'bg-emerald-500/10 text-emerald-500'
                                       : part.toolName === 'actionItemExtractor'
@@ -4054,7 +4080,7 @@
   <!-- Input Area -->
   <div class="mx-auto w-full max-w-3xl shrink-0 px-3 pt-1.5 pb-2 sm:px-4 sm:pt-2 sm:pb-3">
     <PromptInput
-      class="rounded-lg border border-border bg-background text-foreground transition-colors duration-150 focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/10"
+      class="rounded-lg border border-border bg-muted text-foreground transition-colors duration-150 focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/10"
       accept={attachmentAccept}
       multiple
       maxFileSize={20 * 1024 * 1024}
@@ -4134,88 +4160,95 @@
           <Popover.Root
             bind:open={modelPopoverOpen}
             onOpenChange={(open) => {
-              if (!open) modelSearchQuery = '';
+              if (open) {
+                // Refresh on every open so admin changes show without reload
+                modelsStore.fetch();
+              } else {
+                modelSearchQuery = '';
+              }
             }}>
             <Popover.Trigger
               aria-label="Select model"
-              class="flex h-7 max-w-[180px] cursor-pointer items-center gap-1 rounded-full border border-border px-2 text-[10px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground">
-              <Zap class="size-2.5 shrink-0" />
+              class="flex h-7 max-w-[180px] cursor-pointer items-center gap-1 rounded-full border border-border bg-background px-2.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent">
               <span class="truncate">
                 {selectedModel ? selectedModel.name : 'Model'}
               </span>
-              <ChevronsUpDown class="size-2 shrink-0 opacity-40" />
+              <ChevronsUpDown class="size-2.5 shrink-0 text-muted-foreground/60" />
             </Popover.Trigger>
             <Popover.Content
-              class="w-[300px] rounded-xl border border-border bg-popover p-0 shadow-[0_4px_16px_var(--dash-card-shadow)]"
+              class="w-[280px] overflow-hidden rounded-lg border border-border bg-popover p-0 shadow-lg"
               align="start"
-              sideOffset={8}>
+              sideOffset={6}>
               <!-- Search -->
-              <div class="flex items-center gap-2 px-3 py-2.5">
-                <Search class="size-3.5 shrink-0 text-muted-foreground/50" />
+              <div class="flex items-center gap-1.5 border-b border-border px-2 py-1.5">
+                <Search class="size-3 shrink-0 text-muted-foreground/60" />
                 <input
                   type="text"
                   name="model-search"
                   aria-label="Search models"
-                  placeholder="Search models…"
-                  class="h-5 w-full bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/40"
+                  placeholder="Search…"
+                  class="h-5 w-full bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50"
                   bind:value={modelSearchQuery} />
+                <button
+                  type="button"
+                  class="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  title="Refresh models"
+                  aria-label="Refresh models"
+                  disabled={modelsStore.isLoading}
+                  onclick={() => modelsStore.fetch()}>
+                  <RefreshCw class="size-3 {modelsStore.isLoading ? 'animate-spin' : ''}" />
+                </button>
               </div>
-              <div class="h-px bg-border"></div>
               <!-- Model list -->
-              <div class="max-h-[300px] overflow-y-auto overscroll-contain py-1">
-                {#if modelsStore.isLoading}
-                  <div class="flex items-center justify-center py-8">
-                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
+              <div class="max-h-[300px] overflow-y-auto overscroll-contain">
+                {#if modelsStore.isLoading && modelsStore.models.length === 0}
+                  <div class="flex items-center justify-center py-6">
+                    <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <div
-                        class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground">
+                        class="size-2.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground">
                       </div>
-                      Loading models…
+                      Loading…
                     </div>
                   </div>
                 {:else if filteredModels.length === 0}
-                  <div class="flex flex-col items-center justify-center gap-2 py-8">
-                    <Search class="size-5 text-muted-foreground/20" />
-                    <span class="text-xs text-muted-foreground/60">No models found</span>
+                  <div class="flex flex-col items-center justify-center gap-1.5 py-6">
+                    <Search class="size-4 text-muted-foreground/20" />
+                    <span class="text-[11px] text-muted-foreground/60">No models</span>
                   </div>
                 {:else}
-                  {#each groupedModels as [category, categoryModels] (category)}
-                    {#if groupedModels.length > 1}
-                      <div class="sticky top-0 z-10 bg-popover px-3 pt-2 pb-1">
-                        <span
-                          class="text-[10px] font-medium tracking-wider text-muted-foreground/50 uppercase"
-                          >{category}</span>
-                      </div>
-                    {/if}
-                    {#each categoryModels as model (model.id)}
+                  {#each groupedModels as [provider, providerModels] (provider)}
+                    <div
+                      class="sticky top-0 z-10 bg-popover/95 px-2 pt-1.5 pb-0.5 backdrop-blur-sm">
+                      <span
+                        class="text-[9px] font-semibold tracking-wider text-muted-foreground/70 uppercase"
+                        >{providerLabel(provider)}</span>
+                    </div>
+                    {#each providerModels as model (model.id)}
+                      {@const isSelected = selectedModelId === model.id}
                       <button
                         type="button"
-                        class="group flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-accent/50 {selectedModelId ===
-                        model.id
-                          ? 'bg-accent/50'
+                        class="flex w-full cursor-pointer items-center gap-1.5 px-2 py-1 text-left transition-colors hover:bg-accent {isSelected
+                          ? 'bg-accent'
                           : ''}"
                         onclick={() => {
                           modelsStore.select(model.id);
                           modelPopoverOpen = false;
                           modelSearchQuery = '';
                         }}>
-                        <div class="flex min-w-0 flex-1 flex-col">
-                          <span class="truncate text-[13px] font-medium text-foreground"
-                            >{model.name}</span>
-                          {#if model.description}
-                            <span class="truncate text-[11px] text-muted-foreground/70"
-                              >{model.description}</span>
-                          {/if}
-                        </div>
-                        <div class="flex shrink-0 items-center gap-2">
+                        <span
+                          class="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground"
+                          >{model.name}</span>
+                        {#if model.isFree}
                           <span
-                            class="flex items-center gap-0.5 text-[10px] text-muted-foreground/60">
-                            <Gem class="size-2.5" />
-                            {model.gemsPerMessage}
+                            class="rounded bg-emerald-500/10 px-1 font-mono text-[9px] font-medium tracking-wide text-emerald-500/80 uppercase">
+                            Free
                           </span>
-                          {#if selectedModelId === model.id}
-                            <Check class="size-3.5 text-foreground" />
-                          {/if}
-                        </div>
+                        {/if}
+                        {#if isSelected}
+                          <Check class="size-3 shrink-0 text-foreground" />
+                        {:else}
+                          <span class="size-3 shrink-0"></span>
+                        {/if}
                       </button>
                     {/each}
                   {/each}
@@ -4297,12 +4330,12 @@
           <!-- Send / Stop / Processing -->
           {#if isProcessingFiles}
             <div
-              class="flex size-8 items-center justify-center rounded-full"
+              class="flex size-7 items-center justify-center rounded-full"
               title="Processing files…"
               role="status"
               aria-label="Processing files">
               <div
-                class="size-3.5 animate-spin rounded-full border-2 border-amber-500/30 border-t-amber-500">
+                class="size-3 animate-spin rounded-full border-2 border-amber-500/30 border-t-amber-500">
               </div>
             </div>
           {:else if isLoading}
@@ -4310,7 +4343,7 @@
               type="button"
               onclick={stopStream}
               aria-label="Stop response"
-              class="flex size-8 items-center justify-center rounded-full border border-border text-foreground transition-colors duration-150 hover:bg-accent">
+              class="flex size-7 items-center justify-center rounded-full border border-border text-foreground transition-colors duration-150 hover:bg-accent">
               <Square class="size-2.5" fill="currentColor" />
             </button>
           {:else}

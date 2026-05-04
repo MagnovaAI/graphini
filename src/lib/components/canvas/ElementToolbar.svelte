@@ -37,6 +37,12 @@
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
 
+  interface Props {
+    /** "floating" = absolute overlay on canvas (default). "inline" = render flat for embedding in a header. */
+    mode?: 'floating' | 'inline';
+  }
+  let { mode = 'floating' }: Props = $props();
+
   // Element selection state
   let elementType = $state<'node' | 'edge' | 'icon' | 'subgraph' | null>(null);
   let elementLabel = $state('');
@@ -866,14 +872,24 @@
   <div
     bind:this={toolbarRef}
     class={cn(
-      'absolute z-40 flex gap-1',
-      isCompact || isVertical
-        ? 'top-3 right-3 flex-col items-end'
-        : 'right-0 bottom-8 left-0 mx-auto w-fit max-w-[95%] flex-col items-center'
+      'flex gap-1',
+      mode === 'floating'
+        ? cn(
+            'absolute z-40',
+            isCompact || isVertical
+              ? 'top-3 right-3 flex-col items-end'
+              : 'right-0 bottom-8 left-0 mx-auto w-fit max-w-[95%] flex-col items-center'
+          )
+        : 'w-full flex-wrap items-center'
     )}>
     <!-- Main toolbar -->
     <div
-      class="relative z-40 flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-popover px-3 py-2 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
+      class={cn(
+        'relative z-40 flex flex-wrap items-center gap-1.5 text-popover-foreground',
+        mode === 'floating'
+          ? 'rounded-xl border border-border bg-popover px-3 py-2 shadow-[0_4px_16px_var(--dash-card-shadow)]'
+          : 'w-full px-1'
+      )}>
       <!-- Type badge -->
       <span
         class="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase">
