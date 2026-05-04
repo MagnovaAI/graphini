@@ -1,4 +1,4 @@
-import { validateSession } from '$lib/server/auth';
+import { validateSessionOrGuest } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
   const rl = apiLimiter.check(getClientKey(request));
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
 
-  const user = await validateSession(request);
+  const user = await validateSessionOrGuest(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   const rawLimit = parseInt(url.searchParams.get('limit') || '50');
@@ -53,7 +53,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const rl = apiLimiter.check(getClientKey(request));
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
 
-  const user = await validateSession(request);
+  const user = await validateSessionOrGuest(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json().catch(() => ({}));

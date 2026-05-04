@@ -1,4 +1,4 @@
-import { validateSession } from '$lib/server/auth';
+import { validateSessionOrGuest } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -10,7 +10,7 @@ function errorMessage(error: unknown, fallback: string): string {
 /** List conversations for the authenticated user */
 export const GET: RequestHandler = async ({ request, url }) => {
   try {
-    const user = await validateSession(request);
+    const user = await validateSessionOrGuest(request);
     if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const db = getDb();
@@ -34,7 +34,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 /** Delete a conversation */
 export const DELETE: RequestHandler = async ({ request, url }) => {
   try {
-    const user = await validateSession(request);
+    const user = await validateSessionOrGuest(request);
     if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const id = url.searchParams.get('id');
@@ -57,7 +57,7 @@ export const DELETE: RequestHandler = async ({ request, url }) => {
 /** Create a new conversation */
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    const user = await validateSession(request);
+    const user = await validateSessionOrGuest(request);
     if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json().catch(() => ({}));

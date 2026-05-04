@@ -1,4 +1,4 @@
-import { validateSession } from '$lib/server/auth';
+import { validateSessionOrGuest } from '$lib/server/auth';
 import { getDb, type Message } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -34,7 +34,7 @@ function errorMessage(error: unknown, fallback: string): string {
 /** List messages for a conversation */
 export const GET: RequestHandler = async ({ request, url }) => {
   try {
-    const user = await validateSession(request);
+    const user = await validateSessionOrGuest(request);
     if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const conversationId = url.searchParams.get('conversation_id');
@@ -57,7 +57,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 /** Sync messages (bulk create) for a conversation */
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    const user = await validateSession(request);
+    const user = await validateSessionOrGuest(request);
     if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json().catch(() => ({}));

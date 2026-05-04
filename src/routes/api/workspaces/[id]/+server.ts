@@ -1,4 +1,4 @@
-import { validateSession } from '$lib/server/auth';
+import { validateSessionOrGuest } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
@@ -18,7 +18,7 @@ const patchWorkspaceSchema = z.object({
 
 /** GET /api/workspaces/[id] — get full workspace with document */
 export const GET: RequestHandler = async ({ request, params }) => {
-  const user = await validateSession(request);
+  const user = await validateSessionOrGuest(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   const db = getDb();
@@ -32,7 +32,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 
 /** PATCH /api/workspaces/[id] — update metadata (title, description, starred, tags) */
 export const PATCH: RequestHandler = async ({ request, params }) => {
-  const user = await validateSession(request);
+  const user = await validateSessionOrGuest(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   const db = getDb();
@@ -57,7 +57,7 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
 
 /** DELETE /api/workspaces/[id] — delete workspace */
 export const DELETE: RequestHandler = async ({ request, params }) => {
-  const user = await validateSession(request);
+  const user = await validateSessionOrGuest(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   const db = getDb();

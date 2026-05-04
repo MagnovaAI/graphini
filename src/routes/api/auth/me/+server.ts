@@ -1,4 +1,4 @@
-import { getDevBypassEmail, validateSession } from '$lib/server/auth';
+import { getDevBypassEmail, validateSessionOrGuest } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ request }) => {
   }
 
   try {
-    const user = await validateSession(request);
+    const user = await validateSessionOrGuest(request);
     if (!user) {
       return json({ user: null, credits: null }, { status: 401 });
     }
@@ -43,6 +43,7 @@ export const GET: RequestHandler = async ({ request }) => {
         display_name: user.display_name,
         email: user.email,
         id: user.id,
+        is_guest: user.is_guest === true,
         role: user.role
       },
       credits

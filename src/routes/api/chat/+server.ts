@@ -13,10 +13,10 @@ import {
 } from '$lib/server/chat/model';
 import type { ChatProvider } from '$lib/server/chat/model';
 import { getDb } from '$lib/server/db';
-import { stateManager } from '$lib/server/state-manager';
+import { settingsManager, stateManager } from '$lib/server/state-manager';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { error, json } from '@sveltejs/kit';
-import { stepCountIs, streamText } from 'ai';
+import { generateText, stepCountIs, streamText } from 'ai';
 import dotenv from 'dotenv';
 import type { RequestHandler } from './$types';
 dotenv.config({ path: '.env.local' });
@@ -37,6 +37,68 @@ interface WorkspaceToolContext {
 
 const TOOLS_CONFIG_CATEGORY = 'tools';
 const TOOLS_CONFIG_KEY = 'graphini_tools_config_v1';
+const CHAT_COMPACTION_CATEGORY = 'chat_compaction';
+const CHAT_COMPACTION_MODEL_KEY = 'model';
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+const MIN_RECENT_CONTEXT_TOKENS = 12000;
+const SUMMARY_TARGET_TOKENS = 1800;
+
+function estimateTokens(value: string): number {
+  return Math.ceil(value.length / 4);
+}
+
+function estimateMessageTokens(message: { content: string; role: unknown }): number {
+  return estimateTokens(`${String(message.role)}: ${message.content}`) + 8;
+}
+
+function contextWindowForModel(enabledModel: { max_tokens?: number | null } | null): number {
+  const configured = enabledModel?.max_tokens;
+  return typeof configured === 'number' && configured > 8000
+    ? configured
+    : DEFAULT_CONTEXT_WINDOW_TOKENS;
+}
+
+async function getChatCompactionModel(fallbackModel: string): Promise<string> {
+  const configured = await settingsManager.get<string | null>(
+    null,
+    CHAT_COMPACTION_CATEGORY,
+    CHAT_COMPACTION_MODEL_KEY,
+    null
+  );
+  return configured?.trim() || fallbackModel;
+}
+
+function transcriptForSummary(messages: { content: string; role: unknown }[]): string {
+  return messages
+    .map((message) => `${String(message.role).toUpperCase()}: ${message.content}`)
+    .join('\n\n');
+}
+
+async function summarizeOverflowingHistory(options: {
+  fallbackModel: string;
+  messages: { content: string; role: unknown }[];
+}): Promise<string> {
+  if (options.messages.length === 0) return '';
+
+  const summaryModel = await getChatCompactionModel(options.fallbackModel);
+  const summaryEnabledModel = await getDb()
+    .getEnabledModel(summaryModel)
+    .catch(() => null);
+  const providerHint = summaryEnabledModel?.provider || undefined;
+  const transcript = transcriptForSummary(options.messages);
+
+  const result = await generateText({
+    maxOutputTokens: SUMMARY_TARGET_TOKENS,
+    model: resolveChatModel(summaryModel, providerHint),
+    prompt: `Summarize this older conversation history so a later assistant can continue seamlessly.\n\n${transcript}`,
+    providerOptions: getChatProviderOptions(summaryModel, providerHint),
+    system:
+      'You compact chat history for Graphini. Preserve user goals, decisions, constraints, named files, model/tool outcomes, unresolved errors, and any current diagram/code facts. Be concise but complete. Do not invent anything.',
+    temperature: 0.2
+  });
+
+  return result.text.trim();
+}
 
 function enabledToolsFromConfig(config: unknown): Set<string> | null {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
@@ -191,11 +253,16 @@ function scrubAssistantTranscript(content: unknown, preserveSubagentHistory: boo
   return text;
 }
 
-function buildChatMessages(
+async function buildChatContext(
   uiMessages: unknown,
   userContent: string,
-  options: { preserveSubagentHistory?: boolean } = {}
-): Record<string, unknown>[] {
+  options: {
+    contextWindowTokens: number;
+    fallbackModel: string;
+    preserveSubagentHistory?: boolean;
+    systemPromptTokens: number;
+  }
+): Promise<{ messages: Record<string, unknown>[]; summary: string }> {
   let history = Array.isArray(uiMessages) ? uiMessages : [];
   const lastUiMessage = history.at(-1);
   if (
@@ -207,29 +274,64 @@ function buildChatMessages(
     history = history.slice(0, -1);
   }
 
-  const compactHistory = history
+  const historyMessages = history
     .filter((message): message is Record<string, unknown> => {
       if (!message || typeof message !== 'object') return false;
       return message.role === 'user' || message.role === 'assistant';
     })
-    .slice(-8)
     .map((message) => ({
       role: message.role,
       content: truncateMessageContent(
         message.role === 'assistant'
           ? scrubAssistantTranscript(message.content, Boolean(options.preserveSubagentHistory))
           : message.content,
-        message.role === 'assistant' ? 900 : 1800
+        message.role === 'assistant' ? 20000 : 32000
       )
     }))
     .filter((message) => message.content.trim().length > 0);
 
-  const lastHistoryMessage = compactHistory.at(-1);
-  if (lastHistoryMessage?.role === 'user' && lastHistoryMessage.content === userContent) {
-    return compactHistory;
+  const lastHistoryMessage = historyMessages.at(-1);
+  const fullMessages =
+    lastHistoryMessage?.role === 'user' && lastHistoryMessage.content === userContent
+      ? historyMessages
+      : [...historyMessages, { role: 'user', content: userContent }];
+
+  const usableBudget = Math.max(
+    MIN_RECENT_CONTEXT_TOKENS,
+    Math.floor(options.contextWindowTokens * 0.82) - options.systemPromptTokens
+  );
+
+  let recentTokenCount = 0;
+  let recentStart = fullMessages.length;
+  for (let i = fullMessages.length - 1; i >= 0; i--) {
+    const nextTokens = estimateMessageTokens(fullMessages[i]);
+    if (recentStart < fullMessages.length && recentTokenCount + nextTokens > usableBudget) {
+      break;
+    }
+    recentTokenCount += nextTokens;
+    recentStart = i;
   }
 
-  return [...compactHistory, { role: 'user', content: userContent }];
+  const olderMessages = fullMessages.slice(0, recentStart);
+  const recentMessages = fullMessages.slice(recentStart);
+  if (olderMessages.length === 0) {
+    return { messages: recentMessages, summary: '' };
+  }
+
+  try {
+    const summary = await summarizeOverflowingHistory({
+      fallbackModel: options.fallbackModel,
+      messages: olderMessages
+    });
+    return { messages: recentMessages, summary };
+  } catch (summaryError) {
+    console.warn('[chat] Failed to summarize overflowing history:', summaryError);
+    return {
+      messages: recentMessages,
+      summary:
+        'Older chat history exceeded the context budget, but automatic summarization failed. Continue using the recent messages only.'
+    };
+  }
 }
 
 function stepCalledTool(step: unknown, toolNames: string[]): boolean {
@@ -448,15 +550,21 @@ export const POST: RequestHandler = async ({ request }) => {
     }
     const allTools = filteredTools as typeof toolCatalog;
     const exposedToolNames = new Set(Object.keys(allTools));
-    const messages = buildChatMessages(uiMessages, userContent, {
-      preserveSubagentHistory:
-        exposedToolNames.has('subagentFanout') || exposedToolNames.has('subagentAssemble')
-    });
     const systemPrompt = buildLeanSystemPrompt(workspaceContext, exposedToolNames, {
       includeFullToolCatalog: true,
       mermaidSourceIsEmpty: activeEngine === 'mermaid' && !activeSource.trim()
     });
-    const system = systemPrompt;
+    const chatContext = await buildChatContext(uiMessages, userContent, {
+      contextWindowTokens: contextWindowForModel(enabledModel),
+      fallbackModel: model,
+      preserveSubagentHistory:
+        exposedToolNames.has('subagentFanout') || exposedToolNames.has('subagentAssemble'),
+      systemPromptTokens: estimateTokens(systemPrompt)
+    });
+    const messages = chatContext.messages;
+    const system = chatContext.summary
+      ? `${systemPrompt}\n\nCompacted prior chat history:\n${chatContext.summary}`
+      : systemPrompt;
 
     const canForceSpecificToolChoice = normalizedModel.provider !== 'openrouter';
     const stopStepLimit =
@@ -548,7 +656,7 @@ export const POST: RequestHandler = async ({ request }) => {
       providerOptions: getChatProviderOptions(model, providerHint),
       stopWhen: stepCountIs(stopStepLimit),
       system,
-      temperature: 0.55,
+      temperature: 0.9,
       tools: allTools
     });
 
