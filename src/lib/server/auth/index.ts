@@ -14,6 +14,8 @@ import { getDb } from '$lib/server/db';
 
 const SESSION_COOKIE_NAME = 'magnova_session';
 const LOCAL_COOKIE_NAME = 'graphini_session';
+const GUEST_COOKIE_NAME = 'graphini_guest_id';
+const GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 /** Comma-separated emails that should be treated as admin when the DB still has role `user`. */
 const ADMIN_EMAIL_OVERRIDES = (env.ADMIN_EMAIL_OVERRIDES || env.ADMIN_ALLOWED_EMAILS || '')
@@ -313,4 +315,61 @@ export function getSignoutUrl(redirectTo?: string): string {
   const baseUrl = env.MAGNOVA_AUTH_URL || 'https://auth.magnova.ai';
   const redirect = redirectTo || '/';
   return `${baseUrl}/api/auth/signout?redirect=${encodeURIComponent(redirect)}`;
+}
+
+// ── Guest sessions ────────────────────────────────────────────────────────
+
+function readGuestCookie(request: Request): string | null {
+  const cookieHeader = request.headers.get('cookie') || '';
+  for (const part of cookieHeader.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (k === GUEST_COOKIE_NAME) return decodeURIComponent(rest.join('='));
+  }
+  return null;
+}
+
+export function guestCookieHeader(token: string, secure = false): string {
+  const attrs = [
+    `${GUEST_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    `Max-Age=${GUEST_COOKIE_MAX_AGE}`,
+    'SameSite=Lax',
+    'HttpOnly'
+  ];
+  if (secure) attrs.push('Secure');
+  return attrs.join('; ');
+}
+
+const GUEST_FIREBASE_PREFIX = 'guest:';
+
+/**
+ * Get-or-create the synthetic users row that backs a guest cookie token.
+ * The token is reused as `firebase_uid = guest:<token>` so each browser maps
+ * to exactly one stable user_id, satisfying every existing FK constraint.
+ */
+async function ensureGuestUser(token: string): Promise<User | null> {
+  if (!token) return null;
+  const db = getDb();
+  const firebaseUid = `${GUEST_FIREBASE_PREFIX}${token}`;
+  const user = await db.getUserByFirebaseUid(firebaseUid);
+  if (user) return { ...user, is_guest: true };
+
+  const inserted = await db.upsertUserFromFirebase({
+    firebase_uid: firebaseUid,
+    email: null,
+    display_name: 'Guest'
+  });
+  return inserted ? { ...inserted, is_guest: true } : null;
+}
+
+/**
+ * Validate a session, falling back to the guest cookie. Returns the resolved
+ * user (which may be a guest-backed row) or null if neither is present.
+ */
+export async function validateSessionOrGuest(request: Request): Promise<User | null> {
+  const real = await validateSession(request);
+  if (real) return real;
+  const guestToken = readGuestCookie(request);
+  if (!guestToken) return null;
+  return ensureGuestUser(guestToken);
 }

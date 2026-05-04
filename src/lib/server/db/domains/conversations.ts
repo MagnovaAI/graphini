@@ -153,7 +153,9 @@ export async function listConversations(
 export async function updateConversation(
   db: NeonHttpDatabase<typeof schema>,
   id: string,
-  data: Partial<Pick<Conversation, 'title' | 'is_archived' | 'is_pinned' | 'metadata'>>
+  data: Partial<
+    Pick<Conversation, 'title' | 'is_archived' | 'is_pinned' | 'metadata' | 'workspace_id'>
+  >
 ): Promise<Conversation> {
   const [conv] = await db
     .update(schema.conversations)

@@ -70,7 +70,7 @@ export class NeonAdapter implements DatabaseAdapter {
 
   async upsertUserFromFirebase(data: {
     firebase_uid: string;
-    email: string;
+    email: string | null;
     display_name?: string | null;
     avatar_url?: string | null;
   }): Promise<User> {
@@ -274,7 +274,9 @@ export class NeonAdapter implements DatabaseAdapter {
 
   async updateConversation(
     id: string,
-    data: Partial<Pick<Conversation, 'title' | 'is_archived' | 'is_pinned' | 'metadata'>>
+    data: Partial<
+      Pick<Conversation, 'title' | 'is_archived' | 'is_pinned' | 'metadata' | 'workspace_id'>
+    >
   ): Promise<Conversation> {
     return conversationsDomain.updateConversation(this.db, id, data);
   }

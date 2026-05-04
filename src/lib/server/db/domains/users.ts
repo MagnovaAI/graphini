@@ -86,7 +86,7 @@ export async function upsertUserFromFirebase(
   db: NeonHttpDatabase<typeof schema>,
   data: {
     firebase_uid: string;
-    email: string;
+    email: string | null;
     display_name?: string | null;
     avatar_url?: string | null;
   }

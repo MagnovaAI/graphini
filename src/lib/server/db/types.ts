@@ -5,7 +5,7 @@
 export interface User {
   id: string;
   firebase_uid: string | null;
-  email: string;
+  email: string | null;
   display_name: string | null;
   avatar_url: string | null;
   role: 'user' | 'admin' | 'superadmin';
@@ -15,6 +15,8 @@ export interface User {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /** True when the session is anonymous (cookie-only). Not persisted in DB. */
+  is_guest?: boolean;
 }
 
 export interface Session {

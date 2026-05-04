@@ -25,7 +25,7 @@ export const users = pgTable(
     avatar_url: text('avatar_url'),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     display_name: text('display_name'),
-    email: text('email').unique().notNull(),
+    email: text('email').unique(),
     email_verified: boolean('email_verified').notNull().default(false),
     firebase_uid: text('firebase_uid').unique(),
     id: uuid('id').primaryKey().defaultRandom(),
