@@ -16,12 +16,15 @@
   import StructuredGraphView from '$lib/components/layout/StructuredGraphView.svelte';
   import { View } from '$lib/components/layout';
   import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/components/panels';
+  import { AppShell, AppSidebar } from '$lib/components/shell';
+  import SidebarTrigger from '$lib/components/ui/sidebar/sidebar-trigger.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import { Button } from '$lib/components/ui/button';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import Chat from '$lib/features/chat/components/Chat.simple.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import type { DiagramEngine } from '$lib/types/workspace';
+  import { detectEngine } from '$lib/util/detectEngine';
+  import { canvasStatus } from '$lib/stores/canvasStatus.svelte';
   // autosave replaced by workspace auto-save
   import { conversationsStore } from '$lib/stores/conversations.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
@@ -31,24 +34,15 @@
   import {
     AlertCircle,
     ArrowLeft,
-    Braces,
     Code2,
-    FileCode2,
+    Eraser,
     FileText,
     GitBranch,
     Grid2x2,
-    Layers,
     Loader2 as Loader2Spin,
-    LogOut,
     Maximize2,
-    MessageSquare,
     Network,
-    PanelLeftClose,
-    Plus,
     Scan,
-    Settings,
-    Trash2,
-    UserCircle,
     Workflow,
     ZoomIn,
     ZoomOut
@@ -97,19 +91,9 @@
     }
   }
 
-  // Panel icon map for toggle buttons
-  const panelIcons: Record<PanelId, typeof Layers> = {
-    canvas: Layers,
-    chat: MessageSquare,
-    code: Code2,
-    document: FileText
-  };
-  const workspacePanelIds: PanelId[] = ['code', 'canvas'];
-
   // Modal states
   let isSettingsModalOpen = $state(false);
   let isShortcutsModalOpen = $state(false);
-  let isWorkspaceSidebarCollapsed = $state(loadUIState('workspaceSidebarCollapsed', false));
 
   // Canvas panel states
   let isColorPanelOpen = $state(false);
@@ -128,7 +112,8 @@
   let isRoughMode = $state(loadUIState('roughMode', false));
   let zoomLevel = $state(100);
 
-  const activeDiagramEngine = $derived(workspaceStore.workspace?.document?.engine ?? 'mermaid');
+  const storedEngine = $derived(workspaceStore.workspace?.document?.engine ?? 'mermaid');
+  const activeDiagramEngine = $derived(detectEngine($inputStateStore.code || '', storedEngine));
   const isMermaidDiagram = $derived(activeDiagramEngine === 'mermaid');
   const isMarkdownDocument = $derived(activeDiagramEngine === 'markdown');
   const isDocumentPanelRenderable = $derived(isMarkdownDocument);
@@ -138,13 +123,19 @@
       activeDiagramEngine === 'json' ||
       activeDiagramEngine === 'yaml'
   );
+  const hasWorkspaceContentPanel = $derived(
+    panels.panels.canvas.visible || panels.panels.code.visible || panels.panels.document.visible
+  );
   let isViewRendering = $state(false);
   let viewRenderError = $state('');
+  $effect(() => {
+    canvasStatus.renderError = viewRenderError;
+    canvasStatus.isRendering = isViewRendering;
+  });
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let selectedElementLabel = $state<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let selectedElementNodeName = $state<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let selectedElementType = $state<'node' | 'edge' | null>(null);
 
   // Persist toolbar UI state
@@ -188,7 +179,7 @@
     if (
       authStore.isInitialized &&
       !authStore.isLoading &&
-      !authStore.isLoggedIn &&
+      !authStore.hasSession &&
       !hasAttemptedRedirect
     ) {
       hasAttemptedRedirect = true;
@@ -203,20 +194,69 @@
     panels.hide('canvas');
     panels.hide('document');
 
-    // Load workspace from route param — always reload if ID changed
-    const workspaceId = $page.params.id;
-    const currentId = workspaceStore.workspace?.id;
-    if (workspaceId && workspaceId !== currentId) {
-      if (currentId) workspaceStore.unload();
-      workspaceStore.load(workspaceId).then((success) => {
-        if (!success) {
-          wsError = workspaceStore.state.error || 'Failed to load workspace';
+    // Resolve chat_id -> workspace_id via the conversations API. The endpoint
+    // creates a workspace on demand the first time a chat is opened, and
+    // enforces user ownership server-side.
+    const chatId = $page.params.chat_id;
+    const ownerId = $page.params.id;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/conversations/${encodeURIComponent(chatId)}`, {
+          credentials: 'include'
+        });
+        if (!res.ok) {
+          wsError =
+            res.status === 401
+              ? 'Sign in to open this chat'
+              : res.status === 404
+                ? 'Chat not found'
+                : 'Failed to load chat';
+          wsLoading = false;
+          return;
         }
+        const data = await res.json();
+        const workspaceId = data.conversation?.workspace_id;
+        const conversationOwner = data.conversation?.user_id;
+
+        // Surface URL/owner mismatches so a user cannot pretend to own
+        // someone else's chat by editing the URL prefix.
+        if (conversationOwner && conversationOwner !== ownerId) {
+          wsError = 'Chat not found';
+          wsLoading = false;
+          return;
+        }
+
+        if (!workspaceId) {
+          wsError = 'Chat is missing a workspace';
+          wsLoading = false;
+          return;
+        }
+
+        const currentId = workspaceStore.workspace?.id;
+        if (workspaceId !== currentId) {
+          if (currentId) workspaceStore.unload();
+          const ok = await workspaceStore.load(workspaceId);
+          if (!ok) {
+            wsError = workspaceStore.state.error || 'Failed to load workspace';
+          }
+        }
+        // Activate the conversation so the chat panel shows its messages.
+        conversationsStore.setActive(chatId);
+
+        // Make sure the Chat component loads messages for this chat instead of
+        // whatever conversation it last cached in KV. We poll briefly because
+        // chatComponent is bound after this onMount completes.
+        for (let i = 0; i < 30 && !chatComponent; i++) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        await chatComponent?.loadConversation(chatId);
+      } catch {
+        wsError = 'Failed to load chat';
+      } finally {
         wsLoading = false;
-      });
-    } else {
-      wsLoading = false;
-    }
+      }
+    })();
 
     setupPanZoomObserver();
 
@@ -269,10 +309,13 @@
     window.addEventListener('element-selected', handleElementSelected as EventListener);
     window.addEventListener('selection-cleared', handleSelectionCleared as EventListener);
 
-    const handleConversationCreated = async (e: CustomEvent) => {
-      if (authStore.isLoggedIn) await conversationsStore.create(e.detail?.title || 'New Chat');
+    // Chat.simple.svelte already creates the DB conversation via /api/conversations
+    // and refreshes the sidebar list. We just listen so we can refresh if needed,
+    // but never POST a second create here.
+    const handleConversationCreated = () => {
+      if (authStore.isLoggedIn) conversationsStore.fetch();
     };
-    window.addEventListener('conversation-created', handleConversationCreated as EventListener);
+    window.addEventListener('conversation-created', handleConversationCreated);
 
     const handleOpenAuthModal = () => {
       authStore.login();
@@ -348,10 +391,7 @@
       window.removeEventListener('edge-selected', handleEdgeSelected as EventListener);
       window.removeEventListener('element-selected', handleElementSelected as EventListener);
       window.removeEventListener('selection-cleared', handleSelectionCleared as EventListener);
-      window.removeEventListener(
-        'conversation-created',
-        handleConversationCreated as EventListener
-      );
+      window.removeEventListener('conversation-created', handleConversationCreated);
       window.removeEventListener('open-auth-modal', handleOpenAuthModal);
     };
   });
@@ -451,6 +491,15 @@
     zoomLevel = 100;
   };
 
+  function clearDiagram() {
+    const code = ($inputStateStore.code || '').trim();
+    if (code && !confirm('Clear the diagram? This cannot be undone.')) return;
+    updateCodeStore({ code: '', updateDiagram: true });
+    workspaceStore.markDirty();
+    panZoomState.reset();
+    zoomLevel = 100;
+  }
+
   let gridStyle = $state<'dots' | 'squares'>('dots');
   const cycleGrid = () => {
     if (!isGridVisible) {
@@ -499,47 +548,63 @@
   const activeDiagramTitle = $derived(
     workspaceTabs.find((tab) => tab.id === activeWorkspaceId)?.title || 'Untitled'
   );
+  const activeChatTitle = $derived(
+    conversationsStore.list.find((c) => c.id === conversationsStore.activeId)?.title || 'New chat'
+  );
 
   $effect(() => {
     const name = workspaceStore.workspace?.title || 'Untitled';
     document.title = `${name} — Graphini`;
   });
 
-  function toggleWorkspaceSidebar() {
-    isWorkspaceSidebarCollapsed = !isWorkspaceSidebarCollapsed;
-    saveUIState('workspaceSidebarCollapsed', isWorkspaceSidebarCollapsed);
-  }
+  // Track activation order to evict oldest when exceeding max-2
+  let panelActivationOrder = $state<PanelId[]>(['chat', 'code']);
 
-  async function handleNewWorkspace(engine: DiagramEngine, title: string) {
-    workspaceStore.addDiagram(engine, title);
-  }
+  function handleTogglePanel(panel: PanelId) {
+    const isVisible = panels.panels[panel].visible;
+    const visiblePanels = (['chat', 'canvas', 'code'] as PanelId[]).filter(
+      (p) => panels.panels[p].visible
+    );
 
-  function showChatPanel() {
-    panels.toggle('chat');
-  }
+    if (isVisible) {
+      // Hiding — only allow if at least one will remain
+      if (visiblePanels.length <= 1) return;
+      panels.hide(panel);
+      panelActivationOrder = panelActivationOrder.filter((p) => p !== panel);
+      return;
+    }
 
-  function showCodePanel() {
-    panels.show('code');
-    panels.hide('canvas');
-    panels.hide('document');
-  }
-
-  function showPreviewPanel() {
-    panels.show('canvas');
-    panels.hide('code');
-    panels.hide('document');
+    // Showing — if 2 already visible, hide the oldest
+    if (visiblePanels.length >= 2) {
+      const toHide = panelActivationOrder.find((p) => visiblePanels.includes(p));
+      if (toHide) {
+        panels.hide(toHide);
+        panelActivationOrder = panelActivationOrder.filter((p) => p !== toHide);
+      }
+    }
+    panels.show(panel);
+    if (panel === 'canvas') panels.hide('document');
+    panelActivationOrder = [...panelActivationOrder.filter((p) => p !== panel), panel];
   }
 
   async function startNewChat() {
-    conversationsStore.setActive(null);
+    const userId = authStore.user?.id ?? $page.params.id;
+    if (!userId) return;
+    const created = await conversationsStore.create('New chat');
+    if (!created?.id) return;
     panels.show('chat');
-    await chatComponent?.newChat();
+    await goto(`/app/${userId}/${created.id}`);
   }
 
   async function selectConversation(id: string) {
-    conversationsStore.setActive(id);
+    const userId = authStore.user?.id ?? $page.params.id;
+    if (!userId) return;
+    if (id === $page.params.chat_id) {
+      panels.show('chat');
+      return;
+    }
     panels.show('chat');
-    await chatComponent?.loadConversation(id);
+    await goto(`/app/${userId}/${id}`);
   }
 
   async function deleteConversation(id: string) {
@@ -547,7 +612,9 @@
     await conversationsStore.delete(id);
     window.dispatchEvent(new CustomEvent('conversation-deleted', { detail: { id, wasActive } }));
     if (wasActive) {
-      await startNewChat();
+      // After deleting the open chat, send the user to /app which redirects to
+      // their next-most-recent chat (or auto-creates one).
+      await goto(resolve('/app'), { replaceState: true });
     }
   }
 
@@ -559,7 +626,12 @@
   });
 
   $effect(() => {
-    if (hasMandatoryFileViewer && !panels.panels.canvas.visible && !panels.panels.code.visible) {
+    if (
+      hasMandatoryFileViewer &&
+      !panels.panels.chat.visible &&
+      !panels.panels.canvas.visible &&
+      !panels.panels.code.visible
+    ) {
       panels.show('canvas');
     }
   });
@@ -590,273 +662,31 @@
       </button>
     </div>
   </div>
-{:else if authStore.isLoggedIn}
-  <div class="flex h-screen overflow-hidden bg-background" bind:clientWidth={width}>
-    <aside
-      class="workspace-sidebar {isWorkspaceSidebarCollapsed ? 'collapsed' : ''}"
-      aria-label="Workspace sidebar">
-      <div class="sidebar-top">
-        <div class="sidebar-header-row">
-          {#if isWorkspaceSidebarCollapsed}
-            <button
-              type="button"
-              class="sidebar-logo-button"
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
-              onclick={toggleWorkspaceSidebar}>
-              <img src="/brand/logo.png" alt="" class="size-7" />
-            </button>
-          {:else}
-            <a href={resolve('/app')} class="brand-lockup" aria-label="Back to app">
-              <img src="/brand/logo.png" alt="" class="size-7 shrink-0" />
-              <span>Graphini</span>
-            </a>
-            <button
-              type="button"
-              class="sidebar-icon-action"
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar"
-              onclick={toggleWorkspaceSidebar}>
-              <PanelLeftClose class="size-4" />
-            </button>
-          {/if}
-        </div>
-
-        <div class="sidebar-primary-actions">
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger
-              class="sidebar-new-button {isWorkspaceSidebarCollapsed ? 'compact' : ''}"
-              aria-label="New"
-              title="New">
-              <Plus class="size-3.5 shrink-0" />
-              {#if !isWorkspaceSidebarCollapsed}
-                <span>New</span>
-              {/if}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              align="start"
-              side={isWorkspaceSidebarCollapsed ? 'right' : 'bottom'}
-              sideOffset={8}
-              class="sidebar-create-menu">
-              <DropdownMenu.Item class="sidebar-create-item" onclick={startNewChat}>
-                <MessageSquare class="size-4" />
-                <span>New Chat</span>
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item
-                class="sidebar-create-item"
-                onclick={() => handleNewWorkspace('mermaid', 'Untitled Mermaid')}>
-                <Workflow class="size-4" />
-                <span>Mermaid</span>
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                class="sidebar-create-item"
-                onclick={() => handleNewWorkspace('markdown', 'Untitled Markdown')}>
-                <FileText class="size-4" />
-                <span>Markdown</span>
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                class="sidebar-create-item"
-                onclick={() => handleNewWorkspace('json', 'Untitled JSON')}>
-                <Braces class="size-4" />
-                <span>JSON</span>
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                class="sidebar-create-item"
-                onclick={() => handleNewWorkspace('yaml', 'Untitled YAML')}>
-                <FileCode2 class="size-4" />
-                <span>YAML</span>
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-
-          <button
-            type="button"
-            class="panel-tab sidebar-chat-tab {isWorkspaceSidebarCollapsed ? 'compact' : ''} {panels
-              .panels.chat.visible
-              ? 'active'
-              : ''}"
-            aria-pressed={panels.panels.chat.visible}
-            title="Chat"
-            onclick={showChatPanel}>
-            <MessageSquare class="size-3.5 shrink-0" />
-            {#if !isWorkspaceSidebarCollapsed}
-              <span>Chat</span>
-            {/if}
-          </button>
-
-          <div class="sidebar-panel-toggles" aria-label="Workspace panels">
-            {#each workspacePanelIds as panelId (panelId)}
-              {@const Icon = panelIcons[panelId]}
-              {@const panelConfig = panels.panels}
-              {@const isActive = panelConfig[panelId].visible}
-              {@const label = panelConfig[panelId].label}
-              <button
-                type="button"
-                class="panel-tab {isWorkspaceSidebarCollapsed ? 'compact' : ''} {isActive
-                  ? 'active'
-                  : ''}"
-                aria-pressed={isActive}
-                title={label}
-                onclick={() => (panelId === 'code' ? showCodePanel() : showPreviewPanel())}>
-                <Icon class="size-3.5 shrink-0" />
-                {#if !isWorkspaceSidebarCollapsed}
-                  <span>{label}</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        </div>
-      </div>
-
-      {#if !isWorkspaceSidebarCollapsed}
-        <div class="conversation-list" aria-label="Chats">
-          {#if conversationsStore.isLoading}
-            <div class="conversation-empty">Loading chats...</div>
-          {:else if !authStore.isLoggedIn}
-            <div class="conversation-empty">Sign in to save chats</div>
-          {:else if conversationsStore.list.length === 0}
-            <div class="conversation-empty">No chats yet</div>
-          {:else}
-            {#each conversationsStore.list as conv (conv.id)}
-              <div
-                class="conversation-item {conv.id === conversationsStore.activeId ? 'active' : ''}">
-                <button
-                  type="button"
-                  class="conversation-select"
-                  title={conv.title || 'Untitled chat'}
-                  onclick={() => selectConversation(conv.id)}>
-                  {conv.title || 'Untitled chat'}
-                </button>
-                <button
-                  type="button"
-                  class="conversation-delete"
-                  aria-label="Delete chat"
-                  title="Delete chat"
-                  onclick={() => deleteConversation(conv.id)}>
-                  <Trash2 class="size-3.5" />
-                </button>
-              </div>
-            {/each}
-          {/if}
-        </div>
-      {/if}
-
-      <div class="sidebar-footer-row">
-        <button
-          type="button"
-          class="sidebar-footer-button"
-          title="Settings"
-          onclick={() => (isSettingsModalOpen = true)}>
-          <Settings class="size-4 shrink-0" />
-          {#if !isWorkspaceSidebarCollapsed}
-            <span>Settings</span>
-          {/if}
-        </button>
-        {#if authStore.isLoggedIn}
-          {@const initials = (authStore.user?.display_name || authStore.user?.email || 'U')
-            .split(' ')
-            .map((w) => w[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2)}
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger class="sidebar-footer-button" title="Account">
-              <span
-                class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
-                {initials}
-              </span>
-              {#if !isWorkspaceSidebarCollapsed}
-                <span class="min-w-0 flex-1 truncate text-left">
-                  {authStore.user?.display_name || authStore.user?.email || 'User'}
-                </span>
-              {/if}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              align="start"
-              side="right"
-              sideOffset={8}
-              class="sidebar-account-menu">
-              <DropdownMenu.Label class="flex flex-col gap-0.5">
-                <span class="text-sm font-medium">{authStore.user?.display_name || 'User'}</span>
-                <span class="text-xs font-normal text-muted-foreground"
-                  >{authStore.user?.email}</span>
-              </DropdownMenu.Label>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item
-                class="sidebar-create-item"
-                onclick={() => {
-                  isSettingsModalOpen = true;
-                }}>
-                <Settings class="size-4" /><span>Settings</span>
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item
-                class="sidebar-create-item text-red-500 focus:text-red-500"
-                onclick={() => authStore.logout()}>
-                <LogOut class="size-4" /><span>Sign out</span>
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        {:else}
-          <button
-            type="button"
-            class="sidebar-footer-button"
-            title="Sign in"
-            onclick={() => authStore.login()}>
-            <UserCircle class="size-4 shrink-0" />
-            {#if !isWorkspaceSidebarCollapsed}
-              <span>Sign in</span>
-            {/if}
-          </button>
-        {/if}
-      </div>
-    </aside>
-
-    <div class="flex min-w-0 flex-1 overflow-hidden">
-      <!-- ═══ MAIN CONTENT: DYNAMIC PANEL LAYOUT ═══ -->
-      <div class="flex flex-1 overflow-hidden" role="main">
+{:else if authStore.hasSession}
+  <div class="h-screen overflow-hidden bg-background" bind:clientWidth={width}>
+    <AppShell>
+      {#snippet sidebar()}
+        <AppSidebar
+          onNewChat={startNewChat}
+          onSelectConversation={selectConversation}
+          onDeleteConversation={deleteConversation}
+          onTogglePanel={handleTogglePanel}
+          onOpenSettings={() => (isSettingsModalOpen = true)} />
+      {/snippet}
+      <div class="flex min-h-0 flex-1 overflow-hidden" role="main">
         {#each panels.order as panelId (panelId)}
           {#if panels.panels[panelId].visible || panelId === 'chat'}
             {#if panelId === 'canvas'}
-              <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-                <!-- Diagram View -->
-                <div class="relative flex-1 overflow-hidden">
-                  {#if isMermaidDiagram}
-                    <View
-                      {panZoomState}
-                      shouldShowGrid={isGridVisible}
-                      {gridStyle}
-                      bind:isRendering={isViewRendering}
-                      bind:renderError={viewRenderError} />
-                  {:else if isMarkdownDocument}
-                    <div class="h-full overflow-auto bg-background p-8">
-                      <article
-                        class="mx-auto min-h-full max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-sm">
-                        <div class="mb-5 flex items-center gap-2 border-b border-border pb-3">
-                          <FileText class="size-4 text-muted-foreground" />
-                          <span class="text-sm font-semibold text-foreground"
-                            >{activeDiagramTitle}</span>
-                          <span
-                            class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-                            >Markdown</span>
-                        </div>
-                        <pre
-                          class="font-sans text-sm leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
-                            'Start writing in the Code panel.'}</pre>
-                      </article>
-                    </div>
-                  {:else}
-                    <StructuredGraphView
-                      engine={activeDiagramEngine}
-                      {panZoomState}
-                      shouldShowGrid={isGridVisible}
-                      {gridStyle}
-                      title={activeDiagramTitle}
-                      source={$inputStateStore.code || ''} />
-                  {/if}
-                  {#if !isMarkdownDocument}
-                    <div class="canvas-bottom-toolbar">
+              <div
+                class="relative flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border">
+                {#if !isMarkdownDocument}
+                  <div class="flex shrink-0 flex-col border-b border-border bg-background">
+                    <div class="flex h-12 shrink-0 items-center gap-2 px-3">
+                      <span class="text-[13px] font-semibold text-foreground">Canvas</span>
+                      <span
+                        class="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase">
+                        {activeDiagramEngine}
+                      </span>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -926,38 +756,84 @@
                         class="toolbar-btn size-8"
                         title="Reset View"
                         onclick={resetView}><Scan class="size-4" /></Button>
-                    </div>
-                  {/if}
-                  <ColorPanel bind:open={isColorPanelOpen} />
-                  <IconPanel bind:open={isIconPanelOpen} />
-                  <ElementToolbar />
-
-                  <!-- Minimal render status indicator (top-right) -->
-                  <div class="absolute top-3 right-3 z-20">
-                    {#if isMermaidDiagram && viewRenderError}
-                      <button
-                        type="button"
-                        class="flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 transition-colors hover:bg-red-500/25"
-                        title="Click to auto-fix: {viewRenderError}"
-                        onclick={async () => {
-                          const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
-                          await handleSendChatMessage(msg, { isRepair: true });
-                        }}>
-                        <span class="size-2 rounded-full bg-red-500"></span>
-                        <span
-                          class="max-w-[120px] truncate text-[10px] font-medium text-red-600 dark:text-red-400"
-                          >Error</span>
-                      </button>
-                    {:else if isViewRendering}
-                      <div class="rounded-full bg-amber-500/15 p-1.5" title="Rendering…">
-                        <span class="block size-2 animate-pulse rounded-full bg-amber-500"></span>
+                      <div class="toolbar-separator"></div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="toolbar-btn size-8 text-muted-foreground hover:text-destructive"
+                        title="Clear diagram"
+                        onclick={clearDiagram}><Eraser class="size-4" /></Button>
+                      <div class="ml-auto">
+                        {#if isMermaidDiagram && viewRenderError}
+                          <button
+                            type="button"
+                            class="flex max-w-[260px] cursor-pointer items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/5 px-2 py-0.5 transition-colors hover:bg-red-500/10"
+                            title="Click to auto-fix: {viewRenderError}"
+                            onclick={async () => {
+                              const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
+                              await handleSendChatMessage(msg, { isRepair: true });
+                            }}>
+                            <span class="size-1.5 shrink-0 rounded-full bg-red-500/70"></span>
+                            <span class="truncate text-[10px] font-medium text-red-400/90"
+                              >{viewRenderError}</span>
+                          </button>
+                        {:else if isViewRendering}
+                          <div class="rounded-full bg-amber-500/10 p-1.5" title="Rendering…">
+                            <span class="block size-1.5 animate-pulse rounded-full bg-amber-500/70"
+                            ></span>
+                          </div>
+                        {:else}
+                          <div class="rounded-full bg-emerald-500/10 p-1.5" title="Ready">
+                            <span class="block size-1.5 rounded-full bg-emerald-500/70"></span>
+                          </div>
+                        {/if}
                       </div>
-                    {:else}
-                      <div class="rounded-full bg-emerald-500/15 p-1.5" title="Ready">
-                        <span class="block size-2 rounded-full bg-emerald-500"></span>
+                    </div>
+                    {#if selectedElementType !== null}
+                      <div
+                        class="flex min-h-12 items-center gap-1 border-t border-border px-3 py-1.5">
+                        <ElementToolbar mode="inline" />
                       </div>
                     {/if}
                   </div>
+                {/if}
+                <!-- Diagram View -->
+                <div class="relative flex-1 overflow-hidden">
+                  {#if isMermaidDiagram}
+                    <View
+                      {panZoomState}
+                      shouldShowGrid={isGridVisible}
+                      {gridStyle}
+                      bind:isRendering={isViewRendering}
+                      bind:renderError={viewRenderError} />
+                  {:else if isMarkdownDocument}
+                    <div class="h-full overflow-auto bg-background p-8">
+                      <article
+                        class="mx-auto min-h-full max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-sm">
+                        <div class="mb-5 flex items-center gap-2 border-b border-border pb-3">
+                          <FileText class="size-4 text-muted-foreground" />
+                          <span class="text-sm font-semibold text-foreground"
+                            >{activeDiagramTitle}</span>
+                          <span
+                            class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                            >Markdown</span>
+                        </div>
+                        <pre
+                          class="font-sans text-sm leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
+                            'Start writing in the Code panel.'}</pre>
+                      </article>
+                    </div>
+                  {:else}
+                    <StructuredGraphView
+                      engine={activeDiagramEngine}
+                      {panZoomState}
+                      shouldShowGrid={isGridVisible}
+                      {gridStyle}
+                      title={activeDiagramTitle}
+                      source={$inputStateStore.code || ''} />
+                  {/if}
+                  <ColorPanel bind:open={isColorPanelOpen} />
+                  <IconPanel bind:open={isIconPanelOpen} />
                 </div>
               </div>
             {:else if panelId === 'document'}
@@ -988,17 +864,18 @@
                 <PanelResizeHandle
                   position="left"
                   onResize={(delta) => handlePanelResize('code', delta)} />
-                <div class="flex h-full flex-col bg-card">
+                <div class="flex h-full flex-col bg-background">
                   <div
-                    class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
+                    class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
                     <div class="flex items-center gap-1.5">
                       <Code2 class="size-4 text-muted-foreground" />
                       <span class="text-xs font-semibold text-foreground">Code</span>
-                      <span class="text-[10px] text-muted-foreground">
-                        {#if !isMermaidDiagram}
-                          {activeDiagramEngine}
+                      <span
+                        class="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase">
+                        {#if isMermaidDiagram && $stateStore.editorMode === 'config'}
+                          config
                         {:else}
-                          {$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}
+                          {activeDiagramEngine}
                         {/if}
                       </span>
                     </div>
@@ -1034,22 +911,29 @@
               </div>
             {:else if panelId === 'chat'}
               <div
-                class="relative flex min-w-0 flex-col overflow-hidden border-r border-border"
-                style="{!panels.panels.chat.visible ? 'display: none;' : ''}width: {panels.panels
-                  .chat.width}px; min-width: {panels.panels.chat.minWidth}px; flex: 0 0 auto;">
-                <PanelResizeHandle
-                  position="right"
-                  onResize={(delta) => handlePanelResize('chat', delta)} />
-                <header class="chat-header">
-                  <p class="workspace-title" translate="no">{activeDiagramTitle}</p>
+                class="relative flex h-full min-w-0 flex-col overflow-hidden"
+                style={!panels.panels.chat.visible
+                  ? 'display: none;'
+                  : hasWorkspaceContentPanel
+                    ? `width: ${panels.panels.chat.width}px; min-width: ${panels.panels.chat.minWidth}px; flex: 0 0 auto;`
+                    : `min-width: ${panels.panels.chat.minWidth}px; flex: 1 1 0%;`}>
+                {#if hasWorkspaceContentPanel}
+                  <PanelResizeHandle
+                    position="right"
+                    onResize={(delta) => handlePanelResize('chat', delta)} />
+                {/if}
+                <header
+                  class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
+                  <SidebarTrigger class="-ml-1" />
+                  <p
+                    class="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-foreground"
+                    translate="no">
+                    {activeChatTitle}
+                  </p>
                 </header>
-                <div class="min-h-0 flex-1">
+                <div class="min-h-0 flex-1 overflow-hidden">
                   <ChatPanel onSelectConversation={(id) => chatComponent?.loadConversation(id)}>
-                    <div class="flex h-full flex-col">
-                      <div class="flex-1 overflow-hidden">
-                        <Chat bind:this={chatComponent} />
-                      </div>
-                    </div>
+                    <Chat bind:this={chatComponent} />
                   </ChatPanel>
                 </div>
               </div>
@@ -1057,7 +941,7 @@
           {/if}
         {/each}
       </div>
-    </div>
+    </AppShell>
   </div>
 
   <!-- Modals -->
@@ -1155,202 +1039,7 @@
 {/if}
 
 <style>
-  @reference "../../../app.css";
-
-  .workspace-sidebar {
-    --workspace-sidebar-width: 256px;
-    --workspace-sidebar-collapsed-width: 64px;
-    --workspace-sidebar-control: 36px;
-
-    width: var(--workspace-sidebar-width);
-    @apply flex h-screen shrink-0 flex-col overflow-hidden border-r border-border bg-card transition-[width] duration-200 ease-out dark:border-white/10;
-  }
-
-  .workspace-sidebar.collapsed {
-    width: var(--workspace-sidebar-collapsed-width);
-  }
-
-  .sidebar-top {
-    @apply shrink-0 border-b border-border dark:border-white/10;
-  }
-
-  .sidebar-header-row {
-    @apply flex h-12 shrink-0 items-center justify-between gap-2 px-3;
-  }
-
-  .workspace-sidebar.collapsed .sidebar-header-row {
-    @apply h-12 justify-center px-0;
-  }
-
-  .brand-lockup {
-    @apply flex min-w-0 items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight text-foreground transition-opacity hover:opacity-80;
-  }
-
-  .sidebar-icon-action {
-    @apply flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
-  }
-
-  .sidebar-logo-button {
-    @apply flex size-10 items-center justify-center rounded-md transition-colors hover:bg-muted/60 focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
-  }
-
-  .workspace-sidebar.collapsed .sidebar-logo-button {
-    width: var(--workspace-sidebar-control);
-    height: var(--workspace-sidebar-control);
-  }
-
-  .sidebar-primary-actions {
-    @apply grid gap-2 p-2 pt-0;
-  }
-
-  .workspace-sidebar.collapsed .sidebar-primary-actions {
-    @apply justify-items-center gap-1 px-0 pt-0;
-  }
-
-  .sidebar-new-button {
-    grid-template-columns: 48px minmax(0, 1fr);
-    @apply grid h-8 w-full items-center rounded-md bg-primary text-left text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
-  }
-
-  .sidebar-new-button.compact {
-    width: var(--workspace-sidebar-control);
-    height: var(--workspace-sidebar-control);
-    @apply justify-center px-0;
-  }
-
-  .sidebar-new-button.compact {
-    grid-template-columns: 1fr;
-  }
-
-  :global(.workspace-sidebar .sidebar-new-button > svg) {
-    @apply justify-self-center;
-  }
-
-  :global(.workspace-sidebar .sidebar-new-button > span) {
-    @apply min-w-0 truncate;
-  }
-
-  :global(.sidebar-create-menu),
-  :global(.sidebar-account-menu) {
-    @apply w-56 rounded-md border-border bg-card p-1 text-foreground shadow-sm dark:border-white/10;
-  }
-
-  :global(.sidebar-create-menu) {
-    @apply w-52;
-  }
-
-  :global(.sidebar-create-item) {
-    @apply h-8 gap-2 rounded-md px-2 text-[12.5px] text-muted-foreground data-highlighted:bg-muted/60 data-highlighted:text-foreground;
-  }
-
-  :global(.sidebar-create-item svg) {
-    @apply text-muted-foreground;
-  }
-
-  .sidebar-panel-toggles {
-    @apply grid gap-0.5;
-  }
-
-  .sidebar-chat-tab {
-    @apply mb-1;
-  }
-
-  .workspace-sidebar.collapsed .sidebar-chat-tab {
-    @apply mb-1;
-  }
-
-  .panel-tab,
-  .sidebar-footer-button {
-    grid-template-columns: 48px minmax(0, 1fr);
-    @apply relative grid h-8 w-full min-w-0 items-center rounded-md text-left text-[12.5px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted/60 hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
-  }
-
-  :global(.workspace-sidebar .panel-tab > svg),
-  :global(.workspace-sidebar .sidebar-footer-button > svg),
-  :global(.workspace-sidebar .sidebar-footer-button > span:first-child) {
-    @apply justify-self-center;
-  }
-
-  :global(.workspace-sidebar .panel-tab > span),
-  :global(.workspace-sidebar .sidebar-footer-button > span:not(:first-child)) {
-    @apply min-w-0 truncate;
-  }
-
-  .panel-tab.active {
-    @apply bg-background text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))];
-  }
-
-  .panel-tab.active::before {
-    content: '';
-    @apply pointer-events-none absolute top-1/2 left-0 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-primary;
-  }
-
-  .workspace-sidebar.collapsed .panel-tab.active::before {
-    @apply hidden;
-  }
-
-  .panel-tab.compact,
-  .workspace-sidebar.collapsed .sidebar-footer-button {
-    width: var(--workspace-sidebar-control);
-    height: var(--workspace-sidebar-control);
-    @apply justify-center px-0;
-    grid-template-columns: 1fr;
-  }
-
-  .conversation-list {
-    @apply min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-2;
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
-  }
-
-  .conversation-list::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .conversation-list::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--border));
-    border-radius: 9999px;
-  }
-
-  .conversation-item {
-    @apply grid h-8 w-full min-w-0 grid-cols-[minmax(0,1fr)_28px] items-center rounded-md text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground;
-  }
-
-  .conversation-item.active {
-    @apply bg-background text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))];
-  }
-
-  .conversation-select {
-    @apply h-full min-w-0 truncate px-2 text-left focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
-  }
-
-  .conversation-delete {
-    @apply flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:outline-none;
-  }
-
-  .conversation-empty {
-    @apply px-2 py-3 text-[12px] text-muted-foreground;
-  }
-
-  .sidebar-footer-row {
-    @apply mt-auto grid shrink-0 gap-0.5 border-t border-border p-2 dark:border-white/10;
-  }
-
-  .workspace-sidebar.collapsed .sidebar-footer-row {
-    @apply justify-items-center px-0;
-  }
-
-  .chat-header {
-    @apply flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3;
-  }
-
-  .workspace-title {
-    @apply min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground;
-  }
-
-  .canvas-bottom-toolbar {
-    @apply absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card p-1 shadow-sm;
-  }
+  @reference "../../../../app.css";
 
   :global(.toolbar-btn) {
     @apply text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground;
@@ -1378,20 +1067,5 @@
 
   .layout-menu-item.active {
     @apply bg-accent font-medium text-foreground;
-  }
-
-  @media (max-width: 767px) {
-    .workspace-sidebar {
-      --workspace-sidebar-width: 232px;
-      --workspace-sidebar-collapsed-width: 56px;
-    }
-
-    .chat-header {
-      @apply px-2.5;
-    }
-
-    .canvas-bottom-toolbar {
-      @apply bottom-3;
-    }
   }
 </style>

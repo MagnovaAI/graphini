@@ -8,11 +8,12 @@ import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 
 interface AuthUser {
   id: string;
-  email: string;
+  email: string | null;
   display_name: string | null;
   avatar_url: string | null;
   role: string;
   created_at: string;
+  is_guest?: boolean;
 }
 
 interface CreditInfo {
@@ -199,7 +200,13 @@ export const authStore = {
   get credits() {
     return state.credits;
   },
+  get hasSession() {
+    return !!state.user;
+  },
   init: fetchMe,
+  get isGuest() {
+    return !!state.user && state.user.is_guest === true;
+  },
   get isInitialized() {
     return state.initialized;
   },
@@ -207,7 +214,7 @@ export const authStore = {
     return state.loading;
   },
   get isLoggedIn() {
-    return !!state.user;
+    return !!state.user && state.user.is_guest !== true;
   },
   login,
   loginLocal,
