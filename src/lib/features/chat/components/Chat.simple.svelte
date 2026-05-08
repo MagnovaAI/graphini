@@ -1057,28 +1057,25 @@
   let questionnaireResponses = $state<Record<string, Record<string, string | string[]>>>({});
   let messageParts = $state<Record<number, ContentPart[]>>({});
 
-  // Active pending questionnaire (rendered in place of the chat input)
+  // Active pending questionnaire (rendered in place of the chat input).
+  // Only the *last* message can carry one — anything earlier has already been
+  // answered (the user reply that followed isn't always re-synced to the DB,
+  // so we infer "answered" from conversation position rather than the
+  // submitted flag alone).
   let pendingQuestionnaire = $derived.by(() => {
-    const map = messageParts;
-    const idxs = Object.keys(map)
-      .map((k) => Number(k))
-      .filter((n) => Number.isFinite(n))
-      .sort((a, b) => b - a);
-    for (const idx of idxs) {
-      const parts = map[idx];
-      if (!parts) continue;
-      for (let i = parts.length - 1; i >= 0; i--) {
-        const p = parts[i];
-        if (p.type !== 'questionnaire') continue;
-        if (p.submitted) continue;
-        if (!p.questions || p.questions.length === 0) continue;
-        return { part: p, assistantIdx: idx };
-      }
+    if (!messages.length) return null;
+    const lastIdx = messages.length - 1;
+    if ((messages[lastIdx] as { role?: string }).role !== 'assistant') return null;
+    const parts = messageParts[lastIdx];
+    if (!parts) return null;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      if (p.type !== 'questionnaire') continue;
+      if (p.submitted) continue;
+      if (!p.questions || p.questions.length === 0) continue;
+      return { part: p, assistantIdx: lastIdx };
     }
     return null;
-  });
-  $effect(() => {
-    console.log('[questionnaire] pending:', pendingQuestionnaire);
   });
 
   // Tool streaming state
