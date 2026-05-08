@@ -9,7 +9,7 @@ import {
 } from '$lib/server/chat/model';
 import type { ChatProvider } from '$lib/server/chat/model';
 import { codeStore, diagramStore, markdownStore } from '$lib/server/chat/state';
-import { isToolInventoryRequest, selectToolNamesForRequest } from '$lib/server/chat/tool-gating';
+import { isToolInventoryRequest } from '$lib/server/chat/tool-gating';
 import { createDiagramTools } from '$lib/server/chat/tools';
 import { error } from '@sveltejs/kit';
 import type { ToolSet } from 'ai';
@@ -135,20 +135,17 @@ export async function runChatTurn(request: Request): Promise<Response> {
         )
         .slice(-4)
     : undefined;
+  // The model picks which tools to use. We expose the entire catalog and only
+  // honor an explicit per-user opt-out from the settings panel — except when
+  // the user is asking us to inventory our tools, in which case we override
+  // the disables for that one turn so we can answer truthfully.
   const toolInventoryRequest = isToolInventoryRequest(message, { recentMessages });
-  const selectedToolNames = selectToolNamesForRequest(message, {
-    activeEngine,
-    recentMessages,
-    workspaceIsEmpty: !activeSource.trim()
-  });
-
   const toolCatalog = createDiagramTools(turnSessionId, actualModelId, workspaceContext);
   const clientEnabledSet = Array.isArray(enabledTools) ? new Set(enabledTools as string[]) : null;
   const persistedEnabledSet = await getPersistedEnabledTools(userId);
   const enabledSet = persistedEnabledSet ?? clientEnabledSet;
   const filteredTools: Partial<typeof toolCatalog> = {};
   for (const [key, value] of Object.entries(toolCatalog)) {
-    if (!selectedToolNames.has(key)) continue;
     if (!toolInventoryRequest && enabledSet && !enabledSet.has(key)) continue;
     (filteredTools as Record<string, typeof value>)[key] = value;
   }
