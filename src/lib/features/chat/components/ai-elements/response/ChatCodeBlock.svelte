@@ -96,12 +96,14 @@
   });
 </script>
 
-<div class="relative my-3 overflow-hidden rounded-[10px] bg-muted">
+<div
+  class="relative my-3 overflow-hidden rounded-[10px]"
+  style="background-color: var(--code-bg);">
   <button
     type="button"
     tabindex={-1}
     onclick={doCopy}
-    class="absolute top-1.5 right-1.5 z-10 flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/40 hover:text-foreground"
+    class="absolute top-2 right-2 z-10 flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/40 hover:text-foreground"
     title={copied ? 'Copied!' : 'Copy code'}
     aria-label={copied ? 'Copied' : 'Copy code'}>
     {#if copied}
@@ -111,8 +113,8 @@
     {/if}
   </button>
   <pre
-    class="m-0 overflow-x-auto bg-transparent px-4 py-3 text-[13px] leading-[1.5] whitespace-pre text-foreground [&_*]:bg-transparent [&_*]:whitespace-pre"
-    style="font-family: SFMono-Regular, Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace; tab-size: 2;"><code
+    class="m-0 overflow-x-auto bg-transparent px-4 py-3 font-mono text-[12px] leading-[1.5] whitespace-pre text-foreground [&_*]:bg-transparent [&_*]:whitespace-pre"
+    style="tab-size: 2;"><code
       >{#if tokenLines}{#each tokenLines as line}<span class="block">{#each line as t}<span style:color={t.color} style:background-color={t.bgColor}>{t.content}</span>{/each}</span>{/each}{:else}{token.text}{/if}</code
     ></pre>
 </div>

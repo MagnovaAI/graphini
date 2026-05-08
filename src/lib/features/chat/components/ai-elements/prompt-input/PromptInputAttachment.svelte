@@ -107,21 +107,20 @@
 {:else}
   <div
     class={cn(
-      'group relative flex h-8 max-w-[240px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded-lg border border-border/70 bg-muted px-2 text-[13px] transition-colors duration-150 hover:border-border',
+      'group relative flex h-8 max-w-[240px] min-w-0 flex-shrink-0 items-center gap-2 rounded-md border border-border bg-background px-2 text-[13px] text-muted-foreground transition-colors duration-150 hover:border-border',
       className
     )}
     title={data.filename || 'File'}
     {...props}>
-    <span class="flex size-5 shrink-0 items-center justify-center rounded {extColor.bg}">
-      <FileText class="size-3 {extColor.icon}" />
-    </span>
-    <span class="min-w-0 flex-1 truncate text-foreground/85">{data.filename || 'File'}</span>
-    <span class="shrink-0 rounded bg-foreground/10 px-1 py-px text-[13px] font-medium {extColor.text}">
+    <FileText class="size-3 shrink-0" />
+    <span class="min-w-0 flex-1 truncate text-foreground/80">{data.filename || 'File'}</span>
+    <span
+      class="shrink-0 rounded bg-muted px-1 py-px text-[13px] font-medium text-muted-foreground">
       {fileExt}
     </span>
     <button
       aria-label="Remove attachment"
-      class="flex h-5 w-0 shrink-0 items-center justify-center overflow-hidden rounded text-muted-foreground opacity-0 transition-[width,opacity,background-color,color] duration-150 group-hover:ml-0.5 group-hover:w-5 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:ml-0.5 focus-visible:w-5 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
+      class="flex h-5 w-0 shrink-0 items-center justify-center overflow-hidden rounded text-muted-foreground opacity-0 transition-[width,opacity,background-color,color] duration-150 group-hover:ml-1 group-hover:w-5 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:ml-1 focus-visible:w-5 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
       onclick={() => attachments.remove(data.id)}
       type="button">
       <X class="size-3" />

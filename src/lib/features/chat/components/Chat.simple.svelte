@@ -167,7 +167,6 @@
 
   function getToolDisplayName(toolName: string) {
     const names: Record<string, string> = {
-      actionItemExtractor: 'Action Items',
       askQuestions: 'Question Tool',
       autoStyler: 'Style Tool',
       dataAnalyzer: 'Data Analyzer',
@@ -177,18 +176,11 @@
       diagramWrite: 'Diagram Write',
       errorChecker: 'Error Checker',
       fileManager: 'Files',
-      gitGuard: 'Git Guard',
       iconSearch: 'Icon Tool',
       iconifier: 'Icon Tool',
-      longTermMemory: 'Memory',
-      planWithProgress: 'Plan Progress',
-      planner: 'Planner',
-      selfCritique: 'Review',
-      sequentialThinking: 'Thinking',
+      markdownRead: 'Markdown Read',
+      markdownWrite: 'Markdown Write',
       styleSearch: 'Style Tool',
-      subagentAssemble: 'Subagent Assemble',
-      subagentFanout: 'Subagent Fanout',
-      tableAnalytics: 'Table Analytics',
       thinking: 'Thinking',
       webSearch: 'Web Search'
     };
@@ -739,7 +731,6 @@
   let toolSimpleExpanded = $state<Record<string, boolean>>({});
 
   const TOOL_VERBS: Record<string, { pending: string; done: string }> = {
-    actionItemExtractor: { pending: 'Extracting', done: 'Extracted' },
     askQuestions: { pending: 'Asking', done: 'Asked' },
     autoStyler: { pending: 'Styling', done: 'Styled' },
     dataAnalyzer: { pending: 'Analyzing', done: 'Analyzed' },
@@ -747,18 +738,11 @@
     diagramRead: { pending: 'Reading', done: 'Read' },
     errorChecker: { pending: 'Checking', done: 'Checked' },
     fileManager: { pending: 'Managing', done: 'Managed' },
-    gitGuard: { pending: 'Verifying', done: 'Verified' },
     iconSearch: { pending: 'Finding icons', done: 'Found icons' },
     iconifier: { pending: 'Iconifying', done: 'Iconified' },
-    longTermMemory: { pending: 'Remembering', done: 'Remembered' },
-    planWithProgress: { pending: 'Planning', done: 'Planned' },
-    planner: { pending: 'Planning', done: 'Planned' },
-    selfCritique: { pending: 'Reviewing', done: 'Reviewed' },
-    sequentialThinking: { pending: 'Thinking', done: 'Thought' },
+    markdownRead: { pending: 'Reading', done: 'Read' },
+    markdownWrite: { pending: 'Writing', done: 'Wrote' },
     styleSearch: { pending: 'Styling', done: 'Styled' },
-    subagentAssemble: { pending: 'Assembling', done: 'Assembled' },
-    subagentFanout: { pending: 'Delegating', done: 'Delegated' },
-    tableAnalytics: { pending: 'Analyzing', done: 'Analyzed' },
     thinking: { pending: 'Thinking', done: 'Thought' },
     webSearch: { pending: 'Searching', done: 'Searched' }
   };
@@ -846,22 +830,6 @@
     const artifactId = `artifact-${safeToolName}-${safeCallId}`;
     artifactIdsByToolCall = { ...artifactIdsByToolCall, [key]: artifactId };
     return artifactId;
-  }
-
-  interface SubagentAssignment {
-    allowedTools?: string[];
-    completedAt?: string;
-    durationMs?: number;
-    events?: { at: string; label: string }[];
-    id: string;
-    modelId?: string;
-    objective: string;
-    ownedPaths?: string[];
-    output?: string;
-    prompt?: string;
-    role: string;
-    startedAt?: string;
-    status?: string;
   }
 
   // Ordered content parts per assistant message: text, artifact refs, and reasoning in stream order
@@ -1024,36 +992,6 @@
     options: { id: string; label: string }[];
   }
 
-  function parseSubagentInput(input: string): {
-    agents?: SubagentAssignment[];
-    task?: string;
-  } {
-    try {
-      const parsed = JSON.parse(input);
-      return {
-        agents: Array.isArray(parsed.agents) ? parsed.agents : undefined,
-        task: typeof parsed.task === 'string' ? parsed.task : undefined
-      };
-    } catch {
-      const taskMatch = input.match(/"task"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-      const roles = [...input.matchAll(/"role"\s*:\s*"([^"]+)"/g)].map((match) => match[1]);
-      const objectives = [...input.matchAll(/"objective"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map(
-        (match) => match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n')
-      );
-      const ids = [...input.matchAll(/"id"\s*:\s*"([^"]+)"/g)].map((match) => match[1]);
-      const agents = roles.map((role, index) => ({
-        id: ids[index] || `agent-${index + 1}`,
-        objective: objectives[index] || 'Preparing assignment…',
-        role
-      }));
-
-      return {
-        agents: agents.length > 0 ? agents : undefined,
-        task: taskMatch?.[1]?.replace(/\\"/g, '"').replace(/\\n/g, '\n')
-      };
-    }
-  }
-
   let questionnaireResponses = $state<Record<string, Record<string, string | string[]>>>({});
   let messageParts = $state<Record<number, ContentPart[]>>({});
 
@@ -1131,8 +1069,12 @@
   let abortController: AbortController | null = $state(null);
 
   let selectedModel = $derived(modelsStore.selectedModel ?? modelsStore.models[0]);
-  // Documents only — PDF, TXT, MD, DOC, DOCX. No images regardless of model support.
-  let attachmentAccept = $derived('.pdf,.txt,.md,.markdown,.doc,.docx');
+  // Documents always; images (.png, .jpg, .jpeg, .webp) only on vision-capable models.
+  let attachmentAccept = $derived(
+    selectedModel?.imageSupport
+      ? '.pdf,.txt,.md,.markdown,.doc,.docx,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp'
+      : '.pdf,.txt,.md,.markdown,.doc,.docx'
+  );
   let hasMessages = $derived(messages.length > 0);
   let hasDiagram = $derived(($stateStore.code || '').trim().length > 20);
 
@@ -1755,6 +1697,24 @@
     });
   }
 
+  // Pin the inner scroll container to the bottom while content streams in.
+  // Re-runs on every text update; stops once streaming flips to false so the
+  // user can scroll back to read earlier reasoning without being yanked down.
+  function autoScroll(node: HTMLElement, params: { isStreaming: boolean; text: string }) {
+    function pinToBottom() {
+      if (params.isStreaming) {
+        node.scrollTop = node.scrollHeight;
+      }
+    }
+    pinToBottom();
+    return {
+      update(next: { isStreaming: boolean; text: string }) {
+        params = next;
+        pinToBottom();
+      }
+    };
+  }
+
   function handleMessagesScroll() {
     if (!messagesContainer) return;
     const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
@@ -2210,9 +2170,6 @@
                     lastPartWasText = false;
 
                     const opMap: Record<string, Artifact['operation']> = {
-                      codePatch: 'patch',
-                      codeRead: 'read',
-                      codeWrite: 'create',
                       diagramDelete: 'delete',
                       diagramPatch: 'patch',
                       diagramRead: 'read',
@@ -2220,9 +2177,6 @@
                     };
                     const op = opMap[currentToolName] || 'update';
                     const titleMap: Record<string, string> = {
-                      codePatch: 'Code Patch',
-                      codeRead: 'Code Read',
-                      codeWrite: 'Code Write',
                       diagramDelete: 'Diagram Delete',
                       diagramPatch: 'Diagram Patch',
                       diagramRead: 'Diagram Read',
@@ -2231,18 +2185,13 @@
 
                     if (
                       currentToolName === 'diagramWrite' ||
-                      currentToolName === 'diagramPatch' ||
-                      currentToolName === 'codeWrite' ||
-                      currentToolName === 'codePatch'
+                      currentToolName === 'diagramPatch'
                     ) {
                       currentArtifactId = getArtifactIdForToolCall(
                         currentToolName,
                         currentToolCallId
                       );
-                      const prevCode =
-                        currentToolName === 'codeWrite' || currentToolName === 'codePatch'
-                          ? artifactMap[currentArtifactId]?.code || ''
-                          : $stateStore.code || '';
+                      const prevCode = $stateStore.code || '';
                       const parts = messageParts[assistantIndex] || [];
                       artifactMap[currentArtifactId] = {
                         code: '',
@@ -2250,10 +2199,7 @@
                         hasErrors: false,
                         id: currentArtifactId,
                         isStreaming: true,
-                        language:
-                          currentToolName === 'codeWrite' || currentToolName === 'codePatch'
-                            ? artifactMap[currentArtifactId]?.language || 'text'
-                            : 'mermaid',
+                        language: 'mermaid',
                         operation: op,
                         previousCode: prevCode,
                         title: titleMap[currentToolName] || 'Processing'
@@ -2282,23 +2228,6 @@
                       });
                       messageParts[assistantIndex] = [...parts];
                       questionnaireResponses[qId] = {};
-                      scrollToBottom();
-                    } else if (currentToolName === 'codeRead') {
-                      const aid = getArtifactIdForToolCall(currentToolName, currentToolCallId);
-                      currentArtifactId = aid;
-                      const parts = messageParts[assistantIndex] || [];
-                      artifactMap[aid] = {
-                        code: '',
-                        id: aid,
-                        isStreaming: true,
-                        language: 'text',
-                        operation: 'read',
-                        previousCode: '',
-                        title: 'Reading Code'
-                      };
-                      artifactMap = { ...artifactMap };
-                      parts.push({ type: 'artifact', artifactId: aid });
-                      messageParts[assistantIndex] = [...parts];
                       scrollToBottom();
                     } else if (
                       currentToolName === 'markdownWrite' ||
@@ -2426,9 +2355,7 @@
                       }
                     } else if (
                       currentToolName === 'diagramWrite' ||
-                      currentToolName === 'diagramPatch' ||
-                      currentToolName === 'codeWrite' ||
-                      currentToolName === 'codePatch'
+                      currentToolName === 'diagramPatch'
                     ) {
                       const artifactId = getArtifactIdForToolCall(
                         currentToolName,
@@ -2436,9 +2363,6 @@
                       );
                       const contentMatch = currentToolInputJson.match(
                         /"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/
-                      );
-                      const languageMatch = currentToolInputJson.match(
-                        /"language"\s*:\s*"((?:[^"\\]|\\.)*)"/
                       );
                       if (contentMatch) {
                         const rawCode = contentMatch[1]
@@ -2451,10 +2375,7 @@
                           artifactMap[artifactId] = {
                             ...artifactMap[artifactId],
                             code: rawCode,
-                            language:
-                              languageMatch?.[1] ||
-                              artifactMap[artifactId].language ||
-                              (currentToolName.startsWith('code') ? 'text' : 'mermaid')
+                            language: artifactMap[artifactId].language || 'mermaid'
                           };
                           artifactMap = { ...artifactMap };
                           // Live canvas preview: diagramWrite streams full source; diagramPatch streams
@@ -2514,12 +2435,6 @@
                           const r = reasonMatch?.[1]?.replace(/\\"/g, '"');
                           if (r) details = [r];
                         }
-                      } else if (currentToolName === 'planner') {
-                        const taskMatch = currentToolInputJson.match(
-                          /"task"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (taskMatch)
-                          subtitle = taskMatch[1].replace(/\\"/g, '"').slice(0, 80);
                       } else if (currentToolName === 'thinking') {
                         const focusMatch = currentToolInputJson.match(
                           /"focus"\s*:\s*"((?:[^"\\]|\\.)*)"/
@@ -2531,53 +2446,13 @@
                           subtitle = summaryMatch[1].replace(/\\"/g, '"').slice(0, 80);
                         else if (focusMatch)
                           subtitle = focusMatch[1].replace(/\\"/g, '"').slice(0, 80);
-                      } else if (currentToolName === 'selfCritique') {
-                        const targetMatch = currentToolInputJson.match(
-                          /"target"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (targetMatch)
-                          subtitle = targetMatch[1].replace(/\\"/g, '"').slice(0, 80);
                       } else if (currentToolName === 'errorChecker') {
                         subtitle = 'diagram syntax';
-                      } else if (currentToolName === 'longTermMemory') {
-                        const opMatch = currentToolInputJson.match(
-                          /"operation"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (opMatch) subtitle = opMatch[1];
                       } else if (currentToolName === 'fileManager') {
                         const opMatch = currentToolInputJson.match(
                           /"operation"\s*:\s*"((?:[^"\\]|\\.)*)"/
                         );
                         if (opMatch) subtitle = opMatch[1];
-                      } else if (currentToolName === 'planWithProgress') {
-                        const opMatch = currentToolInputJson.match(
-                          /"operation"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        const titleMatch = currentToolInputJson.match(
-                          /"title"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (titleMatch) subtitle = titleMatch[1].replace(/\\"/g, '"').slice(0, 80);
-                        else if (opMatch) subtitle = opMatch[1];
-                      } else if (currentToolName === 'sequentialThinking') {
-                        const thoughtMatch = currentToolInputJson.match(
-                          /"thoughtNumber"\s*:\s*(\d+)/
-                        );
-                        const totalMatch = currentToolInputJson.match(
-                          /"totalThoughts"\s*:\s*(\d+)/
-                        );
-                        if (thoughtMatch && totalMatch)
-                          subtitle = `step ${thoughtMatch[1]}/${totalMatch[1]}`;
-                      } else if (currentToolName === 'subagentFanout') {
-                        const parsed = parseSubagentInput(currentToolInputJson);
-                        if (parsed.agents?.length) {
-                          subtitle = `${parsed.agents.length} subagent${parsed.agents.length !== 1 ? 's' : ''}`;
-                          details = [
-                            ...(parsed.task ? [`Task: ${parsed.task}`] : []),
-                            ...parsed.agents.map(
-                              (agent) => `${agent.role}: ${agent.objective}`
-                            )
-                          ];
-                        }
                       }
                       if (subtitle !== undefined || details !== undefined) {
                         updateToolSimple(assistantIndex, currentToolCallId, {
@@ -2621,51 +2496,6 @@
                       }
                       messageParts[assistantIndex] = [...parts];
                       lastPartWasText = false;
-                      scrollToBottom();
-                    } else if (
-                      output &&
-                      typeof output.content === 'string' &&
-                      (toolName === 'codeRead' ||
-                        toolName === 'codeWrite' ||
-                        toolName === 'codePatch')
-                    ) {
-                      const aid = getArtifactIdForToolCall(toolName, data.toolCallId);
-                      const codeContent = output.content || '';
-                      artifactMap[aid] = {
-                        code: codeContent,
-                        id: aid,
-                        isStreaming: false,
-                        language: output.language || artifactMap[aid]?.language || 'text',
-                        operation:
-                          toolName === 'codeRead'
-                            ? 'read'
-                            : toolName === 'codePatch'
-                              ? 'patch'
-                              : 'create',
-                        previousCode: artifactMap[aid]?.previousCode || '',
-                        readFrom: output.readFrom,
-                        readTo: output.readTo,
-                        title:
-                          toolName === 'codeRead'
-                            ? 'Code Read'
-                            : toolName === 'codePatch'
-                              ? 'Code Patch'
-                              : 'Code Write',
-                        totalLines: output.totalLines || output.lines
-                      };
-                      artifactMap = { ...artifactMap };
-                      const parts = messageParts[assistantIndex] || [];
-                      if (!parts.some((p) => p.type === 'artifact' && p.artifactId === aid)) {
-                        parts.push({ type: 'artifact', artifactId: aid });
-                        messageParts[assistantIndex] = [...parts];
-                      }
-                      if (
-                        output.success === true &&
-                        typeof output.content === 'string' &&
-                        (toolName === 'codeWrite' || toolName === 'codePatch')
-                      ) {
-                        applyToolSourceToActiveTab(output.content, output);
-                      }
                       scrollToBottom();
                     } else if (
                       output &&
@@ -2751,9 +2581,6 @@
                       toolName !== 'diagramDelete' &&
                       toolName !== 'markdownRead' &&
                       toolName !== 'markdownWrite' &&
-                      toolName !== 'codeRead' &&
-                      toolName !== 'codeWrite' &&
-                      toolName !== 'codePatch' &&
                       toolName !== 'askQuestions'
                     ) {
                       // For errorChecker: run real mermaid.parse() on client
@@ -2822,31 +2649,8 @@
                         if (output.nodesStyled !== undefined)
                           parts.push(`${output.nodesStyled} node${output.nodesStyled !== 1 ? 's' : ''}`);
                         subtitle = parts.join(' · ') || (output.summary as string) || '';
-                      } else if (toolName === 'planner') {
-                        subtitle = output.task
-                          ? String(output.task).slice(0, 80)
-                          : '';
-                      } else if (toolName === 'selfCritique') {
-                        subtitle = (output.summary as string)?.slice(0, 80) || '';
-                      } else if (toolName === 'sequentialThinking') {
-                        subtitle = output.isComplete
-                          ? `${output.totalThoughts} steps`
-                          : `${output.thoughtNumber}/${output.totalThoughts}`;
-                      } else if (toolName === 'subagentFanout') {
-                        const n = output.assignments?.length || 0;
-                        subtitle = n ? `${n} subagent${n !== 1 ? 's' : ''}` : '';
-                      } else if (toolName === 'subagentAssemble') {
-                        const n = output.integrationPlan?.length || 0;
-                        subtitle = n ? `${n} output${n !== 1 ? 's' : ''}` : '';
                       } else if (toolName === 'thinking') {
                         subtitle = (output.summary as string)?.slice(0, 80) || '';
-                      } else if (toolName === 'actionItemExtractor') {
-                        const n = output.actionItems?.length || 0;
-                        subtitle = n ? `${n} item${n !== 1 ? 's' : ''}` : '';
-                      } else if (toolName === 'gitGuard') {
-                        subtitle = output.clean
-                          ? 'safe'
-                          : `${output.changedPaths?.length || 0} changed path${output.changedPaths?.length !== 1 ? 's' : ''}`;
                       } else if (output.summary) {
                         subtitle = String(output.summary).slice(0, 80);
                       } else if (output.message) {
@@ -2890,27 +2694,6 @@
                                 `${r.title || r.url || ''}${r.snippet ? ` — ${String(r.snippet).slice(0, 100)}` : ''}`
                             )
                         );
-                      } else if (toolName === 'planner') {
-                        if (output.task) toolDetails.push(`Task: ${output.task}`);
-                        if (output.currentState) {
-                          if (output.currentState.hasDiagram)
-                            toolDetails.push(`Diagram: ${output.currentState.diagramLines} lines`);
-                          if (output.currentState.hasDocument)
-                            toolDetails.push(
-                              `Document: ${output.currentState.documentLines} lines`
-                            );
-                        }
-                        if (output.instruction) toolDetails.push(String(output.instruction));
-                      } else if (toolName === 'selfCritique' && output.improvements) {
-                        toolDetails.push(
-                          ...output.improvements.map((imp: string | Record<string, unknown>) =>
-                            typeof imp === 'string'
-                              ? imp
-                              : (imp.description as string) ||
-                                (imp.title as string) ||
-                                JSON.stringify(imp)
-                          )
-                        );
                       } else if (toolName === 'thinking') {
                         if (output.focus) toolDetails.push(`Focus: ${output.focus}`);
                         if (output.summary) toolDetails.push(String(output.summary));
@@ -2947,35 +2730,6 @@
                                   ? `${item.nodeId}: ${item.iconId} (${item.colorMode || 'any'}, ${item.source || 'local'}, ${Math.round((item.confidence || 0) * 100)}%)`
                                   : `${item.nodeId}: no match`
                             )
-                        );
-                      } else if (toolName === 'gitGuard') {
-                        if (output.requestedPaths?.length)
-                          toolDetails.push(`Requested: ${output.requestedPaths.join(', ')}`);
-                        if (output.changedPaths?.length)
-                          toolDetails.push(`Changed: ${output.changedPaths.join(', ')}`);
-                        if (output.protectedPaths?.length)
-                          toolDetails.push(`Protected: ${output.protectedPaths.join(', ')}`);
-                        if (output.requiresUserConfirmation)
-                          toolDetails.push(
-                            'User confirmation required before overwriting dirty paths'
-                          );
-                      } else if (toolName === 'subagentFanout') {
-                        if (output.task) toolDetails.push(`Task: ${output.task}`);
-                        if (output.durationMs)
-                          toolDetails.push(`Duration: ${(output.durationMs / 1000).toFixed(1)}s`);
-                        if (output.assignments?.length)
-                          toolDetails.push(
-                            ...output.assignments.map(
-                              (a: { id: string; role: string; objective: string }) =>
-                                `${a.id} (${a.role}): ${a.objective}`
-                            )
-                          );
-                      } else if (toolName === 'subagentAssemble' && output.integrationPlan?.length) {
-                        toolDetails.push(
-                          ...output.integrationPlan.map(
-                            (item: { agentId: string; order: number; summary: string }) =>
-                              `${item.order}. ${item.agentId}: ${item.summary}`
-                          )
                         );
                       }
 
@@ -3231,7 +2985,7 @@
     {:else if !hasMessages}
       <div class="mx-auto flex h-full w-full max-w-3xl flex-col justify-center gap-8 px-4 py-10">
         <h2
-          class="text-center text-[28px] font-medium tracking-normal text-foreground sm:text-[32px]">
+          class="text-center text-[40px] font-medium tracking-normal text-foreground sm:text-[40px]">
           Where should we begin?
         </h2>
         <div class="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
@@ -3270,9 +3024,9 @@
                   <Undo2 class="size-4" />
                 </button>
               {/if}
-              <div class="flex max-w-[92%] flex-col items-end gap-1.5">
+              <div class="flex max-w-[92%] flex-col items-end gap-2">
                 {#if message.attachments?.length > 0}
-                  <div class="flex flex-wrap justify-end gap-1.5">
+                  <div class="flex flex-wrap justify-end gap-2">
                     {#each message.attachments as att, attIdx (attachmentKey(att, attIdx))}
                       {#if att.mediaType?.startsWith('image/') && att.url}
                         <div
@@ -3285,7 +3039,7 @@
                         </div>
                       {:else}
                         <div
-                          class="flex h-8 max-w-[220px] min-w-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[13px] text-muted-foreground"
+                          class="flex h-8 max-w-[220px] min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2 text-[13px] text-muted-foreground"
                           title={att.filename}>
                           <FileText class="size-3.5 shrink-0" />
                           <span class="min-w-0 truncate text-foreground/80"
@@ -3312,7 +3066,7 @@
                       .filter(Boolean) as Array<{ q: string; a: string }>}
                     <div
                       class="inline-block max-w-[420px] rounded-lg rounded-tr-sm bg-muted px-3 py-2 text-left text-[13px] leading-relaxed">
-                      <div class="space-y-1.5">
+                      <div class="space-y-2">
                         {#each qaPairs as pair}
                           <div class="flex items-start gap-1">
                             <span class="mt-[8px] size-1 shrink-0 rounded-full bg-muted-foreground/50"></span>
@@ -3337,7 +3091,7 @@
           {:else if message.role === 'assistant'}
             <!-- Assistant Response (left-aligned) -->
             <div class="cv-auto">
-              <div class="max-w-[95%] space-y-2.5">
+              <div class="max-w-[95%] space-y-3">
                 {#if messageParts[i] && messageParts[i].length > 0}
                   {#each chainDisplayParts(messageParts[i]) as part, pi (contentPartKey(part, pi))}
                     {#if part.type === 'text' && part.text}
@@ -3345,7 +3099,7 @@
                         <Response content={part.text} />
                       </div>
                     {:else if part.type === 'thinking'}
-                      <div class="flex items-center px-2 py-0.5 text-[13px]" aria-live="polite">
+                      <div class="flex items-center px-2 py-1 text-[13px]" aria-live="polite">
                         <span class="thinking-shimmer font-medium">Thinking</span>
                       </div>
                     {:else if part.type === 'reasoning'}
@@ -3363,7 +3117,7 @@
                       )}
                       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                       <div
-                        class="group flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-[13px]"
+                        class="group flex cursor-pointer items-center gap-2 px-2 py-1 text-[13px]"
                         role="button"
                         tabindex="0"
                         onclick={() => {
@@ -3403,7 +3157,11 @@
                       {#if isReasoningExpanded && part.text}
                         <div
                           class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
-                          style="max-height: 220px; background-color: var(--tool-box-bg);">
+                          style="max-height: 220px; background-color: var(--tool-box-bg);"
+                          use:autoScroll={{
+                            isStreaming: reasoningIsStreaming,
+                            text: part.text
+                          }}>
                           <p
                             class="text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
                             {part.text}
@@ -3416,7 +3174,7 @@
                       {@const expandedKey = `tool-simple-expanded:${part.id}`}
                       {@const isToolExpanded = toolSimpleExpanded[expandedKey] === true}
                       <div
-                        class="group flex items-center gap-1.5 px-2 py-0.5 {hasDetails
+                        class="group flex items-center gap-2 px-2 py-1 {hasDetails
                           ? 'cursor-pointer'
                           : ''}"
                         role={hasDetails ? 'button' : undefined}
@@ -3463,48 +3221,18 @@
                             class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
                               ? 'animate-pulse'
                               : ''}" />
-                        {:else if part.toolName === 'selfCritique'}
-                          <Brain
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'planner' || part.toolName === 'planWithProgress'}
-                          <ClipboardCheck
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'actionItemExtractor'}
-                          <ListChecks
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'tableAnalytics' || part.toolName === 'dataAnalyzer'}
+                        {:else if part.toolName === 'dataAnalyzer'}
                           <ChartBar
                             class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
                               ? 'animate-pulse'
                               : ''}" />
-                        {:else if part.toolName === 'longTermMemory'}
-                          <BookOpen
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'subagentFanout' || part.toolName === 'subagentAssemble'}
-                          <Network
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'thinking' || part.toolName === 'sequentialThinking'}
+                        {:else if part.toolName === 'thinking'}
                           <Lightbulb
                             class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
                               ? 'animate-pulse'
                               : ''}" />
                         {:else if part.toolName === 'askQuestions'}
                           <MessageCircleQuestion
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'gitGuard'}
-                          <Lock
                             class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
                               ? 'animate-pulse'
                               : ''}" />
@@ -3524,7 +3252,7 @@
                               ? 'animate-pulse'
                               : ''}" />
                         {/if}
-                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-muted-foreground">
+                        <div class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if isPending}
                               <span
@@ -3551,10 +3279,10 @@
                         <div
                           class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
                           style="max-height: 250px; background-color: var(--tool-box-bg);">
-                          <div class="space-y-0.5">
+                          <div class="space-y-1">
                             {#each part.details ?? [] as detail, dIdx (`${detail}:${dIdx}`)}
-                              <div class="flex items-start gap-1.5 text-[13px] leading-relaxed text-muted-foreground/75">
-                                <span class="mt-0.5 shrink-0 text-muted-foreground/40">·</span>
+                              <div class="flex items-start gap-2 text-[13px] leading-relaxed text-muted-foreground/75">
+                                <span class="mt-1 shrink-0 text-muted-foreground/40">·</span>
                                 <span class="min-w-0">{detail}</span>
                               </div>
                             {/each}
@@ -3578,7 +3306,7 @@
                             if (chev) chev.classList.toggle('rotate-90');
                           }}>
                           <div
-                            class="flex size-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-500">
+                            class="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                             <GitBranch
                               class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                           </div>
@@ -3595,7 +3323,7 @@
                           </span>
                           {#if part.status === 'running'}
                             {@const dotColor = 'bg-muted-foreground/40'}
-                            <div class="flex items-center gap-0.5">
+                            <div class="flex items-center gap-1">
                               <span
                                 class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:0ms]"
                               ></span>
@@ -3618,7 +3346,7 @@
                         <div
                           class="{part.status === 'running'
                             ? ''
-                            : 'hidden'} px-3 py-2.5"
+                            : 'hidden'} px-3 py-3"
                           style="max-height: 280px; overflow-y: auto;">
                           <div class="space-y-0">
                             {#each part.parts as toolPart, chainIdx (contentPartKey(toolPart, chainIdx))}
@@ -3642,7 +3370,7 @@
                                     {/if}
                                   </div>
                                 </div>
-                                <div class="min-w-0 flex-1 rounded-md bg-background/45 px-2 py-1.5">
+                                <div class="min-w-0 flex-1 rounded-md bg-background/45 px-2 py-2">
                                   <div class="flex min-w-0 items-center gap-2 text-[13px]">
                                     <span
                                       class="min-w-0 flex-1 truncate font-medium text-foreground/75">
@@ -3653,12 +3381,12 @@
                                     </span>
                                   </div>
                                   {#if details.length > 0}
-                                    <details class="mt-1.5">
+                                    <details class="mt-2">
                                       <summary
                                         class="cursor-pointer text-[13px] font-medium text-muted-foreground/70">
                                         Preview
                                       </summary>
-                                      <div class="mt-1 space-y-0.5">
+                                      <div class="mt-1 space-y-1">
                                         {#each details as detail, detailIdx (`${detail}:${detailIdx}`)}
                                           <div
                                             class="truncate text-[13px] leading-relaxed text-muted-foreground/75">
@@ -3691,14 +3419,14 @@
                     {:else if part.type === 'error'}
                       <!-- Error with retry -->
                       <div
-                        class="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5">
-                        <AlertCircle class="size-4 shrink-0 text-red-500" />
+                        class="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
+                        <AlertCircle class="size-4 shrink-0 text-destructive" />
                         <p class="flex-1 text-[13px] font-medium text-destructive">
                           Some error occurred
                         </p>
                         <button
                           type="button"
-                          class="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-2.5 py-1 text-[13px] font-medium text-destructive transition-colors hover:bg-destructive/20"
+                          class="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-3 py-1 text-[13px] font-medium text-destructive transition-colors hover:bg-destructive/20"
                           onclick={() =>
                             retryMessage(
                               part.userMessage ||
@@ -3725,7 +3453,7 @@
                             ? 'Appended'
                             : 'Wrote'}
                       <div
-                        class="group flex items-start gap-1.5 px-2 py-0.5 {mdHasContent
+                        class="group flex items-start gap-2 px-2 py-1 {mdHasContent
                           ? 'cursor-pointer'
                           : ''}"
                         role={mdHasContent ? 'button' : undefined}
@@ -3751,7 +3479,7 @@
                           class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
-                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-muted-foreground">
+                        <div class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if part.isStreaming}
                               <span
@@ -3782,12 +3510,12 @@
                       {/if}
                     {:else if part.type === 'questionnaire'}
                       <!-- Compact summary; the actual answer UI is rendered in the input area below -->
-                      <div class="flex items-center gap-1.5 px-2 py-0.5">
+                      <div class="flex items-center gap-2 px-2 py-1">
                         <MessageCircleQuestion
                           class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
-                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-muted-foreground">
+                        <div class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if part.isStreaming}
                               <span
@@ -3841,13 +3569,13 @@
   {#if fileError}
     <div class="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 sm:px-4">
       <div
-        class="flex w-full items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-[13px] font-medium text-destructive">
+        class="flex w-full items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[13px] font-medium text-destructive">
         <AlertCircle class="size-3.5 shrink-0" />
         <span class="flex-1 truncate">{fileError}</span>
         <button
           type="button"
           aria-label="Dismiss file error"
-          class="shrink-0 text-red-400 hover:text-red-300"
+          class="shrink-0 text-destructive hover:text-destructive"
           onclick={() => {
             fileError = null;
           }}>✕</button>
@@ -3863,7 +3591,7 @@
       {#if qPart}
       <div
         class="overflow-hidden rounded-2xl border border-border/50 bg-sidebar text-foreground">
-        <div class="flex items-center gap-2 border-b border-border/40 px-3.5 py-2">
+        <div class="flex items-center gap-2 border-b border-border/40 px-4 py-2">
           <MessageCircleQuestion class="size-3.5 flex-shrink-0 text-muted-foreground/70" />
           <span class="text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
             {qPart.questions.length} question{qPart.questions.length !== 1 ? 's' : ''}
@@ -3889,7 +3617,7 @@
             </TooltipWrap>
           </div>
         </div>
-        <div class="max-h-[40vh] overflow-y-auto px-3.5 py-3">
+        <div class="max-h-[40vh] overflow-y-auto px-4 py-3">
           {#if qPart.context}
             <p class="mb-3 text-[13px] leading-relaxed text-muted-foreground/70">
               {qPart.context}
@@ -3898,11 +3626,11 @@
           <div class="space-y-3">
             {#each qPart.questions as q, qi (q.id)}
               <div>
-                <p class="mb-1.5 text-[13px] font-medium text-foreground/85">
+                <p class="mb-2 text-[13px] font-medium text-foreground/85">
                   {qi + 1}. {q.text}
                 </p>
                 {#if q.options.length > 0}
-                  <div class="flex flex-wrap gap-1.5">
+                  <div class="flex flex-wrap gap-2">
                     {#each q.options as opt (opt.id)}
                       {@const respVal = (questionnaireResponses[qPart.id] || {})[q.id]}
                       {@const isSelected =
@@ -3911,7 +3639,7 @@
                           : respVal === opt.label}
                       <button
                         type="button"
-                        class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] transition-all {isSelected
+                        class="flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-[13px] transition-all {isSelected
                           ? 'border-foreground/40 bg-foreground/10 text-foreground'
                           : 'border-border/60 text-foreground/75 hover:border-foreground/30 hover:bg-foreground/5'}"
                         onclick={() => {
@@ -3941,7 +3669,7 @@
             {/each}
           </div>
         </div>
-        <div class="flex items-center justify-end gap-2 px-3.5 py-2">
+        <div class="flex items-center justify-end gap-2 px-4 py-2">
           <button
             type="button"
             class="cursor-pointer rounded-md px-3 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
@@ -3959,7 +3687,7 @@
           </button>
           <button
             type="button"
-            class="cursor-pointer rounded-full bg-foreground px-4 py-1.5 text-[13px] font-medium text-background transition-transform duration-150 hover:scale-105 active:scale-95"
+            class="cursor-pointer rounded-full bg-foreground px-4 py-2 text-[13px] font-medium text-background transition-transform duration-150 hover:scale-105 active:scale-95"
             onclick={() =>
               handleQuestionnaireSubmit(
                 qPart.id,
@@ -3974,7 +3702,8 @@
       {/if}
     {:else}
     <PromptInput
-      class="overflow-hidden rounded-2xl border border-border/50 bg-sidebar text-foreground transition-[border-color] duration-150 focus-within:border-foreground/30"
+      class="overflow-hidden rounded-2xl border border-border/50 text-foreground transition-[border-color] duration-150 focus-within:border-foreground/30"
+      style="background-color: var(--chat-input-bg);"
       accept={attachmentAccept}
       multiple
       maxFileSize={20 * 1024 * 1024}
@@ -3995,10 +3724,16 @@
       </PromptInputAttachments>
       <PromptInputBody>
         <Textarea
-          class="field-sizing-content block w-full resize-none rounded-none border-none bg-transparent px-3 pt-2.5 pb-1 text-[13px] leading-[1.45] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/45 focus-visible:ring-0 dark:bg-transparent"
-          style="min-height: 36px; max-height: min(200px, 35vh);"
+          class="field-sizing-content block w-full resize-none rounded-none border-none bg-transparent px-3 pt-3 pb-1 text-[13px] leading-[1.45] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/45 focus-visible:ring-0 dark:bg-transparent"
+          style="min-height: var(--ds-input-min-height); max-height: var(--ds-input-max-height);"
           name="message"
           aria-label="Message"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-1p-ignore
+          data-lpignore="true"
           placeholder={selectedContext.type
             ? `Ask about the selected ${selectedContext.type}…`
             : 'Describe your diagram…'}
@@ -4012,10 +3747,13 @@
             }
           }} />
       </PromptInputBody>
-      <PromptInputToolbar class="px-2 pb-1.5">
-        <PromptInputTools>
+      <PromptInputToolbar class="gap-2 px-2 pt-0 pb-2">
+        <PromptInputTools class="gap-2">
           <!-- Attachment button -->
-          <TooltipWrap text="Attach PDF, DOC, TXT, or Markdown">
+          <TooltipWrap
+            text={selectedModel?.imageSupport
+              ? 'Attach PDF, DOC, TXT, Markdown, or image'
+              : 'Attach PDF, DOC, TXT, or Markdown'}>
             <button
               type="button"
               class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
@@ -4035,14 +3773,14 @@
               <button
                 type="button"
                 class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground {isImprovingPrompt
-                  ? 'bg-violet-500/10 text-violet-500'
+                  ? 'bg-primary/10 text-primary'
                   : ''}"
                 aria-label={isImprovingPrompt ? 'Improving prompt' : 'Improve prompt'}
                 disabled={isImprovingPrompt || isLoading}
                 onclick={improvePrompt}>
                 {#if isImprovingPrompt}
                   <div
-                    class="size-3 animate-spin rounded-full border-2 border-violet-500 border-t-transparent">
+                    class="size-3 animate-spin rounded-full border-2 border-primary border-t-transparent">
                   </div>
                 {:else}
                   <Sparkles class="size-3.5" />
@@ -4063,7 +3801,7 @@
             }}>
             <Popover.Trigger
               aria-label="Select model"
-              class="flex h-7 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-muted-foreground transition-[background-color,color] duration-150 ease-out outline-offset-2 hover:bg-foreground/10 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
+              class="flex h-7 max-w-[200px] cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] font-medium text-muted-foreground transition-[background-color,color] duration-150 ease-out outline-offset-2 hover:bg-foreground/10 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
               <ProviderIcon
                 provider={selectedModel?.provider}
                 modelId={selectedModel?.id}
@@ -4114,7 +3852,7 @@
                     </div>
                   </div>
                 {:else if filteredModels.length === 0}
-                  <div class="flex flex-col items-center justify-center gap-1.5 py-8">
+                  <div class="flex flex-col items-center justify-center gap-2 py-8">
                     <Search class="size-4 text-muted-foreground/20" />
                     <span class="text-[13px] text-muted-foreground/60">No models</span>
                   </div>
@@ -4123,7 +3861,7 @@
                     {#if gIdx > 0}
                       <div class="my-1 h-px bg-border/40"></div>
                     {/if}
-                    <div class="px-2 pt-1.5 pb-0.5">
+                    <div class="px-2 pt-2 pb-1">
                       <span
                         class="text-[13px] font-semibold tracking-wider text-muted-foreground/60 uppercase"
                         >{providerLabel(provider)}</span>
@@ -4161,7 +3899,9 @@
           </Popover.Root>
           <!-- Context usage -->
           <TooltipWrap text={contextTitle}>
-            <div class="flex size-7 items-center justify-center" aria-label={contextTitle}>
+            <div
+              class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
+              aria-label={contextTitle}>
             <svg class="size-5" viewBox="0 0 36 36">
               <circle
                 cx="18"
@@ -4185,7 +3925,7 @@
             </div>
           </TooltipWrap>
         </PromptInputTools>
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-2">
           <!-- Mic button -->
           <TooltipWrap
             text={isRecording
@@ -4239,7 +3979,7 @@
               role="status"
               aria-label="Processing files">
               <div
-                class="size-3.5 animate-spin rounded-full border-2 border-amber-500/30 border-t-amber-500">
+                class="size-3.5 animate-spin rounded-full border-2 border-warning/20 border-t-amber-500">
               </div>
             </div>
           {:else if isLoading}

@@ -52,7 +52,7 @@
   class={cn('overflow-hidden transition-[height] duration-200 ease-out', className)}
   style:height="{computedHeight}px"
   {...props}>
-  <div class="space-y-2 px-3 pt-2.5 pb-1" bind:this={contentRef}>
+  <div class="space-y-2 px-3 pt-3 pb-1" bind:this={contentRef}>
     <!-- Non-image files first -->
     {#if nonImageFiles.length > 0}
       <div class="flex flex-wrap gap-2">

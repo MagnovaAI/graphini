@@ -95,7 +95,7 @@
         isExpanded = !isExpanded;
       }
     }}
-    class="group flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-[13px]">
+    class="group flex cursor-pointer items-center gap-2 px-2 py-1 text-[13px]">
     <span class="flex-shrink-0 font-medium whitespace-nowrap">
       {#if isStreaming}
         <span class="reasoning-shimmer inline-flex h-4 items-center text-[13px] leading-none"
