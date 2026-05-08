@@ -40,7 +40,6 @@ function getIconIndex(): IconEntry[] {
     const raw = fs.readFileSync(indexPath, 'utf-8');
     const data = JSON.parse(raw);
     _iconIndex = data.icons as IconEntry[];
-    console.log(`[iconifier] Loaded ${_iconIndex.length} icons from local index`);
   } catch (e) {
     console.error('[iconifier] Failed to load icon index:', e);
     _iconIndex = [];

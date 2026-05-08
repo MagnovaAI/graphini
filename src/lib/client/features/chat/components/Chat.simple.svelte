@@ -2776,24 +2776,15 @@
                         0,
                         Math.floor(reasoningElapsedMs / 1000)
                       )}
-                      <div
-                        class="group flex cursor-pointer items-center gap-2 px-2 py-1 text-[13px]"
-                        role="button"
-                        tabindex="0"
+                      <button
+                        type="button"
+                        class="group flex cursor-pointer items-center gap-2 px-2 py-1 text-left text-[13px]"
+                        aria-expanded={isReasoningExpanded}
                         onclick={() => {
                           reasoningExpanded = {
                             ...reasoningExpanded,
                             [reasoningKey]: !isReasoningExpanded
                           };
-                        }}
-                        onkeydown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            reasoningExpanded = {
-                              ...reasoningExpanded,
-                              [reasoningKey]: !isReasoningExpanded
-                            };
-                          }
                         }}>
                         <span class="flex-shrink-0 font-medium whitespace-nowrap">
                           {#if reasoningIsStreaming}
@@ -2813,7 +2804,7 @@
                           class="size-3.5 flex-shrink-0 text-muted-foreground/60 transition-transform duration-200 ease-out {isReasoningExpanded
                             ? 'rotate-90'
                             : 'opacity-0 group-hover:opacity-100'}" />
-                      </div>
+                      </button>
                       {#if isReasoningExpanded && part.text}
                         <div
                           class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"

@@ -34,22 +34,14 @@
     if (!hasDetails) return;
     isExpanded = !isExpanded;
   }
-
-  function handleKey(e: KeyboardEvent) {
-    if (!hasDetails) return;
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggle();
-    }
-  }
 </script>
 
-<div
-  class="group flex items-center gap-2 px-2 py-1 {hasDetails ? 'cursor-pointer' : ''}"
-  role={hasDetails ? 'button' : undefined}
-  tabindex={hasDetails ? 0 : undefined}
-  onclick={toggle}
-  onkeydown={handleKey}>
+<svelte:element
+  this={hasDetails ? 'button' : 'div'}
+  type={hasDetails ? 'button' : undefined}
+  class="group flex items-center gap-2 px-2 py-1 {hasDetails ? 'w-full cursor-pointer text-left' : ''}"
+  aria-expanded={hasDetails ? isExpanded : undefined}
+  onclick={toggle}>
   {#if toolName === 'autoStyler' || toolName === 'styleSearch'}
     <Paintbrush
       class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending ? 'animate-pulse' : ''}" />
@@ -104,7 +96,7 @@
           : 'opacity-0 group-hover:opacity-100'}" />
     {/if}
   </div>
-</div>
+</svelte:element>
 {#if hasDetails && isExpanded}
   <div
     class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
