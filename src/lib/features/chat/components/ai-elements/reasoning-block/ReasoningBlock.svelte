@@ -1,18 +1,34 @@
 <script lang="ts">
-  import { ChevronDown, ChevronRight, Sparkles } from 'lucide-svelte';
+  import { ChevronRight } from 'lucide-svelte';
 
   interface Props {
     content: string;
     isStreaming?: boolean;
     durationMs?: number;
+    startedAt?: number;
   }
 
-  let { content, isStreaming = false, durationMs }: Props = $props();
+  let { content, isStreaming = false, durationMs, startedAt }: Props = $props();
 
-  let isCollapsed = $state(false);
+  const PREVIEW_LENGTH = 60;
+
+  let isExpanded = $state(isStreaming);
   let collapseInitialized = false;
   let wasStreaming = false;
-  let contentEl: HTMLDivElement | undefined = $state();
+  let scrollEl: HTMLDivElement | undefined = $state();
+  let isOverflowing = $state(false);
+
+  // Auto-collapse when streaming ends
+  $effect(() => {
+    if (!collapseInitialized) {
+      isExpanded = isStreaming;
+      wasStreaming = isStreaming;
+      collapseInitialized = true;
+    } else if (wasStreaming && !isStreaming) {
+      isExpanded = false;
+    }
+    wasStreaming = isStreaming;
+  });
 
   // Clean content: strip markdown artifacts for display
   let displayContent = $derived(
@@ -25,81 +41,91 @@
       .trim()
   );
 
-  let tokenCount = $derived(Math.max(0, Math.ceil(displayContent.length / 4)));
+  let previewText = $derived(displayContent.slice(0, PREVIEW_LENGTH).replace(/\n/g, ' '));
 
-  let formattedDuration = $derived.by(() => {
-    if (!durationMs) return '';
-    if (durationMs < 1000) return `${durationMs}ms`;
-    const s = (durationMs / 1000).toFixed(1);
-    return `${s}s`;
+  // Live elapsed time while streaming
+  let startedAtMs = startedAt ?? Date.now();
+  let nowMs = $state(Date.now());
+  $effect(() => {
+    if (!isStreaming) return;
+    nowMs = Date.now();
+    const interval = setInterval(() => {
+      nowMs = Date.now();
+    }, 1000);
+    return () => clearInterval(interval);
   });
 
-  // Keep streaming thoughts open, then collapse once the final content arrives.
-  $effect(() => {
-    if (!collapseInitialized) {
-      isCollapsed = !isStreaming;
-      wasStreaming = isStreaming;
-      collapseInitialized = true;
-    } else if (isStreaming && !wasStreaming) {
-      isCollapsed = false;
-    } else if (wasStreaming && !isStreaming && content.length > 0) {
-      isCollapsed = true;
-    }
-    wasStreaming = isStreaming;
-  });
+  function formatElapsed(ms: number): string {
+    if (ms < 1000) return '';
+    const seconds = Math.floor(ms / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const rem = seconds % 60;
+    if (rem === 0) return `${minutes}m`;
+    return `${minutes}m ${rem}s`;
+  }
 
-  // Auto-scroll during streaming
+  let elapsedDisplay = $derived(
+    isStreaming
+      ? formatElapsed(nowMs - startedAtMs)
+      : durationMs
+        ? formatElapsed(durationMs)
+        : ''
+  );
+
+  // Auto-scroll + check overflow during streaming
   $effect(() => {
-    if (isStreaming && contentEl) {
-      contentEl.scrollTop = contentEl.scrollHeight;
+    void displayContent;
+    if (isStreaming && isExpanded && scrollEl) {
+      isOverflowing = scrollEl.scrollHeight > scrollEl.clientHeight;
+      scrollEl.scrollTop = scrollEl.scrollHeight;
     }
   });
 </script>
 
-<div
-  class="overflow-hidden rounded-lg border transition-colors duration-150
-    {isStreaming
-    ? 'border-border bg-muted/30'
-    : 'border-border/50 bg-muted/20 hover:border-border'}">
+<div>
   <!-- Header -->
-  <button
-    type="button"
-    onclick={() => (isCollapsed = !isCollapsed)}
-    class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30">
-    <!-- Icon -->
-    <div
-      class="flex size-5 shrink-0 items-center justify-center rounded-md bg-violet-500/10 text-violet-500">
-      <Sparkles class="size-3 {isStreaming ? 'animate-pulse' : ''}" />
-    </div>
-
-    <!-- Title -->
-    <span class="flex-1 text-xs font-medium text-muted-foreground">
+  <div
+    role="button"
+    tabindex="0"
+    onclick={() => (isExpanded = !isExpanded)}
+    onkeydown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        isExpanded = !isExpanded;
+      }
+    }}
+    class="group flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-xs">
+    <span class="flex-shrink-0 font-medium whitespace-nowrap">
       {#if isStreaming}
-        <span class="reasoning-shimmer">Thinking...</span>
+        <span class="reasoning-shimmer inline-flex h-4 items-center text-xs leading-none"
+          >Thinking{elapsedDisplay ? ` for ${elapsedDisplay}` : ''}</span>
       {:else}
-        Thought {formattedDuration ? `for ${formattedDuration}` : ''} · ~{tokenCount} tokens
+        <span class="text-muted-foreground"
+          >Thought{elapsedDisplay ? ` for ${elapsedDisplay}` : ''}</span>
       {/if}
     </span>
+    <ChevronRight
+      class="size-3.5 flex-shrink-0 text-muted-foreground/60 transition-transform duration-200 ease-out
+        {isExpanded ? 'rotate-90' : 'opacity-0 group-hover:opacity-100'}" />
+  </div>
 
-    <!-- Chevron -->
-    <div class="text-muted-foreground/40 transition-transform">
-      {#if isCollapsed}
-        <ChevronRight class="size-3.5" />
-      {:else}
-        <ChevronDown class="size-3.5" />
-      {/if}
-    </div>
-  </button>
-
-  <!-- Content -->
-  {#if !isCollapsed}
+  <!-- Full content when expanded -->
+  {#if isExpanded && displayContent}
     <div
-      bind:this={contentEl}
-      class="border-t border-border/30 px-3 py-2.5"
-      style="max-height: {isStreaming ? '300px' : '250px'}; overflow-y: auto;">
-      <p class="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
-        {displayContent}{#if isStreaming}<span class="reasoning-cursor"></span>{/if}
-      </p>
+      class="relative mt-1 overflow-hidden rounded-md border border-border/40"
+      style="background-color: var(--tool-box-bg);">
+      <div
+        class="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-background to-transparent transition-opacity duration-200
+          {isStreaming && isOverflowing ? 'opacity-100' : 'opacity-0'}">
+      </div>
+      <div
+        bind:this={scrollEl}
+        class="px-3 py-2 {isStreaming ? 'scrollbar-hide max-h-36 overflow-y-auto' : ''}">
+        <p class="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
+          {displayContent}{#if isStreaming}<span class="reasoning-cursor"></span>{/if}
+        </p>
+      </div>
     </div>
   {/if}
 </div>
@@ -127,20 +153,47 @@
   }
 
   .reasoning-shimmer {
-    background: linear-gradient(90deg, currentColor 0%, var(--foreground) 40%, currentColor 80%);
-    background-size: 200% 100%;
+    --base-color: #a1a1aa;
+    --base-gradient-color: #000;
+    --spread: 16px;
+    --bg: linear-gradient(
+      90deg,
+      transparent calc(50% - var(--spread)),
+      var(--base-gradient-color),
+      transparent calc(50% + var(--spread))
+    );
+    position: relative;
+    display: inline-block;
+    background-image: var(--bg), linear-gradient(var(--base-color), var(--base-color));
+    background-size: 250% 100%, auto;
+    background-repeat: no-repeat, padding-box;
+    background-position: 100% center;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: reasoning-shimmer-slide 1.8s ease-in-out infinite;
+    color: transparent;
+    animation: reasoning-shimmer-slide 1.2s linear infinite;
+  }
+
+  :global(.dark) .reasoning-shimmer {
+    --base-color: #71717a;
+    --base-gradient-color: #ffffff;
   }
 
   @keyframes reasoning-shimmer-slide {
     0% {
-      background-position: 200% 0;
+      background-position: 100% center;
     }
     100% {
-      background-position: -200% 0;
+      background-position: 0% center;
     }
+  }
+
+  :global(.scrollbar-hide) {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  :global(.scrollbar-hide::-webkit-scrollbar) {
+    display: none;
   }
 </style>
