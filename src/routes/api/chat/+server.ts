@@ -16,7 +16,7 @@ import { getDb } from '$lib/server/db';
 import { settingsManager, stateManager } from '$lib/server/state-manager';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { error, json } from '@sveltejs/kit';
-import { generateText, stepCountIs, streamText } from 'ai';
+import { generateText, isLoopFinished, streamText } from 'ai';
 import dotenv from 'dotenv';
 import type { RequestHandler } from './$types';
 dotenv.config({ path: '.env.local' });
@@ -200,14 +200,16 @@ function buildLeanSystemPrompt(
         '- diagramWrite sends the complete Mermaid document. diagramPatch sends only the replacement lines for startLine..endLine; never send the whole diagram through diagramPatch.',
         options.mermaidSourceIsEmpty
           ? '- The active Mermaid tab is empty. Do not call diagramPatch to create content. Use diagramWrite for the first diagram.'
-          : '',
+          : '- The active Mermaid tab already has content. Pick the right tool BEFORE calling anything: small/local edits (≤ ~5 nodes changing, adding icons, restyling, fixing a few lines) → diagramPatch. Structural rewrites (most nodes changing, switching diagram type, refocusing on a different topic, the user said "rebuild" or "redo") → diagramWrite. When in doubt for a large change, prefer diagramWrite — it is atomic and cannot corrupt line numbers.',
+        '- Tool selection is FINAL for the turn. Once you call diagramWrite OR diagramPatch successfully, do not call the other one in the same turn. Do not "rebuild" with diagramPatch after a diagramWrite. Do not "fix" a successful diagramWrite with another diagramWrite. The only follow-up after a successful write/patch is errorChecker, then a final answer.',
+        '- diagramDelete is destructive. Never call diagramDelete as a way to "clear and rewrite" — diagramWrite already replaces the document atomically. Only call diagramDelete when the user explicitly asks to clear, reset, or empty the diagram.',
         '- The final Mermaid document must have exactly one top-level diagram declaration.',
-        '- For edits and repairs, read the diagram first when diagramRead is available.',
+        '- For edits, read the diagram first with diagramRead when available. Do not re-read the same content within the same turn.',
+        '- diagramPatch line ranges are 1-based and inclusive. Count lines from diagramRead output exactly. If you cannot confidently identify the exact startLine and endLine for the change, do not patch — switch to diagramWrite with the full intended document. A wrong patch corrupts the diagram and wastes the turn.',
         '- If the current diagram starts with a bare subgraph or otherwise lacks a root declaration, first repair line 1 with diagramPatch by prepending a root such as "flowchart TD"; then continue with style/icon patches.',
-        '- Use diagramPatch for edits to existing diagrams. Use diagramWrite only for a new diagram or explicit full rewrite.',
         '- Use styleSearch/iconSearch as read-only discovery tools, then apply chosen suggestions with diagramPatch. iconSearch supports colorMode: "color" for multicolor logos/cloud icons, "noncolor" for themeable monochrome icons, or "any".',
-        '- After diagramWrite or diagramPatch, call errorChecker when available.',
-        '- If errorChecker returns valid:false or success:false, the diagram is still broken. Do not say it is fixed; either repair it with another diagramPatch or tell the user the exact remaining error.',
+        '- After diagramWrite or diagramPatch, call errorChecker when available. Do not chain another write/patch before the previous one has been validated.',
+        '- If errorChecker returns valid:false or success:false, the diagram is still broken. Do not say it is fixed; either repair it with another diagramPatch (only if you can identify the exact broken lines) or fall back to diagramWrite with a corrected full document.',
         '- Do not invent Mermaid icon annotations; copy annotation lines only from iconSearch suggestions. Web suggestions from iconSearch have already been checked for a live SVG response.',
         '- When applying icons to existing nodes, prefer the iconifier tool. If you must use diagramPatch, append ONLY the new icon annotation line `NodeId@{ img: "...", pos: "b", w: 60, h: 60, constraint: "on" }` — never re-declare the node label `NodeId[Label]` or any existing edges. Re-declaring nodes drops edges and creates duplicate orphans.',
         '- Mindmap diagrams MUST NOT use ::icon(...) syntax. The runtime does not have Font Awesome registered for mindmap icons; using ::icon() throws "Cannot read properties of null (reading \'re\')". Express the same intent with descriptive text or markdown emojis instead.'
@@ -581,73 +583,24 @@ export const POST: RequestHandler = async ({ request }) => {
       ? `${systemPrompt}\n\nCompacted prior chat history:\n${chatContext.summary}`
       : systemPrompt;
 
-    const canForceSpecificToolChoice = normalizedModel.provider !== 'openrouter';
-    const stopStepLimit =
-      selectedToolNames.has('subagentFanout') || selectedToolNames.has('subagentAssemble')
-        ? 10
-        : selectedToolNames.has('iconSearch') || selectedToolNames.has('styleSearch')
-          ? 8
-          : selectedToolNames.has('errorChecker')
-            ? 6
-            : 4;
-
     // Convert to AI SDK format and stream with multi-step tool calling
     const result = streamText({
       messages: messages as never,
       model: resolveChatModel(model, providerHint),
       prepareStep: ({ steps }) => {
-        if (
-          steps.length === 0 &&
-          activeEngine === 'mermaid' &&
-          !activeSource.trim() &&
-          'diagramWrite' in allTools
-        ) {
-          if (!canForceSpecificToolChoice) {
-            return {
-              activeTools: ['diagramWrite'],
-              system: `${system}\n\nEMPTY DIAGRAM: The active Mermaid tab has no content. Call diagramWrite now with a complete Mermaid diagram. Do not call diagramPatch to create a new diagram.`
-            } as never;
-          }
-          return {
-            activeTools: ['diagramWrite'],
-            toolChoice: { toolName: 'diagramWrite', type: 'tool' }
-          } as never;
-        }
-
-        if (steps.length === 0 && 'thinking' in allTools) {
-          if (!canForceSpecificToolChoice) {
-            return {
-              system: `${system}\n\nFIRST STEP: Call thinking now with a concise public checkpoint before any other action. Include the concrete tools likely needed next.`
-            } as never;
-          }
-          return {
-            activeTools: ['thinking'],
-            toolChoice: { toolName: 'thinking', type: 'tool' }
-          } as never;
-        }
-
         const lastStep = steps.at(-1);
+
+        // After errorChecker passes, gently nudge the model to wrap up — but
+        // don't force tools off; a follow-up patch or final text is its call.
         if (lastStep && 'errorChecker' in allTools && stepReturnedValidErrorCheck(lastStep)) {
           return {
-            activeTools: [],
-            system: `${system}\n\nVALIDATION PASSED: errorChecker found no Mermaid errors. Do not call more tools. Give a concise final answer.`
+            system: `${system}\n\nVALIDATION PASSED: errorChecker found no Mermaid errors. The diagram is good. Give a concise final answer unless the user asked for more.`
           } as never;
         }
         if (lastStep && 'errorChecker' in allTools && stepReturnedInvalidErrorCheck(lastStep)) {
-          if (!canForceSpecificToolChoice) {
-            return {
-              activeTools: ['diagramRead', 'diagramPatch', 'errorChecker'].filter(
-                (toolName) => toolName in allTools
-              ),
-              system: `${system}\n\nVALIDATION FAILED: errorChecker still found Mermaid errors. Do not claim the diagram is fixed. Continue the repair with diagramRead/diagramPatch, then validate again. If you cannot fix it, say the remaining error plainly.`
-            } as never;
-          }
-          if ('diagramRead' in allTools) {
-            return {
-              activeTools: ['diagramRead'],
-              toolChoice: { toolName: 'diagramRead', type: 'tool' }
-            } as never;
-          }
+          return {
+            system: `${system}\n\nVALIDATION FAILED: errorChecker found Mermaid errors. Do not claim the diagram is fixed. Repair with diagramRead/diagramPatch (or diagramWrite if the patch range is unclear), then validate again. If you cannot fix it, say the remaining error plainly.`
+          } as never;
         }
         if (
           lastStep &&
@@ -655,21 +608,17 @@ export const POST: RequestHandler = async ({ request }) => {
           stepCalledTool(lastStep, ['diagramWrite', 'diagramPatch']) &&
           stepSucceededTool(lastStep, ['diagramWrite', 'diagramPatch'])
         ) {
-          if (!canForceSpecificToolChoice) {
-            return {
-              activeTools: ['errorChecker'],
-              system: `${system}\n\nVALIDATION STEP: The previous step wrote or patched Mermaid. Call errorChecker now before doing anything else.`
-            } as never;
-          }
           return {
-            activeTools: ['errorChecker'],
-            toolChoice: { toolName: 'errorChecker', type: 'tool' }
+            system: `${system}\n\nVALIDATION STEP: The previous step wrote or patched Mermaid. Call errorChecker next before doing anything else.`
           } as never;
         }
         return undefined;
       },
       providerOptions: getChatProviderOptions(model, providerHint),
-      stopWhen: stepCountIs(stopStepLimit),
+      // Keep stepping while the model emits tool calls; exit when it returns
+      // a step with no tool calls. isLoopFinished returns false so the SDK
+      // never stops on its own — the model decides when the turn is done.
+      stopWhen: isLoopFinished(),
       system,
       temperature: 0.9,
       tools: allTools
