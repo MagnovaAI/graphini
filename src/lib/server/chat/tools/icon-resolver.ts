@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-// --- Iconifier: local icon index & resolution helpers ---
+// --- iconSearch: local icon index & resolution helpers ---
 
 interface IconEntry {
   colorMode?: IconColorMode;
@@ -41,7 +41,7 @@ function getIconIndex(): IconEntry[] {
     const data = JSON.parse(raw);
     _iconIndex = data.icons as IconEntry[];
   } catch (e) {
-    console.error('[iconifier] Failed to load icon index:', e);
+    console.error('[iconSearch] Failed to load icon index:', e);
     _iconIndex = [];
   }
   return _iconIndex;
@@ -179,23 +179,32 @@ async function searchIconifyWeb(
     const data = await res.json();
     const icons: string[] = data.icons || [];
 
+    // Verify all candidates in parallel — was sequential and could stall the
+    // chat stream for tens of seconds when the model called iconSearch on a
+    // diagram with many nodes (each verify is up to 4s; serial × 12 ≈ 48s).
+    const probes = await Promise.all(
+      icons.map(async (iconId, i) => {
+        const [prefix, ...nameParts] = iconId.split(':');
+        const name = nameParts.join(':');
+        if (!prefix || !name) return null;
+
+        const url = `https://api.iconify.design/${prefix}/${name}.svg`;
+        const candidateColorMode = await fetchVerifiedSvgColorMode(url);
+        if (!candidateColorMode || !matchesColorMode(candidateColorMode, colorMode)) return null;
+
+        return {
+          colorMode: candidateColorMode,
+          confidence: Math.max(0.7, 0.9 - i * 0.05),
+          iconId,
+          source: 'web' as IconSource,
+          url
+        } satisfies ResolvedIconCandidate;
+      })
+    );
+
     const verified: ResolvedIconCandidate[] = [];
-    for (const [i, iconId] of icons.entries()) {
-      const [prefix, ...nameParts] = iconId.split(':');
-      const name = nameParts.join(':');
-      if (!prefix || !name) continue;
-
-      const url = `https://api.iconify.design/${prefix}/${name}.svg`;
-      const candidateColorMode = await fetchVerifiedSvgColorMode(url);
-      if (!candidateColorMode || !matchesColorMode(candidateColorMode, colorMode)) continue;
-
-      verified.push({
-        colorMode: candidateColorMode,
-        confidence: Math.max(0.7, 0.9 - i * 0.05),
-        iconId,
-        source: 'web',
-        url
-      });
+    for (const probe of probes) {
+      if (probe) verified.push(probe);
       if (verified.length >= limit) break;
     }
     return verified;

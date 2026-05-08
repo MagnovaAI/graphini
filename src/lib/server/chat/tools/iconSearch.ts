@@ -119,47 +119,50 @@ export function createIconSearchTool({ sessionId }: ToolContext) {
       const selection = filterNodesForIconSearch(parseMermaidNodes(diagram), nodeIds, query);
       const nodes = selection.nodes.slice(0, limit);
 
-      const suggestions: IconSearchSuggestion[] = [];
-      for (const node of nodes) {
-        const candidates = await resolveIconCandidatesForNode(node.id, node.text, {
-          colorMode,
-          includeWebSuggestions,
-          webLimit
-        });
-        const icon = candidates[0];
-        if (!icon) {
-          suggestions.push({
-            candidates: [],
-            confidence: 0,
+      // Resolve every node's candidates in parallel — was a serial await that
+      // could stall the chat stream for tens of seconds when the diagram has
+      // many nodes and the Iconify web fallback is consulted.
+      const suggestions: IconSearchSuggestion[] = await Promise.all(
+        nodes.map(async (node): Promise<IconSearchSuggestion> => {
+          const candidates = await resolveIconCandidatesForNode(node.id, node.text, {
+            colorMode,
+            includeWebSuggestions,
+            webLimit
+          });
+          const icon = candidates[0];
+          if (!icon) {
+            return {
+              candidates: [],
+              confidence: 0,
+              line: node.line + 1,
+              nodeId: node.id,
+              nodeText: node.text,
+              status: 'skipped'
+            };
+          }
+
+          const annotationLine = `    ${node.id}@{ img: "${icon.url}", pos: "b", w: 60, h: 60, constraint: "on" }`;
+          const sourceLine = lines[node.line] ?? '';
+          return {
+            annotationLine,
+            candidates,
+            colorMode: icon.colorMode,
+            confidence: icon.confidence,
+            iconId: icon.iconId,
+            iconUrl: icon.url,
             line: node.line + 1,
             nodeId: node.id,
             nodeText: node.text,
-            status: 'skipped'
-          });
-          continue;
-        }
-
-        const annotationLine = `    ${node.id}@{ img: "${icon.url}", pos: "b", w: 60, h: 60, constraint: "on" }`;
-        const sourceLine = lines[node.line] ?? '';
-        suggestions.push({
-          annotationLine,
-          candidates,
-          colorMode: icon.colorMode,
-          confidence: icon.confidence,
-          iconId: icon.iconId,
-          iconUrl: icon.url,
-          line: node.line + 1,
-          nodeId: node.id,
-          nodeText: node.text,
-          source: icon.source,
-          status: 'matched',
-          suggestedPatch: {
-            content: `${sourceLine}\n${annotationLine}`,
-            endLine: node.line + 1,
-            startLine: node.line + 1
-          }
-        });
-      }
+            source: icon.source,
+            status: 'matched',
+            suggestedPatch: {
+              content: `${sourceLine}\n${annotationLine}`,
+              endLine: node.line + 1,
+              startLine: node.line + 1
+            }
+          };
+        })
+      );
 
       const matchedCount = suggestions.filter(
         (suggestion) => suggestion.status === 'matched'
