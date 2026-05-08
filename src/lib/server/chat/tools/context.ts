@@ -16,6 +16,8 @@ export interface WorkspaceToolTarget {
 export interface ToolContext {
   modelId?: string;
   sessionId: string;
+  /** Authenticated user (or guest) id. Tools that need per-user keys read this. */
+  userId?: string;
   target?: WorkspaceToolTarget;
 }
 

@@ -36,9 +36,10 @@ import type { WorkspaceToolTarget } from './context';
 export function createDiagramTools(
   sessionId: string,
   modelId?: string,
-  target?: WorkspaceToolTarget
+  target?: WorkspaceToolTarget,
+  userId?: string
 ) {
-  const context = { modelId, sessionId, target };
+  const context = { modelId, sessionId, target, userId };
   return {
     askQuestions: createAskQuestionsTool(context),
     autoStyler: createAutoStylerTool(context),

@@ -140,7 +140,7 @@ export async function runChatTurn(request: Request): Promise<Response> {
   // the user is asking us to inventory our tools, in which case we override
   // the disables for that one turn so we can answer truthfully.
   const toolInventoryRequest = isToolInventoryRequest(message, { recentMessages });
-  const toolCatalog = createDiagramTools(turnSessionId, actualModelId, workspaceContext);
+  const toolCatalog = createDiagramTools(turnSessionId, actualModelId, workspaceContext, userId);
   const clientEnabledSet = Array.isArray(enabledTools) ? new Set(enabledTools as string[]) : null;
   const persistedEnabledSet = await getPersistedEnabledTools(userId);
   const enabledSet = persistedEnabledSet ?? clientEnabledSet;

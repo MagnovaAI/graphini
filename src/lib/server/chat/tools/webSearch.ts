@@ -1,39 +1,23 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
-import {
-  codeStore,
-  diagramStore,
-  markdownStore,
-  memoryStore,
-  planStore,
-  subagentStore
-} from '$lib/server/chat/state';
-import {
-  buildDiagramReview,
-  findMermaidDeclarations,
-  parseMermaidNodes,
-  validateSingleMermaidDocument
-} from '$lib/server/chat/mermaid';
-import { detectCodeLanguage, validateCodeArtifact } from '$lib/server/chat/code-artifacts';
-import { openrouterFastChat } from '$lib/server/chat/model';
-import { instructionsForSubagent } from '$lib/server/chat/subagents';
-import { generateText, tool } from 'ai';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { tool } from 'ai';
 import { z } from 'zod';
-import { resolveIconForNode } from './icon-resolver';
+import { getBraveSearchKeyFor } from '$lib/server/chat/search';
+import type { ToolContext } from './context';
 
-const execFileAsync = promisify(execFile);
-
-interface ToolContext {
-  modelId?: string;
-  sessionId: string;
+interface BraveResult {
+  title: string;
+  description?: string;
+  url: string;
+  source?: string;
 }
 
-export function createWebSearchTool({ modelId, sessionId }: ToolContext) {
+interface BraveResponse {
+  web?: { results?: BraveResult[] };
+}
+
+export function createWebSearchTool({ userId }: ToolContext) {
   return tool({
     description:
-      'Search the web for information. Use this to look up documentation, find icon names, research diagram patterns, or answer questions that need current information. Returns structured results with sources.',
+      'Search the web with Brave Search. Returns titles, snippets, and URLs. Requires the user to have set their Brave Search API key in Settings — if no key is configured, this returns success:false with a "missing_brave_key" error and you should ask the user to add one rather than retrying.',
     inputSchema: z.object({
       query: z.string().describe('The search query'),
       reason: z
@@ -42,54 +26,78 @@ export function createWebSearchTool({ modelId, sessionId }: ToolContext) {
         .describe('Brief reason why you are searching — shown to the user')
     }),
     execute: async ({ query, reason }) => {
+      const apiKey = await getBraveSearchKeyFor(userId ?? null);
+      if (!apiKey) {
+        return {
+          success: false,
+          error: 'missing_brave_key',
+          query,
+          reason,
+          message:
+            'No Brave Search API key configured for this user. Ask the user to add one in Settings → API Keys (free tier at https://brave.com/search/api/). Do not retry web search until they have.'
+        };
+      }
+
       try {
-        const encoded = encodeURIComponent(query);
-        const res = await fetch(
-          `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1`,
-          { signal: AbortSignal.timeout(6000) }
-        );
-        if (!res.ok) return { success: false, query, reason, error: 'Search request failed' };
-        const data = await res.json();
+        const url = new URL('https://api.search.brave.com/res/v1/web/search');
+        url.searchParams.set('q', query);
+        url.searchParams.set('count', '5');
+        url.searchParams.set('safesearch', 'moderate');
+        url.searchParams.set('text_decorations', 'false');
 
-        const results: { title: string; snippet: string; url?: string; source?: string }[] = [];
+        const res = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip',
+            'X-Subscription-Token': apiKey
+          },
+          signal: AbortSignal.timeout(8000)
+        });
 
-        if (data.AbstractText) {
-          results.push({
-            title: data.Heading || query,
-            snippet: data.AbstractText,
-            url: data.AbstractURL,
-            source: data.AbstractSource || 'Wikipedia'
-          });
+        if (res.status === 401 || res.status === 403) {
+          return {
+            success: false,
+            error: 'invalid_brave_key',
+            query,
+            reason,
+            message:
+              'Brave rejected the configured API key. Ask the user to update it in Settings → API Keys.'
+          };
         }
-        if (data.RelatedTopics) {
-          for (const topic of data.RelatedTopics.slice(0, 5)) {
-            if (topic.Text) {
-              const urlHost = topic.FirstURL
-                ? new URL(topic.FirstURL).hostname.replace('www.', '')
-                : undefined;
-              results.push({
-                title: topic.Text.slice(0, 80),
-                snippet: topic.Text,
-                url: topic.FirstURL,
-                source: urlHost
-              });
-            }
-          }
+        if (res.status === 429) {
+          return {
+            success: false,
+            error: 'brave_rate_limited',
+            query,
+            reason,
+            message:
+              'Brave Search rate limit reached for the user\'s key. Try again in a moment, or ask the user to upgrade their Brave plan.'
+          };
         }
-        if (results.length === 0 && data.Answer) {
-          results.push({
-            title: 'Answer',
-            snippet: data.Answer,
-            source: data.AnswerType || 'DuckDuckGo'
-          });
+        if (!res.ok) {
+          return {
+            success: false,
+            error: 'brave_request_failed',
+            status: res.status,
+            query,
+            reason
+          };
         }
+
+        const data = (await res.json()) as BraveResponse;
+        const results = (data.web?.results ?? []).slice(0, 5).map((r) => ({
+          title: r.title,
+          snippet: r.description ?? '',
+          url: r.url,
+          source: r.source ?? (r.url ? new URL(r.url).hostname.replace(/^www\./, '') : undefined)
+        }));
 
         return {
+          success: true,
           query,
           reason: reason || `Searching for "${query}"`,
           resultCount: results.length,
-          results: results.slice(0, 5),
-          success: true,
+          results,
           summary:
             results.length > 0
               ? `Found ${results.length} result(s) for "${query}"`
@@ -98,9 +106,9 @@ export function createWebSearchTool({ modelId, sessionId }: ToolContext) {
       } catch (e: unknown) {
         return {
           success: false,
+          error: e instanceof Error ? e.message : 'brave_search_failed',
           query,
-          reason,
-          error: e instanceof Error ? e.message : 'Search failed'
+          reason
         };
       }
     }

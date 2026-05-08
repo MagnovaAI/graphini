@@ -90,7 +90,7 @@ function decrypt(ciphertext: string): string {
 }
 
 const SENSITIVE_KEY_PATTERN = /(api_key|auth_token|access_token|refresh_token|secret|password)$/i;
-const SENSITIVE_CATEGORIES = new Set(['ai_provider', 'secrets']);
+const SENSITIVE_CATEGORIES = new Set(['ai_provider', 'search_provider', 'secrets']);
 
 /** Whether a (category, key) combo holds a secret that must be encrypted at rest. */
 export function isSensitiveSetting(category: string, key: string): boolean {
