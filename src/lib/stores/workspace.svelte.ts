@@ -218,10 +218,6 @@ async function load(id: string): Promise<boolean> {
   state.loading = true;
   state.error = null;
 
-  // Clear stale diagram from localStorage-persisted store immediately
-  // so the canvas doesn't flash old content while the workspace loads
-  inputStateStore.update((s) => ({ ...s, code: '' }));
-
   try {
     const res = await fetch(`/api/workspaces/${id}`, { credentials: 'include' });
     if (!res.ok) {
