@@ -1,5 +1,7 @@
 <script lang="ts">
   import * as Sidebar from '$lib/components/ui/sidebar';
+  import { tooltip } from '$lib/components/ui/tooltip/tooltipAction';
+  import { useSidebar } from '$lib/components/ui/sidebar/context.svelte';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { Avatar, AvatarFallback } from '$lib/components/ui/avatar';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -16,10 +18,14 @@
     UserCircle
   } from 'lucide-svelte';
 
+  const sidebar = useSidebar();
+  const isIconCollapsed = $derived(sidebar.state === 'collapsed' && !sidebar.isMobile);
+
   interface Props {
     onNewChat: () => void | Promise<void>;
     onSelectConversation: (id: string) => void | Promise<void>;
     onDeleteConversation: (id: string) => void | Promise<void>;
+    onPrefetchConversation?: (id: string) => void;
     onTogglePanel: (panel: PanelId) => void;
     onOpenSettings: () => void;
   }
@@ -28,6 +34,7 @@
     onNewChat,
     onSelectConversation,
     onDeleteConversation,
+    onPrefetchConversation,
     onTogglePanel,
     onOpenSettings
   }: Props = $props();
@@ -49,13 +56,10 @@
   });
 </script>
 
-<Sidebar.Root
-  collapsible="icon"
-  variant="sidebar"
-  class="[&_[data-sidebar=menu-button]]:bg-transparent [&_[data-sidebar=menu-button]]:hover:bg-sidebar-accent [&_[data-sidebar=menu-button][data-active=true]]:bg-transparent [&_[data-sidebar=menu-button][data-active=true]]:hover:bg-sidebar-accent">
-  <Sidebar.Header class="h-12 justify-center border-b border-sidebar-border px-2">
+<Sidebar.Root collapsible="icon" variant="sidebar">
+  <Sidebar.Header class="gap-0 border-b border-sidebar-border p-0">
     <div
-      class="flex h-9 items-center gap-2 px-2 text-[13px] font-semibold text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+      class="flex h-9 items-center gap-2 px-3 text-[13px] font-semibold tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
       <img src="/brand/logo.png" alt="" class="size-5 shrink-0" />
       <span class="truncate group-data-[collapsible=icon]:hidden">Graphini</span>
     </div>
@@ -78,10 +82,9 @@
 
     <!-- Chats -->
     <Sidebar.Group class="group-data-[collapsible=icon]:hidden">
-      <Sidebar.GroupLabel>Chats</Sidebar.GroupLabel>
       <Sidebar.GroupContent>
         {#if conversationsStore.isLoading}
-          <p class="px-2 py-1.5 text-[12px] text-muted-foreground">Loading…</p>
+          <p class="px-2 py-1.5 text-[12px] text-muted-foreground">Loading</p>
         {:else if !authStore.isLoggedIn}
           <p class="px-2 py-1.5 text-[12px] text-muted-foreground">Sign in to save chats</p>
         {:else if conversationsStore.list.length === 0}
@@ -94,8 +97,9 @@
                 <Sidebar.MenuButton
                   {isActive}
                   size="sm"
-                  class="text-muted-foreground data-[active=true]:text-sidebar-foreground"
-                  onclick={() => onSelectConversation(conv.id)}>
+                  onclick={() => onSelectConversation(conv.id)}
+                  onmouseenter={() => onPrefetchConversation?.(conv.id)}
+                  onfocus={() => onPrefetchConversation?.(conv.id)}>
                   <span class="truncate">{conv.title || 'Untitled chat'}</span>
                 </Sidebar.MenuButton>
                 <Sidebar.MenuAction
@@ -113,71 +117,67 @@
   </Sidebar.Content>
 
   <Sidebar.Footer class="gap-0 border-t border-sidebar-border p-0">
-    <Sidebar.Menu class="p-2">
+    <div
+      class="flex gap-1 p-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-0.5">
       {#each panelButtons as btn (btn.id)}
         {@const Icon = btn.icon}
         {@const isActive = panels.panels[btn.id].visible}
-        <Sidebar.MenuItem>
-          <Sidebar.MenuButton
-            {isActive}
-            tooltipContent={btn.label}
-            onclick={() => onTogglePanel(btn.id)}>
-            <Icon />
-            <span>{btn.label}</span>
-          </Sidebar.MenuButton>
-        </Sidebar.MenuItem>
+        <button
+          type="button"
+          aria-label={btn.label}
+          aria-pressed={isActive}
+          use:tooltip={{ text: btn.label, side: 'top' }}
+          onclick={() => onTogglePanel(btn.id)}
+          class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-pressed:bg-sidebar-accent aria-pressed:text-sidebar-accent-foreground aria-pressed:font-medium group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none">
+          <Icon class="size-4 shrink-0" />
+          <span class="group-data-[collapsible=icon]:hidden">{btn.label}</span>
+        </button>
       {/each}
-    </Sidebar.Menu>
+    </div>
     <Sidebar.Menu class="border-t border-sidebar-border p-2">
       <Sidebar.MenuItem>
         {#if authStore.isLoggedIn}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
               {#snippet child({ props })}
-                <Sidebar.MenuButton size="lg" tooltipContent="Account" {...props}>
-                  <Avatar class="size-7 rounded-md">
-                    <AvatarFallback class="rounded-md bg-muted text-[10px]">
+                <Sidebar.MenuButton tooltipContent="Account" {...props}>
+                  <Avatar class="size-5 rounded-sm">
+                    <AvatarFallback class="rounded-sm bg-muted text-[9px]">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
-                  <div class="grid flex-1 text-left text-[13px] leading-tight">
-                    <span class="truncate font-medium">
-                      {authStore.user?.display_name || authStore.user?.email || 'User'}
-                    </span>
-                    {#if authStore.user?.email && authStore.user?.display_name}
-                      <span class="truncate text-[11px] text-muted-foreground">
-                        {authStore.user.email}
-                      </span>
-                    {/if}
-                  </div>
+                  <span class="truncate text-[13px] font-medium">
+                    {authStore.user?.display_name || authStore.user?.email || 'User'}
+                  </span>
                 </Sidebar.MenuButton>
               {/snippet}
             </DropdownMenu.Trigger>
             <Sidebar.MenuAction
               onclick={onOpenSettings}
               aria-label="Settings"
-              class="!top-1/2 -translate-y-1/2 group-data-[collapsible=icon]:hidden">
+              class="group-data-[collapsible=icon]:hidden">
               <Settings />
             </Sidebar.MenuAction>
-            <DropdownMenu.Content align="start" side="right" sideOffset={6} class="w-56">
-              <DropdownMenu.Label class="flex flex-col gap-0.5">
-                <span class="text-[13px] font-medium">
-                  {authStore.user?.display_name || 'User'}
-                </span>
-                <span class="text-[11px] font-normal text-muted-foreground">
-                  {authStore.user?.email}
-                </span>
+            <DropdownMenu.Content
+              align={isIconCollapsed ? 'end' : 'start'}
+              side={isIconCollapsed ? 'right' : 'top'}
+              sideOffset={6}
+              class="w-44 p-1">
+              <DropdownMenu.Label
+                class="truncate px-2 py-1 text-[12px] font-normal text-muted-foreground">
+                {authStore.user?.display_name || authStore.user?.email || 'User'}
               </DropdownMenu.Label>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item onclick={onOpenSettings}>
-                <Settings class="size-4" />
+              <DropdownMenu.Separator class="my-1" />
+              <DropdownMenu.Item
+                onclick={onOpenSettings}
+                class="cursor-pointer rounded-md px-2 py-1 text-[13px]">
+                <Settings class="size-3.5" />
                 <span>Settings</span>
               </DropdownMenu.Item>
-              <DropdownMenu.Separator />
               <DropdownMenu.Item
-                class="text-red-500 focus:text-red-500"
-                onclick={() => authStore.logout()}>
-                <LogOut class="size-4" />
+                onclick={() => authStore.logout()}
+                class="cursor-pointer rounded-md px-2 py-1 text-[13px] text-red-500 focus:text-red-500">
+                <LogOut class="size-3.5" />
                 <span>Sign out</span>
               </DropdownMenu.Item>
             </DropdownMenu.Content>
