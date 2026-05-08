@@ -76,7 +76,11 @@
 >
 	<div class="relative mt-0.5">
 		<Icon class="size-4" />
-		<div class="absolute top-7 bottom-0 left-1/2 -mx-px w-px bg-muted-foreground/30"></div>
+		<!-- Vertical connector to the next step. Hidden on the last step via the
+		:last-of-type rule below so the line doesn't dangle past the chain. -->
+		<div
+			class="connector absolute top-7 bottom-0 left-1/2 -mx-px w-px bg-muted-foreground/30"
+		></div>
 	</div>
 	<div class="flex-1 space-y-2">
 		<div>{label}</div>
@@ -88,3 +92,10 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	/* Hide the connector under the last step so the line doesn't dangle. */
+	:global([data-chain-step]:last-of-type .connector) {
+		display: none;
+	}
+</style>

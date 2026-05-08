@@ -26,7 +26,7 @@
 		className
 	)}
 >
-	<Icon class="size-4 text-muted-foreground/70" />
+	<Icon class="size-4" />
 	<span class="flex-1 text-left">
 		{#if children}
 			{@render children()}

@@ -2883,9 +2883,7 @@
                               description={step.subtitle}
                               status={step.status === 'running' ? 'active' : 'complete'}>
                               {#if step.toolName === 'webSearch' && step.details && step.details.length > 0}
-                                <div
-                                  class="mt-1 flex flex-wrap gap-1.5 rounded-md border border-border/40 px-3 py-2"
-                                  style="background-color: var(--tool-box-bg);">
+                                <div class="flex flex-wrap gap-1.5">
                                   {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
                                     <ChainOfThoughtSearchResult>
                                       {detail}
@@ -2893,20 +2891,14 @@
                                   {/each}
                                 </div>
                               {:else if step.details && step.details.length > 0}
-                                <div
-                                  class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
-                                  style="max-height: 220px; background-color: var(--tool-box-bg);">
-                                  <div class="space-y-1">
-                                    {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
-                                      <div
-                                        class="flex items-start gap-2 text-[13px] leading-relaxed text-muted-foreground/75">
-                                        <span class="mt-1 shrink-0 text-muted-foreground/40">·</span
-                                        >
-                                        <span class="min-w-0">{detail}</span>
-                                      </div>
-                                    {/each}
-                                  </div>
-                                </div>
+                                <ul class="space-y-0.5 text-xs text-muted-foreground/75">
+                                  {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
+                                    <li class="flex gap-1.5">
+                                      <span class="text-muted-foreground/40">·</span>
+                                      <span class="min-w-0">{detail}</span>
+                                    </li>
+                                  {/each}
+                                </ul>
                               {/if}
                             </ChainOfThoughtStep>
                           {/each}
