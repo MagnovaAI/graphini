@@ -116,7 +116,7 @@
     "@openrouter/ai-sdk-provider": "^2.9.0",
     "@shikijs/monaco": "^4.0.2",
     "@shikijs/themes": "^3.21.0",
-    "ai": "^6.0.172",
+    "ai": "^6.0.176",
     "clsx": "^2.1.1",
     "codemirror": "^6.0.1",
     "dagre": "^0.8.5",

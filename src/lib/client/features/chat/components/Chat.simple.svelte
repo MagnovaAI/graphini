@@ -19,7 +19,8 @@
     ContentPart,
     DisplayContentPart,
     PatchChainPart,
-    QuestionnaireQuestion
+    QuestionnaireQuestion,
+    ToolSimplePart
   } from '$lib/client/features/chat/content-parts/types';
   import { toolVerbs } from '$lib/client/features/chat/content-parts/tool-display';
   import {
@@ -54,6 +55,14 @@
   import { modelsStore } from '$lib/client/stores/models.svelte';
   import ProviderIcon from '$lib/client/features/chat/components/ProviderIcon.svelte';
   import ToolSimpleChip from '$lib/client/features/chat/components/ToolSimpleChip.svelte';
+  import {
+    ChainOfThought,
+    ChainOfThoughtContent,
+    ChainOfThoughtHeader,
+    ChainOfThoughtSearchResult,
+    ChainOfThoughtSearchResults,
+    ChainOfThoughtStep
+  } from '$lib/client/ui/ai-elements/chain-of-thought';
   import TooltipWrap from '$lib/client/ui/tooltip/TooltipWrap.svelte';
   // sessionFilesStore removed — workspace handles state
   import { toolsStore } from '$lib/client/stores/toolsStore.svelte';
@@ -754,33 +763,61 @@
 
   function chainDisplayParts(parts: ContentPart[]): DisplayContentPart[] {
     const chained: DisplayContentPart[] = [];
-    let pending: PatchChainPart[] = [];
+    let pendingPatches: PatchChainPart[] = [];
+    let pendingTools: ToolSimplePart[] = [];
 
-    const flushPending = () => {
-      if (pending.length === 1) {
-        chained.push(pending[0]);
-      } else if (pending.length > 1) {
-        const first = pending[0];
-        const last = pending[pending.length - 1];
+    const flushPatches = () => {
+      if (pendingPatches.length === 1) {
+        chained.push(pendingPatches[0]);
+      } else if (pendingPatches.length > 1) {
+        const first = pendingPatches[0];
+        const last = pendingPatches[pendingPatches.length - 1];
         chained.push({
-          id: `tool-chain:${'id' in first ? first.id : first.artifactId}:${'id' in last ? last.id : last.artifactId}:${pending.length}`,
-          parts: pending,
-          status: pending.some((part) => toolPartStatus(part) === 'running') ? 'running' : 'done',
+          id: `tool-chain:${first.artifactId}:${last.artifactId}:${pendingPatches.length}`,
+          parts: pendingPatches,
+          status: pendingPatches.some((p) => toolPartStatus(p) === 'running') ? 'running' : 'done',
           type: 'tool-chain'
         });
       }
-      pending = [];
+      pendingPatches = [];
+    };
+
+    const flushTools = () => {
+      // Single tool calls stay as ToolSimpleChip — wrapping one in a
+      // ChainOfThought adds chrome with no info gain.
+      if (pendingTools.length === 1) {
+        chained.push(pendingTools[0]);
+      } else if (pendingTools.length > 1) {
+        const first = pendingTools[0];
+        const last = pendingTools[pendingTools.length - 1];
+        chained.push({
+          id: `thought-chain:${first.id}:${last.id}:${pendingTools.length}`,
+          parts: pendingTools,
+          status: pendingTools.some((p) => p.status === 'running') ? 'running' : 'done',
+          type: 'thought-chain'
+        });
+      }
+      pendingTools = [];
+    };
+
+    const flushAll = () => {
+      flushPatches();
+      flushTools();
     };
 
     for (const part of parts) {
       if (isPatchChainPart(part)) {
-        pending.push(part);
+        flushTools();
+        pendingPatches.push(part);
+      } else if (part.type === 'tool-simple') {
+        flushPatches();
+        pendingTools.push(part);
       } else {
-        flushPending();
+        flushAll();
         chained.push(part);
       }
     }
-    flushPending();
+    flushAll();
 
     return chained;
   }
@@ -2827,6 +2864,43 @@
                         subtitle={part.subtitle}
                         status={part.status}
                         details={part.details} />
+                    {:else if part.type === 'thought-chain'}
+                      <ChainOfThought defaultOpen={part.status === 'running'}>
+                        <ChainOfThoughtHeader>
+                          {#if part.status === 'running'}
+                            <span class="thinking-shimmer">Working</span>
+                          {:else}
+                            Done · {part.parts.length} steps
+                          {/if}
+                        </ChainOfThoughtHeader>
+                        <ChainOfThoughtContent>
+                          {#each part.parts as step (step.id)}
+                            <ChainOfThoughtStep
+                              label={step.status === 'running'
+                                ? step.titlePending
+                                : step.titleDone}
+                              description={step.subtitle}
+                              status={step.status === 'running' ? 'active' : 'complete'}>
+                              {#if step.toolName === 'webSearch' && step.details && step.details.length > 0}
+                                <ChainOfThoughtSearchResults>
+                                  {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
+                                    <ChainOfThoughtSearchResult>
+                                      {detail}
+                                    </ChainOfThoughtSearchResult>
+                                  {/each}
+                                </ChainOfThoughtSearchResults>
+                              {:else if step.details && step.details.length > 0}
+                                <ul
+                                  class="mt-1 space-y-0.5 text-[12px] leading-relaxed text-muted-foreground/70">
+                                  {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
+                                    <li>· {detail}</li>
+                                  {/each}
+                                </ul>
+                              {/if}
+                            </ChainOfThoughtStep>
+                          {/each}
+                        </ChainOfThoughtContent>
+                      </ChainOfThought>
                     {:else if part.type === 'tool-chain'}
                       {@const runningCount = part.parts.filter(
                         (toolPart) => toolPartStatus(toolPart) === 'running'

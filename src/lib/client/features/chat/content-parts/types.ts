@@ -59,6 +59,7 @@ export type ContentPart =
     };
 
 export type PatchChainPart = Extract<ContentPart, { type: 'artifact' }>;
+export type ToolSimplePart = Extract<ContentPart, { type: 'tool-simple' }>;
 
 export type DisplayContentPart =
   | ContentPart
@@ -66,5 +67,13 @@ export type DisplayContentPart =
       type: 'tool-chain';
       id: string;
       parts: PatchChainPart[];
+      status: 'running' | 'done';
+    }
+  | {
+      // Two or more contiguous tool-simple parts grouped under a single
+      // ChainOfThought presentation. Single tool-simple parts stay as-is.
+      type: 'thought-chain';
+      id: string;
+      parts: ToolSimplePart[];
       status: 'running' | 'done';
     };
