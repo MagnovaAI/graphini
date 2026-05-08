@@ -1,8 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { AnimatedAiInput } from '$lib/components/ui/animated-ai-input';
-  import { authStore } from '$lib/stores/auth.svelte.js';
+  import { AnimatedAiInput } from '$lib/client/ui/animated-ai-input';
+  import { authStore } from '$lib/client/stores/auth.svelte.js';
   import {
     ArrowRight,
     Braces,

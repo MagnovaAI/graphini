@@ -1,36 +1,36 @@
 <script lang="ts">
-  import { PanZoomState } from '$/features/diagram/panZoom';
+  import { PanZoomState } from '$lib/client/features/diagram/panZoom';
   import {
     inputStateStore,
     setLayout,
     stateStore,
     updateCodeStore,
     type LayoutOption
-  } from '$/util/state/state';
-  import { logEvent } from '$/util/stats';
-  import { initHandler } from '$/util/util';
-  import ColorPanel from '$lib/components/canvas/ColorPanel.svelte';
-  import ElementToolbar from '$lib/components/canvas/ElementToolbar.svelte';
-  import IconPanel from '$lib/components/canvas/IconPanel.svelte';
-  import Editor from '$lib/features/editor/components/Editor.svelte';
-  import StructuredGraphView from '$lib/components/layout/StructuredGraphView.svelte';
-  import { View } from '$lib/components/layout';
-  import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/components/panels';
-  import { AppShell, AppSidebar } from '$lib/components/shell';
-  import SidebarTrigger from '$lib/components/ui/sidebar/sidebar-trigger.svelte';
-  import SettingsModal from '$lib/components/SettingsModal.svelte';
-  import { Button } from '$lib/components/ui/button';
-  import Chat from '$lib/features/chat/components/Chat.simple.svelte';
-  import { authStore } from '$lib/stores/auth.svelte';
-  import type { DiagramEngine } from '$lib/types/workspace';
-  import { detectEngine } from '$lib/util/detectEngine';
-  import { canvasStatus } from '$lib/stores/canvasStatus.svelte';
+  } from '$lib/client/util/state/state';
+  import { logEvent } from '$lib/client/util/stats';
+  import { initHandler } from '$lib/client/util/bootstrap';
+  import ColorPanel from '$lib/client/features/diagram/components/ColorPanel.svelte';
+  import ElementToolbar from '$lib/client/features/diagram/components/ElementToolbar.svelte';
+  import IconPanel from '$lib/client/features/diagram/components/IconPanel.svelte';
+  import Editor from '$lib/client/features/editor/components/Editor.svelte';
+  import StructuredGraphView from '$lib/client/layout/StructuredGraphView.svelte';
+  import { View } from '$lib/client/layout';
+  import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/client/panels';
+  import { AppShell, AppSidebar } from '$lib/client/shell';
+  import SidebarTrigger from '$lib/client/ui/sidebar/sidebar-trigger.svelte';
+  import SettingsModal from '$lib/client/features/settings/SettingsModal.svelte';
+  import { Button } from '$lib/client/ui/button';
+  import Chat from '$lib/client/features/chat/components/Chat.simple.svelte';
+  import { authStore } from '$lib/client/stores/auth.svelte';
+  import type { DiagramEngine } from '$lib/client/types/workspace';
+  import { detectEngine } from '$lib/client/util/detectEngine';
+  import { canvasStatus } from '$lib/client/stores/canvasStatus.svelte';
   // autosave replaced by workspace auto-save
-  import { conversationsStore } from '$lib/stores/conversations.svelte';
-  import { workspaceStore } from '$lib/stores/workspace.svelte';
-  import { kv } from '$lib/stores/kvStore.svelte';
-  import { panels, type PanelId } from '$lib/stores/panels.svelte';
-  import { cn } from '$lib/utils';
+  import { conversationsStore } from '$lib/client/stores/conversations.svelte';
+  import { workspaceStore } from '$lib/client/stores/workspace.svelte';
+  import { kv } from '$lib/client/stores/kvStore.svelte';
+  import { panels, type PanelId } from '$lib/client/stores/panels.svelte';
+  import { cn } from '$lib/client/utils';
   import {
     AlertCircle,
     AlignLeft,

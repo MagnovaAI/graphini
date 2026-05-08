@@ -14,9 +14,6 @@ const config = {
     })
   ],
   kit: {
-    alias: {
-      '$/*': './src/lib/*'
-    },
     adapter: adapterVercel()
   },
   runes: true

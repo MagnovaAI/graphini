@@ -3,8 +3,8 @@
   import { resolve } from '$app/paths';
   import { onMount } from 'svelte';
   import { Loader2 as Loader2Spin } from 'lucide-svelte';
-  import { authStore } from '$lib/stores/auth.svelte';
-  import { conversationsStore } from '$lib/stores/conversations.svelte';
+  import { authStore } from '$lib/client/stores/auth.svelte';
+  import { conversationsStore } from '$lib/client/stores/conversations.svelte';
 
   let error = $state<string | null>(null);
 

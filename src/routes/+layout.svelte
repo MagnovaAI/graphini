@@ -1,13 +1,12 @@
 <script lang="ts">
-  import { loadingStateStore } from '$/util/loading';
-  import { toggleDarkTheme } from '$/util/state/state';
-  import { getLastProgrammaticHash } from '$/util/state/url';
-  import { initHandler } from '$/util/util';
-  import { Toaster } from '$lib/components/ui/sonner/index.js';
-  import { authStore } from '$lib/stores/auth.svelte.js';
-  import { kv } from '$lib/stores/kvStore.svelte';
-  import { uiSettings } from '$lib/stores/settings.svelte';
-  import { toolsStore } from '$lib/stores/toolsStore.svelte';
+  import { loadingStateStore } from '$lib/client/util/loading';
+  import { toggleDarkTheme } from '$lib/client/util/state/state';
+  import { initHandler } from '$lib/client/util/bootstrap';
+  import { Toaster } from '$lib/client/ui/sonner/index.js';
+  import { authStore } from '$lib/client/stores/auth.svelte.js';
+  import { kv } from '$lib/client/stores/kvStore.svelte';
+  import { uiSettings } from '$lib/client/stores/settings.svelte';
+  import { toolsStore } from '$lib/client/stores/toolsStore.svelte';
   import { mode, ModeWatcher, setMode } from 'mode-watcher';
   import { onMount, type Snippet } from 'svelte';
   import '../app.css';
@@ -32,11 +31,6 @@
     void initializeClientState();
 
     window.addEventListener('hashchange', () => {
-      // Skip re-init if the hash was set programmatically by our own URL subscription
-      const currentHash = window.location.hash.slice(1);
-      if (currentHash && currentHash === getLastProgrammaticHash()) {
-        return;
-      }
       void initHandler();
     });
 
