@@ -11,5 +11,5 @@
 
 <DialogPrimitive.Description
   bind:ref
-  class={cn('text-sm text-muted-foreground', className)}
+  class={cn('text-[13px] text-muted-foreground', className)}
   {...restProps} />

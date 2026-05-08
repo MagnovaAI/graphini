@@ -104,7 +104,7 @@
 {/snippet}
 
 <div class={cn('animated-ai-input w-full max-w-3xl', className)}>
-  <div class="rounded-2xl bg-black/5 p-1.5">
+  <div class="rounded-2xl bg-black/5 p-2">
     <div class="relative flex flex-col">
       <Textarea
         bind:ref={textarea}
@@ -112,7 +112,7 @@
         id="homepage-ai-input"
         aria-label="Describe your diagram"
         {placeholder}
-        class="min-h-[72px] resize-none rounded-xl rounded-b-none border-none bg-black/5 px-4 py-3 text-sm text-neutral-950 shadow-none placeholder:text-black/60 focus-visible:ring-0 dark:bg-white/5 dark:text-white dark:placeholder:text-white/70"
+        class="min-h-[72px] resize-none rounded-xl rounded-b-none border-none bg-black/5 px-4 py-3 text-[13px] text-neutral-950 shadow-none placeholder:text-black/60 focus-visible:ring-0 dark:bg-white/5 dark:text-white dark:placeholder:text-white/70"
         style="max-height: 300px;"
         oninput={() => adjustHeight()}
         onkeydown={handleKeydown} />
@@ -122,7 +122,7 @@
           <div class="flex min-w-0 items-center gap-2">
             <DropdownMenu.Root>
               <DropdownMenu.Trigger
-                class="flex h-8 max-w-[190px] items-center gap-1 rounded-md px-2 text-xs font-semibold text-neutral-900 transition hover:bg-black/10 focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:outline-none dark:text-white dark:hover:bg-white/10"
+                class="flex h-8 max-w-[190px] items-center gap-1 rounded-md px-2 text-[13px] font-semibold text-neutral-900 transition hover:bg-black/10 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none dark:text-white dark:hover:bg-white/10"
                 aria-label="Select model">
                 {@render ModelIcon(selectedModel)}
                 <span class="truncate">{selectedModel.label}</span>
@@ -134,7 +134,7 @@
                     {@render ModelIcon(model)}
                     <span>{model.label}</span>
                     {#if selectedModel.label === model.label}
-                      <Check class="ml-auto size-4 text-blue-600" />
+                      <Check class="ml-auto size-4 text-primary" />
                     {/if}
                   </DropdownMenu.Item>
                 {/each}
@@ -144,7 +144,7 @@
             <div class="h-4 w-px bg-black/10 dark:bg-white/10"></div>
 
             <label
-              class="flex size-8 cursor-pointer items-center justify-center rounded-lg bg-black/5 text-black/45 transition focus-within:ring-1 focus-within:ring-blue-500 hover:bg-black/10 hover:text-black dark:bg-white/5 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white"
+              class="flex size-8 cursor-pointer items-center justify-center rounded-lg bg-black/5 text-black/45 transition focus-within:ring-1 focus-within:ring-ring hover:bg-black/10 hover:text-black dark:bg-white/5 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white"
               aria-label="Attach file">
               <input type="file" class="sr-only" />
               <Paperclip class="size-4" />
