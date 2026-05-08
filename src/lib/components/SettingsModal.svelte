@@ -163,6 +163,9 @@
   let modelAdminError = $state('');
   let modelAdminNotice = $state('');
   let apiKeySaving = $state(false);
+  let chatCompactionModelInput = $state('');
+  let chatCompactionSettingsLoading = $state(false);
+  let chatCompactionSettingsSaving = $state(false);
   let voiceModelInput = $state('google/gemini-2.0-flash-001');
   let voiceSettingsLoading = $state(false);
   let voiceSettingsSaving = $state(false);
@@ -341,12 +344,60 @@
     }
   }
 
+  async function loadChatCompactionSettings() {
+    chatCompactionSettingsLoading = true;
+    modelAdminError = '';
+    try {
+      const settings = (await adminFetch('settings', { category: 'chat_compaction' })) || [];
+      const modelSetting = settings.find(
+        (setting: { key?: unknown; value?: unknown }) => setting.key === 'model'
+      );
+      if (typeof modelSetting?.value === 'string' && modelSetting.value.trim()) {
+        chatCompactionModelInput = modelSetting.value;
+      }
+    } catch (error) {
+      modelAdminError =
+        error instanceof Error ? error.message : 'Failed to load chat compaction settings';
+    } finally {
+      chatCompactionSettingsLoading = false;
+    }
+  }
+
+  async function saveChatCompactionSettings() {
+    const model = chatCompactionModelInput.trim();
+    if (!model) {
+      modelAdminError = 'Enter a chat summarizer model';
+      return;
+    }
+    chatCompactionSettingsSaving = true;
+    modelAdminError = '';
+    modelAdminNotice = '';
+    try {
+      await adminPost({
+        action: 'setSetting',
+        category: 'chat_compaction',
+        description: 'Model used to summarize older chat turns when context is near full',
+        isSensitive: false,
+        key: 'model',
+        value: model
+      });
+      modelAdminNotice = 'Chat summarizer model saved';
+    } catch (error) {
+      modelAdminError =
+        error instanceof Error ? error.message : 'Failed to save chat summarizer model';
+    } finally {
+      chatCompactionSettingsSaving = false;
+    }
+  }
+
   async function loadVoiceSettings() {
     voiceSettingsLoading = true;
     modelAdminError = '';
     try {
       const settings = (await adminFetch('settings', { category: 'voice' })) || [];
-      const modelSetting = settings.find((setting: Record<string, any>) => setting.key === 'model');
+      const modelSetting = settings.find(
+        (setting: { key?: unknown; value?: unknown }) => setting.key === 'model'
+      );
       if (typeof modelSetting?.value === 'string' && modelSetting.value.trim()) {
         voiceModelInput = modelSetting.value;
       }
@@ -387,6 +438,7 @@
     // Load providers and models
     loadProvidersAndModels();
     loadEnabledModels();
+    loadChatCompactionSettings();
     loadVoiceSettings();
     // Load memories
     loadMemories();
@@ -690,6 +742,54 @@
                   {modelAdminNotice}
                 </div>
               {/if}
+
+              <div class="rounded-md border border-border p-3">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs font-medium">Chat Summarizer Model</div>
+                    <div class="mt-1 text-[11px] text-muted-foreground">
+                      Used to compact older chat history only after the active model context budget
+                      is near full.
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-7 gap-1 text-[11px]"
+                    disabled={chatCompactionSettingsLoading}
+                    onclick={loadChatCompactionSettings}>
+                    <RefreshCw
+                      class="size-3 {chatCompactionSettingsLoading ? 'animate-spin' : ''}" /> Refresh
+                  </Button>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <div class="space-y-2">
+                    <Input
+                      class="h-8 font-mono text-[11px]"
+                      list="chat-compaction-model-options"
+                      placeholder="Leave unset to use the active chat model"
+                      bind:value={chatCompactionModelInput}
+                      onkeydown={(event) =>
+                        event.key === 'Enter' && saveChatCompactionSettings()} />
+                    <datalist id="chat-compaction-model-options">
+                      {#each enabledModels as model (model.model_id)}
+                        <option value={model.model_id}>{model.model_name}</option>
+                      {/each}
+                    </datalist>
+                    <div class="text-[10px] text-muted-foreground">
+                      Pick a cheap, high-context text model. If unset, Graphini falls back to the
+                      current chat model.
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    class="h-8 gap-1 text-xs"
+                    disabled={chatCompactionSettingsSaving || !chatCompactionModelInput.trim()}
+                    onclick={saveChatCompactionSettings}>
+                    <Save class="size-3.5" /> Save
+                  </Button>
+                </div>
+              </div>
 
               <div class="grid min-h-[420px] gap-4 lg:grid-cols-[1.15fr_0.85fr]">
                 <div class="overflow-hidden rounded-md border border-border">
