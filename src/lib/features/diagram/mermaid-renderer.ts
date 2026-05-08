@@ -247,39 +247,69 @@ export const render = async (
     },
     themeCSS: isDarkMode
       ? `
+      /* Dark-mode subgraph palette — each nesting level is lighter than the
+         canvas (#141414) so boundaries stay visible. */
       .cluster rect {
-        fill: #64748b !important;
-        stroke: #475569 !important;
-        stroke-width: 1.5px !important;
-        rx: 12px !important;
-        ry: 12px !important;
-        fill-opacity: 0.12 !important;
+        fill: #1e1e22 !important;
+        stroke: #3a3a3f !important;
+        stroke-width: 1px !important;
+        rx: 0 !important;
+        ry: 0 !important;
+        fill-opacity: 1 !important;
+      }
+      .cluster .cluster rect {
+        fill: #25252a !important;
+        stroke: #4a4a50 !important;
+      }
+      .cluster .cluster .cluster rect {
+        fill: #2c2c32 !important;
+        stroke: #5a5a60 !important;
+      }
+      .cluster .cluster .cluster .cluster rect {
+        fill: #33333a !important;
+        stroke: #6a6a70 !important;
       }
       .cluster-label span {
-        background: #475569 !important;
-        color: #f8fafc !important;
+        background: #2a2a30 !important;
+        color: #e5e5e5 !important;
         padding: 4px 14px !important;
-        border-radius: 6px !important;
+        border-radius: 0 !important;
         font-size: 12px !important;
         font-weight: 600 !important;
+        border: 1px solid #3a3a3f !important;
       }
     `
       : `
+      /* Light-mode subgraph palette — each nesting level is darker than the
+         canvas (white) so boundaries stay visible. */
       .cluster rect {
-        fill: #94a3b8 !important;
-        stroke: #cbd5e1 !important;
-        stroke-width: 1.5px !important;
-        rx: 12px !important;
-        ry: 12px !important;
-        fill-opacity: 0.12 !important;
+        fill: #f5f5f7 !important;
+        stroke: #d4d4d8 !important;
+        stroke-width: 1px !important;
+        rx: 0 !important;
+        ry: 0 !important;
+        fill-opacity: 1 !important;
+      }
+      .cluster .cluster rect {
+        fill: #eaeaee !important;
+        stroke: #c4c4c8 !important;
+      }
+      .cluster .cluster .cluster rect {
+        fill: #dfdfe4 !important;
+        stroke: #b4b4b8 !important;
+      }
+      .cluster .cluster .cluster .cluster rect {
+        fill: #d4d4da !important;
+        stroke: #a4a4a8 !important;
       }
       .cluster-label span {
-        background: #e2e8f0 !important;
-        color: #1e293b !important;
+        background: #ffffff !important;
+        color: #18181b !important;
         padding: 4px 14px !important;
-        border-radius: 6px !important;
+        border-radius: 0 !important;
         font-size: 12px !important;
         font-weight: 600 !important;
+        border: 1px solid #d4d4d8 !important;
       }
     `
   } as MermaidConfig;
