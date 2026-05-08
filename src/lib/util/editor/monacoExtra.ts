@@ -352,9 +352,9 @@ export const initEditor = (monacoEditor: typeof Monaco): void => {
   monacoEditor.editor.defineTheme('mermaid-dark', {
     base: 'vs-dark',
     colors: {
-      'editor.background': '#171717',
+      'editor.background': '#111113',
       'editor.foreground': '#ededed',
-      'editor.lineHighlightBackground': '#171717',
+      'editor.lineHighlightBackground': '#111113',
       'editor.selectionBackground': '#262626',
       'editor.inactiveSelectionBackground': '#1a1a1a',
       'editorCursor.foreground': '#ededed',
@@ -363,37 +363,38 @@ export const initEditor = (monacoEditor: typeof Monaco): void => {
       'editorIndentGuide.activeBackground': '#404040',
       'editorLineNumber.foreground': '#404040',
       'editorLineNumber.activeForeground': '#ededed',
-      'editorWidget.background': '#171717',
+      'editorWidget.background': '#111113',
       'editorWidget.border': '#262626',
-      'editorSuggestWidget.background': '#171717',
+      'editorSuggestWidget.background': '#111113',
       'editorSuggestWidget.border': '#262626',
       'editorSuggestWidget.foreground': '#ededed',
       'editorSuggestWidget.selectedBackground': '#262626',
-      'editorHoverWidget.background': '#171717',
+      'editorHoverWidget.background': '#111113',
       'editorHoverWidget.border': '#262626'
     },
     inherit: false,
     rules: [
-      { fontStyle: 'bold', foreground: 'a78bfa', token: 'typeKeyword' },
-      { fontStyle: 'bold', foreground: '22c55e', token: 'transition' },
-      { foreground: '#8b5cf6', token: 'keyword' },
-      { foreground: '#ef4444', token: 'custom-error' },
-      { foreground: '#f59e0b', token: 'string' },
-      { fontStyle: 'bold', foreground: '#22c55e', token: 'delimiter.bracket' },
-      { foreground: '#06b6d4', token: 'annotation' },
-      { foreground: '#06b6d4', token: 'number' },
-      { foreground: '#737373', token: 'comment' },
-      { foreground: '#8b5cf6', token: 'variable' },
-      { foreground: '#10b981', token: 'type' },
-      { foreground: '#60a5fa', token: 'identifier' }
+      // VS Code Dark+ palette tuned for Mermaid (no # in foreground per Monaco spec)
+      { foreground: '569CD6', token: 'keyword' },
+      { fontStyle: 'bold', foreground: 'C586C0', token: 'typeKeyword' },
+      { foreground: 'D16969', token: 'transition' },
+      { foreground: '9CDCFE', token: 'variable' },
+      { foreground: '4EC9B0', token: 'type' },
+      { foreground: 'CE9178', token: 'string' },
+      { foreground: 'B5CEA8', token: 'number' },
+      { foreground: 'DCDCAA', token: 'annotation' },
+      { fontStyle: 'italic', foreground: '6A9955', token: 'comment' },
+      { foreground: 'FFD700', token: 'delimiter.bracket' },
+      { foreground: '9CDCFE', token: 'identifier' },
+      { fontStyle: 'bold', foreground: 'F44747', token: 'custom-error' }
     ]
   });
 
-  // Enhanced Vercel-style light theme
+  // VS Code Light+ theme
   monacoEditor.editor.defineTheme('mermaid', {
     base: 'vs',
     colors: {
-      'editor.background': '#ffffff',
+      'editor.background': '#fcfcfc',
       'editor.foreground': '#0a0a0a',
       'editor.lineHighlightBackground': '#f5f5f5',
       'editor.selectionBackground': '#e5e5e5',
@@ -404,29 +405,30 @@ export const initEditor = (monacoEditor: typeof Monaco): void => {
       'editorIndentGuide.activeBackground': '#d4d4d4',
       'editorLineNumber.foreground': '#d4d4d4',
       'editorLineNumber.activeForeground': '#0a0a0a',
-      'editorWidget.background': '#fafafa',
+      'editorWidget.background': '#fcfcfc',
       'editorWidget.border': '#e5e5e5',
-      'editorSuggestWidget.background': '#fafafa',
+      'editorSuggestWidget.background': '#fcfcfc',
       'editorSuggestWidget.border': '#e5e5e5',
       'editorSuggestWidget.foreground': '#0a0a0a',
       'editorSuggestWidget.selectedBackground': '#e5e5e5',
-      'editorHoverWidget.background': '#fafafa',
+      'editorHoverWidget.background': '#fcfcfc',
       'editorHoverWidget.border': '#e5e5e5'
     },
     inherit: false,
     rules: [
-      { fontStyle: 'bold', foreground: '7c3aed', token: 'typeKeyword' },
-      { fontStyle: 'bold', foreground: '#16a34a', token: 'transition' },
-      { foreground: '#6b7280', token: 'keyword' },
-      { fontStyle: 'bold', foreground: '#dc2626', token: 'custom-error' },
-      { foreground: '#d97706', token: 'string' },
-      { fontStyle: 'bold', foreground: '#16a34a', token: 'delimiter.bracket' },
-      { foreground: '#0891b2', token: 'annotation' },
-      { foreground: '#0891b2', token: 'number' },
-      { foreground: '#9ca3af', token: 'comment' },
-      { foreground: '#be185d', token: 'variable' },
-      { foreground: '#059669', token: 'type' },
-      { foreground: '#0284c7', token: 'identifier' }
+      // VS Code Light+ palette tuned for Mermaid (no # in foreground per Monaco spec)
+      { foreground: '0000FF', token: 'keyword' },
+      { fontStyle: 'bold', foreground: 'AF00DB', token: 'typeKeyword' },
+      { foreground: 'D16969', token: 'transition' },
+      { foreground: '001080', token: 'variable' },
+      { foreground: '267F99', token: 'type' },
+      { foreground: 'A31515', token: 'string' },
+      { foreground: '098658', token: 'number' },
+      { foreground: '795E26', token: 'annotation' },
+      { fontStyle: 'italic', foreground: '008000', token: 'comment' },
+      { foreground: '0431FA', token: 'delimiter.bracket' },
+      { foreground: '001080', token: 'identifier' },
+      { fontStyle: 'bold', foreground: 'A31515', token: 'custom-error' }
     ]
   });
 
