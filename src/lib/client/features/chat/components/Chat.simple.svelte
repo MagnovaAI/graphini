@@ -18,7 +18,6 @@
     Checkpoint,
     ContentPart,
     DisplayContentPart,
-    PatchChainPart,
     QuestionnaireQuestion,
     ToolSimplePart
   } from '$lib/client/features/chat/content-parts/types';
@@ -31,6 +30,7 @@
   import {
     deriveToolInputDisplay,
     parsePartialQuestionnaire,
+    parsePartialThoughts,
     parseStreamingContent
   } from '$lib/client/features/chat/stream/tool-input-summary';
   import {
@@ -46,7 +46,10 @@
     postConversationMessages,
     type GuestLimitError
   } from '$lib/client/features/chat/persistence/db-api';
-  import { messagesFromDbRows, partsFromDbRows } from '$lib/client/features/chat/persistence/db-mappers';
+  import {
+    messagesFromDbRows,
+    partsFromDbRows
+  } from '$lib/client/features/chat/persistence/db-mappers';
   import type { DbMessageRow } from '$lib/client/features/chat/persistence/db-types';
   import { parse as mermaidParse } from '$lib/client/features/diagram/mermaid';
   import { canvasStatus } from '$lib/client/stores/canvasStatus.svelte';
@@ -58,10 +61,15 @@
   import ProviderIcon from '$lib/client/features/chat/components/ProviderIcon.svelte';
   import ToolSimpleChip from '$lib/client/features/chat/components/ToolSimpleChip.svelte';
   import {
+    ChainOfTools,
+    ChainOfToolsContent,
+    ChainOfToolsHeader,
+    ChainOfToolsStep
+  } from '$lib/client/ui/ai-elements/chain-of-tools';
+  import {
     ChainOfThought,
     ChainOfThoughtContent,
     ChainOfThoughtHeader,
-    ChainOfThoughtSearchResult,
     ChainOfThoughtStep
   } from '$lib/client/ui/ai-elements/chain-of-thought';
   import TooltipWrap from '$lib/client/ui/tooltip/TooltipWrap.svelte';
@@ -79,7 +87,6 @@
     ChevronRight,
     Database,
     FileText,
-    GitBranch,
     MessageCircleQuestion,
     Palette,
     Paperclip,
@@ -444,7 +451,9 @@
             if (restored) {
               conversationStarted = messages.length > 0;
               // Update conversationsStore active ID to match
-              const { conversationsStore } = await import('$lib/client/stores/conversations.svelte');
+              const { conversationsStore } = await import(
+                '$lib/client/stores/conversations.svelte'
+              );
               await conversationsStore.fetch();
               conversationsStore.setActive(savedActiveConvId);
             }
@@ -750,7 +759,6 @@
   }
 
   function contentPartKey(part: DisplayContentPart, index: number) {
-    if (part.type === 'tool-chain') return part.id;
     if (part.type === 'artifact') return part.artifactId;
     if ('id' in part) return part.id;
     if (part.type === 'text') return `text:${part.text.slice(0, 40)}:${index}`;
@@ -758,94 +766,84 @@
     return `part:${index}`;
   }
 
-  function isPatchChainPart(part: ContentPart): part is PatchChainPart {
-    return part.type === 'artifact' && artifactMap[part.artifactId]?.title === 'Diagram Patch';
+  /**
+   * Synthesize a tool-simple step from a diagramPatch artifact so multiple
+   * consecutive patches collapse into a single Chain of Tools. Only
+   * diagramPatch is chainable — every other tool (including diagramWrite
+   * and diagramDelete) renders standalone as its own card/chip.
+   */
+  function patchArtifactAsToolSimple(
+    part: ContentPart & { type: 'artifact' }
+  ): ToolSimplePart | null {
+    const artifact = artifactMap[part.artifactId];
+    if (!artifact || artifact.operation !== 'patch') return null;
+    const lines = artifact.code ? artifact.code.split('\n').length : 0;
+    const subtitle = lines ? `patch · ${lines} line${lines !== 1 ? 's' : ''}` : 'patch';
+    const details = artifact.code
+      ? artifact.code
+          .split('\n')
+          .slice(0, 8)
+          .map((line, idx) => `${idx + 1}: ${line}`)
+      : undefined;
+    return {
+      details,
+      id: `artifact-step:${part.artifactId}`,
+      status: artifact.isStreaming ? 'running' : 'done',
+      subtitle,
+      titleDone: 'Edited',
+      titlePending: 'Editing',
+      toolName: 'diagramPatch',
+      type: 'tool-simple'
+    };
   }
 
   function chainDisplayParts(parts: ContentPart[]): DisplayContentPart[] {
+    // Chain of Tools is *only* a sequence of diagramPatch calls. Every other
+    // tool — including diagramWrite/diagramDelete and read-only tools — has
+    // its own surface (artifact card, ToolSimpleChip, markdown panel, …) and
+    // breaks the chain. Thinking is its own Chain of Thought block.
     const chained: DisplayContentPart[] = [];
-    let pendingPatches: PatchChainPart[] = [];
-    let pendingTools: ToolSimplePart[] = [];
+    let pendingPatches: ToolSimplePart[] = [];
 
     const flushPatches = () => {
+      // A single patch stays as a standalone artifact — no chain wrapper.
+      // Two or more contiguous patches collate into one Chain of Tools.
       if (pendingPatches.length === 1) {
-        chained.push(pendingPatches[0]);
+        // Re-emit as the original artifact so the standalone artifact card
+        // renders, not a synthetic chip.
+        const id = pendingPatches[0].id.replace(/^artifact-step:/, '');
+        chained.push({ artifactId: id, type: 'artifact' });
       } else if (pendingPatches.length > 1) {
         const first = pendingPatches[0];
         const last = pendingPatches[pendingPatches.length - 1];
         chained.push({
-          id: `tool-chain:${first.artifactId}:${last.artifactId}:${pendingPatches.length}`,
+          id: `thought-chain:${first.id}:${last.id}:${pendingPatches.length}`,
           parts: pendingPatches,
-          status: pendingPatches.some((p) => toolPartStatus(p) === 'running') ? 'running' : 'done',
-          type: 'tool-chain'
+          status: pendingPatches.some((p) => p.status === 'running') ? 'running' : 'done',
+          type: 'thought-chain'
         });
       }
       pendingPatches = [];
     };
 
-    const flushTools = () => {
-      // Single tool calls stay as ToolSimpleChip — wrapping one in a
-      // ChainOfThought adds chrome with no info gain.
-      if (pendingTools.length === 1) {
-        chained.push(pendingTools[0]);
-      } else if (pendingTools.length > 1) {
-        const first = pendingTools[0];
-        const last = pendingTools[pendingTools.length - 1];
-        chained.push({
-          id: `thought-chain:${first.id}:${last.id}:${pendingTools.length}`,
-          parts: pendingTools,
-          status: pendingTools.some((p) => p.status === 'running') ? 'running' : 'done',
-          type: 'thought-chain'
-        });
-      }
-      pendingTools = [];
-    };
-
-    const flushAll = () => {
-      flushPatches();
-      flushTools();
-    };
-
     for (const part of parts) {
-      if (isPatchChainPart(part)) {
-        flushTools();
-        pendingPatches.push(part);
-      } else if (part.type === 'tool-simple') {
+      if (part.type === 'artifact') {
+        const synthetic = patchArtifactAsToolSimple(part);
+        if (synthetic) {
+          pendingPatches.push(synthetic);
+          continue;
+        }
+        // Non-patch artifact (write/delete) — flush any pending chain first.
         flushPatches();
-        pendingTools.push(part);
+        chained.push(part);
       } else {
-        flushAll();
+        flushPatches();
         chained.push(part);
       }
     }
-    flushAll();
+    flushPatches();
 
     return chained;
-  }
-
-  function toolPartStatus(part: PatchChainPart): 'running' | 'done' {
-    return artifactMap[part.artifactId]?.isStreaming ? 'running' : 'done';
-  }
-
-  function toolPartLabel(part: PatchChainPart): string {
-    return artifactMap[part.artifactId]?.title || 'Artifact';
-  }
-
-  function toolPartSummary(part: PatchChainPart): string {
-    const artifact = artifactMap[part.artifactId];
-    if (!artifact) return 'artifact';
-    const lines = artifact.code ? artifact.code.split('\n').length : 0;
-    const operation = artifact.operation ? `${artifact.operation}` : 'update';
-    return `${operation}${lines ? ` · ${lines} line${lines !== 1 ? 's' : ''}` : ''}`;
-  }
-
-  function toolPartDetails(part: PatchChainPart): string[] {
-    const artifact = artifactMap[part.artifactId];
-    if (!artifact?.code) return [];
-    return artifact.code
-      .split('\n')
-      .slice(0, 8)
-      .map((line, index) => `${index + 1}: ${line}`);
   }
 
   function isInternalReasoningStreamPart(data: { type?: string }): boolean {
@@ -1899,6 +1897,7 @@
     };
 
     ensureDbConversation()
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       .then((convId) => {
         if (guestLimitNotice) {
           // Guest hit the 15-conversation cap before the request even fired.
@@ -2134,6 +2133,19 @@
                       });
                       messageParts[assistantIndex] = [...parts];
                       scrollToBottom();
+                    } else if (currentToolName === 'thinking') {
+                      const cotId = `chain-of-thought-${currentToolCallId}`;
+                      const parts = messageParts[assistantIndex] || [];
+                      if (!parts.some((p) => p.type === 'chain-of-thought' && p.id === cotId)) {
+                        parts.push({
+                          id: cotId,
+                          status: 'running',
+                          thoughts: [],
+                          type: 'chain-of-thought'
+                        });
+                        messageParts[assistantIndex] = [...parts];
+                        scrollToBottom();
+                      }
                     } else {
                       const simpleId = `tool-simple-${currentToolCallId}`;
                       const parts = messageParts[assistantIndex] || [];
@@ -2236,6 +2248,27 @@
                               }
                             }, 120);
                           }
+                          scrollToBottom();
+                        }
+                      }
+                    } else if (currentToolName === 'thinking') {
+                      // Stream the Chain of Thought as input deltas arrive so
+                      // each thought appears live, not only after the call
+                      // completes. We tolerate partial / unterminated JSON.
+                      const partial = parsePartialThoughts(currentToolInputJson);
+                      if (partial.thoughts.length > 0 || partial.conclusion) {
+                        const cotId = `chain-of-thought-${currentToolCallId || Date.now()}`;
+                        const parts = messageParts[assistantIndex] || [];
+                        const idx = parts.findIndex(
+                          (p) => p.type === 'chain-of-thought' && p.id === cotId
+                        );
+                        if (idx >= 0 && parts[idx].type === 'chain-of-thought') {
+                          parts[idx] = {
+                            ...parts[idx],
+                            thoughts: partial.thoughts,
+                            conclusion: partial.conclusion
+                          } as ContentPart;
+                          messageParts[assistantIndex] = [...parts];
                           scrollToBottom();
                         }
                       }
@@ -2409,39 +2442,74 @@
                           : deriveToolDetails(toolName, output);
                       const searchResults = deriveSearchResults(toolName, output);
 
-                      // Upsert tool-simple part
-                      const simpleId = `tool-simple-${data.toolCallId || currentToolCallId}`;
                       const parts = messageParts[assistantIndex] || [];
-                      const idx = parts.findIndex(
-                        (p) => p.type === 'tool-simple' && p.id === simpleId
-                      );
-                      if (idx >= 0 && parts[idx].type === 'tool-simple') {
-                        parts[idx] = {
-                          ...parts[idx],
-                          status: 'done',
-                          subtitle: subtitle || (parts[idx] as { subtitle?: string }).subtitle,
-                          details: toolDetails.length > 0 ? toolDetails : undefined,
-                          searchResults: searchResults.length > 0 ? searchResults : undefined
-                        };
+                      if (toolName === 'thinking') {
+                        // Finalize / upsert the Chain of Thought part — never
+                        // produce a tool-simple chip for thinking.
+                        const cotId = `chain-of-thought-${data.toolCallId || currentToolCallId}`;
+                        const idx = parts.findIndex(
+                          (p) => p.type === 'chain-of-thought' && p.id === cotId
+                        );
+                        const thoughts = Array.isArray(output?.thoughts)
+                          ? (output.thoughts as { label: string; detail?: string }[])
+                          : [];
+                        const conclusion =
+                          typeof output?.conclusion === 'string'
+                            ? (output.conclusion as string)
+                            : undefined;
+                        if (idx >= 0 && parts[idx].type === 'chain-of-thought') {
+                          parts[idx] = {
+                            ...parts[idx],
+                            status: 'done',
+                            thoughts,
+                            conclusion
+                          } as ContentPart;
+                        } else {
+                          parts.push({
+                            conclusion,
+                            id: cotId,
+                            status: 'done',
+                            thoughts,
+                            type: 'chain-of-thought'
+                          });
+                        }
                       } else {
-                        const verbs = toolVerbs(toolName);
-                        parts.push({
-                          details: toolDetails.length > 0 ? toolDetails : undefined,
-                          searchResults: searchResults.length > 0 ? searchResults : undefined,
-                          id: simpleId,
-                          status: 'done',
-                          subtitle,
-                          titleDone: verbs.done,
-                          titlePending: verbs.pending,
-                          toolName,
-                          type: 'tool-simple'
-                        });
+                        // Upsert tool-simple part for everything else
+                        const simpleId = `tool-simple-${data.toolCallId || currentToolCallId}`;
+                        const idx = parts.findIndex(
+                          (p) => p.type === 'tool-simple' && p.id === simpleId
+                        );
+                        if (idx >= 0 && parts[idx].type === 'tool-simple') {
+                          parts[idx] = {
+                            ...parts[idx],
+                            details: toolDetails.length > 0 ? toolDetails : undefined,
+                            searchResults: searchResults.length > 0 ? searchResults : undefined,
+                            status: 'done',
+                            subtitle: subtitle || (parts[idx] as { subtitle?: string }).subtitle
+                          };
+                        } else {
+                          const verbs = toolVerbs(toolName);
+                          parts.push({
+                            details: toolDetails.length > 0 ? toolDetails : undefined,
+                            id: simpleId,
+                            searchResults: searchResults.length > 0 ? searchResults : undefined,
+                            status: 'done',
+                            subtitle,
+                            titleDone: verbs.done,
+                            titlePending: verbs.pending,
+                            toolName,
+                            type: 'tool-simple'
+                          });
+                        }
                       }
                       messageParts[assistantIndex] = [...parts];
 
-                      // Side effects: apply autoStyler / iconifier output to active diagram
+                      // Side effects: apply autoStyler output to the active diagram.
+                      // (Icon application is no longer auto-applied — iconSearch
+                      // returns candidates only and the model applies them with
+                      // diagramPatch so the canvas updates through the normal flow.)
                       if (
-                        (toolName === 'autoStyler' || toolName === 'iconifier') &&
+                        toolName === 'autoStyler' &&
                         output.content &&
                         typeof output.content === 'string'
                       ) {
@@ -2869,185 +2937,113 @@
                         status={part.status}
                         details={part.details}
                         searchResults={part.searchResults} />
-                    {:else if part.type === 'thought-chain'}
+                    {:else if part.type === 'chain-of-thought'}
                       <ChainOfThought defaultOpen={part.status === 'running'}>
-                        <ChainOfThoughtHeader>
-                          <span
-                            class={part.status === 'running'
-                              ? 'thinking-shimmer'
-                              : ''}>Chain of Tools</span>
-                          <span class="ml-1.5 text-muted-foreground/60">
-                            · {part.parts.length} step{part.parts.length === 1 ? '' : 's'}
-                          </span>
+                        <ChainOfThoughtHeader
+                          class="text-[13px] font-medium text-foreground/80 hover:text-foreground">
+                          <span class={part.status === 'running' ? 'thinking-shimmer' : ''}
+                            >Chain of Thought</span>
+                          {#if part.thoughts.length > 0}
+                            <span class="ml-1 text-[13px] font-normal text-muted-foreground">
+                              · {part.thoughts.length} thought{part.thoughts.length === 1
+                                ? ''
+                                : 's'}
+                            </span>
+                          {/if}
                         </ChainOfThoughtHeader>
                         <ChainOfThoughtContent>
-                          {#each part.parts as step (step.id)}
+                          {#each part.thoughts as thought, tIdx (`${thought.label}:${tIdx}`)}
                             <ChainOfThoughtStep
-                              icon={toolIcon(step.toolName)}
-                              label={step.status === 'running'
-                                ? step.titlePending
-                                : step.titleDone}
-                              description={step.subtitle}
-                              status={step.status === 'running' ? 'active' : 'complete'}>
-                              {#if step.searchResults && step.searchResults.length > 0}
-                                <ul class="space-y-2">
-                                  {#each step.searchResults as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
-                                    <li class="flex flex-col gap-0.5">
-                                      {#if result.url}
-                                        <a
-                                          href={result.url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          class="text-[13px] font-medium text-foreground/90 hover:text-foreground hover:underline">
-                                          {result.title}
-                                        </a>
-                                      {:else}
-                                        <span class="text-[13px] font-medium text-foreground/90"
-                                          >{result.title}</span>
-                                      {/if}
-                                      {#if result.source || result.url}
-                                        <span class="text-[11px] text-muted-foreground/60">
-                                          {result.source ??
-                                            new URL(result.url ?? 'http://x').hostname.replace(
-                                              /^www\./,
-                                              ''
-                                            )}
-                                        </span>
-                                      {/if}
-                                      {#if result.snippet}
-                                        <span
-                                          class="text-[12px] leading-relaxed text-muted-foreground/75">
-                                          {result.snippet}
-                                        </span>
-                                      {/if}
-                                    </li>
-                                  {/each}
-                                </ul>
-                              {:else if step.details && step.details.length > 0}
-                                <ul class="space-y-0.5 text-xs text-muted-foreground/75">
-                                  {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
-                                    <li class="flex gap-1.5">
-                                      <span class="text-muted-foreground/40">·</span>
-                                      <span class="min-w-0">{detail}</span>
-                                    </li>
-                                  {/each}
-                                </ul>
-                              {/if}
-                            </ChainOfThoughtStep>
+                              class="text-[12px]"
+                              label={thought.label}
+                              description={thought.detail}
+                              status={part.status === 'running' && tIdx === part.thoughts.length - 1
+                                ? 'active'
+                                : 'complete'} />
                           {/each}
                         </ChainOfThoughtContent>
                       </ChainOfThought>
-                    {:else if part.type === 'tool-chain'}
-                      {@const runningCount = part.parts.filter(
-                        (toolPart) => toolPartStatus(toolPart) === 'running'
-                      ).length}
-                      <div class="group overflow-hidden">
-                        <button
-                          type="button"
-                          class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30"
-                          onclick={(e) => {
-                            const body = (e.currentTarget as HTMLElement).nextElementSibling;
-                            if (body) body.classList.toggle('hidden');
-                            const chev = (e.currentTarget as HTMLElement).querySelector(
-                              '.tool-chain-chevron'
-                            );
-                            if (chev) chev.classList.toggle('rotate-90');
-                          }}>
-                          <div
-                            class="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                            <GitBranch
-                              class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
-                          </div>
-                          <span class="flex-1 text-[13px] font-medium text-foreground/80">
-                            Patch chain
-                            <span class="ml-1 text-[13px] text-muted-foreground">
-                              · {part.parts.length} patch{part.parts.length !== 1 ? 'es' : ''}
-                              {#if runningCount > 0}
-                                · {runningCount} running
-                              {:else}
-                                · complete
-                              {/if}
-                            </span>
+                      {#if part.conclusion}
+                        <p class="mt-2 text-[12px] leading-relaxed font-medium text-foreground/80">
+                          {part.conclusion}
+                        </p>
+                      {/if}
+                    {:else if part.type === 'thought-chain'}
+                      <ChainOfTools defaultOpen={part.status === 'running'}>
+                        <ChainOfToolsHeader
+                          class="text-[13px] font-medium text-foreground/80 hover:text-foreground">
+                          <span class={part.status === 'running' ? 'thinking-shimmer' : ''}
+                            >Chain of Tools</span>
+                          <span class="ml-1 text-[13px] font-normal text-muted-foreground">
+                            · {part.parts.length} step{part.parts.length === 1 ? '' : 's'}
                           </span>
-                          {#if part.status === 'running'}
-                            {@const dotColor = 'bg-muted-foreground/40'}
-                            <div class="flex items-center gap-1">
-                              <span
-                                class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:0ms]"
-                              ></span>
-                              <span
-                                class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:150ms]"
-                              ></span>
-                              <span
-                                class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:300ms]"
-                              ></span>
-                            </div>
-                          {/if}
-                          <div
-                            class="tool-chain-chevron text-muted-foreground/40 transition-transform {part.status ===
-                            'running'
-                              ? 'rotate-90'
-                              : ''}">
-                            <ChevronRight class="size-3.5" />
-                          </div>
-                        </button>
-                        <div
-                          class="{part.status === 'running' ? '' : 'hidden'} px-3 py-3"
-                          style="max-height: 280px; overflow-y: auto;">
-                          <div class="space-y-0">
-                            {#each part.parts as toolPart, chainIdx (contentPartKey(toolPart, chainIdx))}
-                              {@const details = toolPartDetails(toolPart)}
-                              <div class="relative flex gap-2 pb-2 last:pb-0">
-                                <div class="relative flex w-5 shrink-0 justify-center">
-                                  {#if chainIdx < part.parts.length - 1}
-                                    <div class="absolute top-5 bottom-[-0.5rem] w-px bg-border">
-                                    </div>
-                                  {/if}
+                        </ChainOfToolsHeader>
+                        <ChainOfToolsContent>
+                          {#each part.parts as step (step.id)}
+                            {@const hasOutput =
+                              (step.searchResults && step.searchResults.length > 0) ||
+                              (step.details && step.details.length > 0)}
+                            <ChainOfToolsStep
+                              class="text-[12px]"
+                              icon={toolIcon(step.toolName)}
+                              label={step.status === 'running' ? step.titlePending : step.titleDone}
+                              description={step.subtitle}
+                              status={step.status === 'running' ? 'active' : 'complete'}
+                              toggleable={hasOutput}>
+                              {#if step.searchResults && step.searchResults.length > 0}
+                                <div
+                                  class="mt-1 rounded-md border border-border/40 px-3 py-2"
+                                  style="background-color: var(--tool-box-bg);">
+                                  <ul class="space-y-2">
+                                    {#each step.searchResults as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
+                                      <li class="flex flex-col gap-0.5">
+                                        {#if result.url}
+                                          <a
+                                            href={result.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            class="text-[12px] font-medium text-foreground/90 hover:text-foreground hover:underline">
+                                            {result.title}
+                                          </a>
+                                        {:else}
+                                          <span class="text-[12px] font-medium text-foreground/90"
+                                            >{result.title}</span>
+                                        {/if}
+                                        {#if result.source || result.url}
+                                          <span class="text-[11px] text-muted-foreground/60">
+                                            {result.source ??
+                                              new URL(result.url ?? 'http://x').hostname.replace(
+                                                /^www\./,
+                                                ''
+                                              )}
+                                          </span>
+                                        {/if}
+                                        {#if result.snippet}
+                                          <span
+                                            class="text-[11px] leading-relaxed text-muted-foreground/75">
+                                            {result.snippet}
+                                          </span>
+                                        {/if}
+                                      </li>
+                                    {/each}
+                                  </ul>
+                                </div>
+                              {:else if step.details && step.details.length > 0}
+                                <div
+                                  class="mt-1 rounded-md border border-border/40 px-3 py-2"
+                                  style="background-color: var(--tool-box-bg);">
                                   <div
-                                    class="relative z-10 flex size-5 items-center justify-center rounded-full border bg-background text-[13px] font-medium
-                                    {toolPartStatus(toolPart) === 'running'
-                                      ? 'border-primary text-primary'
-                                      : 'border-border text-muted-foreground'}">
-                                    {#if toolPartStatus(toolPart) === 'running'}
-                                      <span class="size-1.5 animate-pulse rounded-full bg-primary"
-                                      ></span>
-                                    {:else}
-                                      {chainIdx + 1}
-                                    {/if}
+                                    class="space-y-1 text-[12px] leading-relaxed text-muted-foreground/75">
+                                    {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
+                                      <div class="min-w-0">{detail}</div>
+                                    {/each}
                                   </div>
                                 </div>
-                                <div class="min-w-0 flex-1 rounded-md bg-background/45 px-2 py-2">
-                                  <div class="flex min-w-0 items-center gap-2 text-[13px]">
-                                    <span
-                                      class="min-w-0 flex-1 truncate font-medium text-foreground/75">
-                                      {toolPartLabel(toolPart)}
-                                    </span>
-                                    <span class="shrink-0 text-[13px] text-muted-foreground/60">
-                                      {toolPartSummary(toolPart)}
-                                    </span>
-                                  </div>
-                                  {#if details.length > 0}
-                                    <details class="mt-2">
-                                      <summary
-                                        class="cursor-pointer text-[13px] font-medium text-muted-foreground/70">
-                                        Preview
-                                      </summary>
-                                      <div class="mt-1 space-y-1">
-                                        {#each details as detail, detailIdx (`${detail}:${detailIdx}`)}
-                                          <div
-                                            class="truncate text-[13px] leading-relaxed text-muted-foreground/75">
-                                            {detail}
-                                          </div>
-                                        {/each}
-                                      </div>
-                                    </details>
-                                  {/if}
-                                </div>
-                              </div>
-                            {/each}
-                          </div>
-                        </div>
-                      </div>
+                              {/if}
+                            </ChainOfToolsStep>
+                          {/each}
+                        </ChainOfToolsContent>
+                      </ChainOfTools>
                     {:else if part.type === 'artifact' && artifactMap[part.artifactId]}
                       {@const artifact = artifactMap[part.artifactId]}
                       <CodeArtifact
@@ -3121,7 +3117,7 @@
                           }
                         }}>
                         <FileText
-                          class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
+                          class="size-4 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
                         <div
@@ -3135,7 +3131,8 @@
                               {mdDoneTitle}
                             {/if}
                           </span>
-                          <span class="min-w-0 truncate font-normal text-muted-foreground/60">
+                          <span
+                            class="min-w-0 truncate text-[12px] font-normal text-muted-foreground/60">
                             {part.lines} line{part.lines !== 1 ? 's' : ''}
                           </span>
                           {#if mdHasContent}
@@ -3151,14 +3148,14 @@
                           class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
                           style="max-height: 300px; background-color: var(--tool-box-bg);">
                           <pre
-                            class="text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/85">{part.content}</pre>
+                            class="text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground/85">{part.content}</pre>
                         </div>
                       {/if}
                     {:else if part.type === 'questionnaire'}
                       <!-- Compact summary; the actual answer UI is rendered in the input area below -->
                       <div class="flex items-center gap-2 px-2 py-1">
                         <MessageCircleQuestion
-                          class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
+                          class="size-4 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
                         <div
@@ -3175,7 +3172,8 @@
                             {/if}
                           </span>
                           {#if !part.isStreaming && part.questions.length > 0}
-                            <span class="min-w-0 truncate font-normal text-muted-foreground/60">
+                            <span
+                              class="min-w-0 truncate text-[12px] font-normal text-muted-foreground/60">
                               {part.questions.length} question{part.questions.length !== 1
                                 ? 's'
                                 : ''}

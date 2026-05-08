@@ -24,6 +24,7 @@
     code,
     previousCode = '',
     language = 'mermaid',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     title = 'Diagram Code',
     isStreaming = false,
     operation = 'create',
@@ -43,8 +44,7 @@
   // Initialize once from props, then preserve user toggles except for streaming completion.
   // Write/Edit stay expanded so the code/diff is visible; Read auto-collapses.
   $effect(() => {
-    const keepExpanded =
-      operation === 'patch' || operation === 'update' || operation === 'create';
+    const keepExpanded = operation === 'patch' || operation === 'update' || operation === 'create';
     if (!collapseInitialized) {
       isCollapsed = defaultCollapsed ?? (keepExpanded ? false : operation === 'read');
       collapseInitialized = true;
@@ -179,9 +179,7 @@
 
   // Resolve dark/light via DOM class to avoid mode-watcher race conditions.
   let isDark = $state(
-    typeof document !== 'undefined'
-      ? document.documentElement.classList.contains('dark')
-      : false
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   );
   $effect(() => {
     void mode.current;
@@ -248,7 +246,11 @@
     };
   });
 
-  function tokensForLine(text: string, lineNum: number | undefined, side: 'main' | 'prev'): ThemedToken[] | null {
+  function tokensForLine(
+    text: string,
+    lineNum: number | undefined,
+    side: 'main' | 'prev'
+  ): ThemedToken[] | null {
     const src = side === 'main' ? codeTokenLines : prevCodeTokenLines;
     if (!src || !lineNum) return null;
     return src[lineNum - 1] ?? null;
@@ -272,17 +274,17 @@
     <!-- Icon (no chip) -->
     {#if isError || isRead}
       <Eye
-        class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isStreaming
+        class="size-4 flex-shrink-0 text-muted-foreground/70 {isStreaming
           ? 'animate-pulse'
           : ''}" />
     {:else if operation === 'patch' || operation === 'update'}
       <FilePen
-        class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isStreaming
+        class="size-4 flex-shrink-0 text-muted-foreground/70 {isStreaming
           ? 'animate-pulse'
           : ''}" />
     {:else}
       <FileCode
-        class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isStreaming
+        class="size-4 flex-shrink-0 text-muted-foreground/70 {isStreaming
           ? 'animate-pulse'
           : ''}" />
     {/if}
@@ -304,7 +306,7 @@
           {#if addedCount > 0}<span class="text-emerald-600 dark:text-emerald-400"
               >+{addedCount}</span
             >{/if}
-          {#if addedCount > 0 && removedCount > 0}{' '}{/if}
+          {#if addedCount > 0 && removedCount > 0}&nbsp;{/if}
           {#if removedCount > 0}<span class="text-red-600 dark:text-red-400">-{removedCount}</span
             >{/if}
         </span>
@@ -335,9 +337,7 @@
     <div
       bind:this={codeContainer}
       class="artifact-code-body relative mt-1 overflow-auto rounded-md border border-border/40 transition-[max-height] duration-150"
-      style="max-height: {isStreaming
-        ? '300px'
-        : '250px'}; background-color: var(--tool-box-bg);">
+      style="max-height: {isStreaming ? '300px' : '250px'}; background-color: var(--tool-box-bg);">
       {#if showDiffView}
         <!-- Diff-only view: show only changed regions -->
         <table class="w-full border-collapse font-mono text-[12px] leading-[1.65]">
@@ -381,7 +381,8 @@
                       ? 'text-red-700/80 line-through dark:text-red-400/80'
                       : 'text-foreground/90'}">
                     {#if lineTokens}
-                      {#each lineTokens as t}<span style:color={t.color}>{t.content}</span>{/each}
+                      {#each lineTokens as t, ti (ti)}<span style:color={t.color}>{t.content}</span
+                        >{/each}
                     {:else}
                       {dl.text}
                     {/if}
@@ -411,7 +412,8 @@
                 </td>
                 <td class="artifact-code px-4 align-top whitespace-pre text-foreground/90">
                   {#if lineTokens}
-                    {#each lineTokens as t}<span style:color={t.color}>{t.content}</span>{/each}
+                    {#each lineTokens as t, ti (ti)}<span style:color={t.color}>{t.content}</span
+                      >{/each}
                   {:else}
                     {line}
                   {/if}
@@ -423,7 +425,6 @@
         </table>
       {/if}
     </div>
-
   {/if}
 </div>
 
@@ -442,7 +443,9 @@
     position: relative;
     display: inline-block;
     background-image: var(--bg), linear-gradient(var(--base-color), var(--base-color));
-    background-size: 250% 100%, auto;
+    background-size:
+      250% 100%,
+      auto;
     background-repeat: no-repeat, padding-box;
     background-position: 100% center;
     -webkit-background-clip: text;

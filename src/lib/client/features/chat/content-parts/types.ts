@@ -66,19 +66,23 @@ export type ContentPart =
         url?: string;
         source?: string;
       }[];
+    }
+  | {
+      /**
+       * Output of the `thinking` tool. Rendered as a Chain of Thought block;
+       * never goes through the generic tool-simple chip.
+       */
+      type: 'chain-of-thought';
+      id: string;
+      status: 'running' | 'done';
+      thoughts: { label: string; detail?: string }[];
+      conclusion?: string;
     };
 
-export type PatchChainPart = Extract<ContentPart, { type: 'artifact' }>;
 export type ToolSimplePart = Extract<ContentPart, { type: 'tool-simple' }>;
 
 export type DisplayContentPart =
   | ContentPart
-  | {
-      type: 'tool-chain';
-      id: string;
-      parts: PatchChainPart[];
-      status: 'running' | 'done';
-    }
   | {
       // Two or more contiguous tool-simple parts grouped under a single
       // ChainOfThought presentation. Single tool-simple parts stay as-is.
