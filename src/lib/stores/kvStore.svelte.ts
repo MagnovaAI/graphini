@@ -33,6 +33,21 @@ function lsDel(ck: string): void {
   }
 }
 
+// Cheap-then-deep equality check used to skip redundant KV writes. Identical
+// references win immediately; primitives compare directly; for everything else
+// we fall back to JSON serialization, accepting that we'll pay the stringify
+// cost on a "diff" path but save it on every steady-state write.
+function shallowEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
 class KvStore {
   // Reactive state — UI can bind to these directly
   initialized = $state(false);
@@ -111,10 +126,13 @@ class KvStore {
 
   /**
    * Set a value. Updates memCache + localStorage immediately,
-   * then schedules a debounced flush to server.
+   * then schedules a debounced flush to server. Skips redundant writes when
+   * the new value is identical to the cached one — avoids re-stringifying
+   * large arrays (chat messages, parts, artifacts) on every streaming tick.
    */
   set(category: string, key: string, value: unknown): void {
     const ck = cacheKey(category, key);
+    if (this.memCache.has(ck) && shallowEqual(this.memCache.get(ck), value)) return;
     this.memCache.set(ck, value);
     lsSet(ck, value);
     if (!shouldSyncToServer(category)) return;
