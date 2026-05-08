@@ -1,6 +1,8 @@
 /**
  * Mermaid parser — parsing and the shared diagram-type list used by validation.
- * No DOM dependency; safe for SSR or web-worker use.
+ * Browser-only: parse() lazy-loads the renderer module so icon packs, layout
+ * loaders, and zenuml are registered before validation, keeping parse and
+ * render in lockstep.
  */
 
 import mermaid from 'mermaid';
@@ -34,11 +36,32 @@ export const DIAGRAM_TYPES_LOWER = DIAGRAM_TYPES.map((t) => t.toLowerCase());
 
 // ── Parse ────────────────────────────────────────────────────────────────
 
+/**
+ * Apply the same pre-parse transform the renderer uses, so validation matches
+ * what the canvas actually attempts to render.
+ */
+export const buildEnhancedCode = (code: string): string => {
+  const trimmed = (code ?? '').trim();
+  if (!trimmed) return '';
+  const firstNonComment = trimmed
+    .split('\n')
+    .find((line) => !line.trim().startsWith('%%') && line.trim().length > 0);
+  if (!firstNonComment) return trimmed;
+  const firstLine = firstNonComment.trim().toLowerCase();
+  const hasValidStart = DIAGRAM_TYPES_LOWER.some((type) => firstLine.startsWith(type));
+  return hasValidStart ? trimmed : `flowchart TD\n${trimmed}`;
+};
+
 export const parse = async (code: string) => {
   // Skip parsing for empty diagrams
   if (!code || !code.trim()) {
     return { diagramType: 'flowchart' };
   }
+
+  // Use the same code shape the renderer parses, so validation === render.
+  // Importing the renderer registers icon packs, layout loaders, and zenuml.
+  const enhancedCode = buildEnhancedCode(code);
+  await import('./mermaid-renderer');
 
   // Suppress console.error/warn during mermaid.parse to eliminate noise
   const originalError = console.error;
@@ -49,7 +72,7 @@ export const parse = async (code: string) => {
   /* eslint-enable @typescript-eslint/no-empty-function */
 
   try {
-    return await mermaid.parse(code);
+    return await mermaid.parse(enhancedCode);
   } finally {
     console.error = originalError;
     console.warn = originalWarn;

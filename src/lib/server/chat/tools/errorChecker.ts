@@ -30,81 +30,15 @@ interface ToolContext {
   sessionId: string;
 }
 
-let parserInit: Promise<typeof import('mermaid').default> | null = null;
-
-async function installDomGlobalsForMermaidParser() {
-  if (typeof document !== 'undefined' && typeof window !== 'undefined') return;
-
-  const { JSDOM } = await import('jsdom');
-  const dom = new JSDOM('<!doctype html><html><body></body></html>');
-  const globals = {
-    Element: dom.window.Element,
-    HTMLElement: dom.window.HTMLElement,
-    SVGElement: dom.window.SVGElement,
-    document: dom.window.document,
-    navigator: dom.window.navigator,
-    window: dom.window
-  };
-
-  for (const [name, value] of Object.entries(globals)) {
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      value,
-      writable: true
-    });
-  }
-}
-
-async function getMermaidParser() {
-  parserInit ??= (async () => {
-    await installDomGlobalsForMermaidParser();
-    const { default: mermaid } = await import('mermaid');
-    mermaid.initialize({
-      securityLevel: 'loose',
-      startOnLoad: false
-    });
-    return mermaid;
-  })();
-
-  return parserInit;
-}
-
-function parseErrorLine(message: string): number {
-  const match = message.match(/line\s+(\d+)/i);
-  return match ? Number.parseInt(match[1], 10) : 1;
-}
-
-function cleanParseErrorMessage(message: string): string {
-  return message
-    .replace(/\s+/g, ' ')
-    .replace(/^Error:\s*/i, '')
-    .trim();
-}
-
-export async function findMermaidSyntaxErrors(
-  diagram: string
-): Promise<{ line: number; message: string }[]> {
-  if (!diagram.trim()) return [];
-
-  const originalConsoleError = console.error;
-  const originalConsoleWarn = console.warn;
-  console.error = () => undefined;
-  console.warn = () => undefined;
-
-  try {
-    const mermaid = await getMermaidParser();
-    await mermaid.parse(diagram);
-    return [];
-  } catch (error) {
-    const message = cleanParseErrorMessage(
-      error instanceof Error ? error.message : 'Invalid Mermaid syntax'
-    );
-    return [{ line: parseErrorLine(message), message }];
-  } finally {
-    console.error = originalConsoleError;
-    console.warn = originalConsoleWarn;
-  }
-}
+// NOTE: We intentionally do NOT run `mermaid.parse` server-side.
+//
+// The renderer that draws the canvas registers icon packs, layout loaders,
+// and external diagrams (zenuml). A JSDOM-backed `mermaid.parse` in Node
+// does not, and reports diagrams as "valid" that the real renderer rejects
+// with "Diagram has syntax errors". The client re-runs validation through
+// the same pipeline as the renderer (see `mermaid-parser.ts`), so this
+// tool returns structural checks plus the diagram content and lets the
+// client be the source of truth.
 
 export function createErrorCheckerTool({ modelId, sessionId }: ToolContext) {
   return tool({
@@ -245,10 +179,8 @@ export function createErrorCheckerTool({ modelId, sessionId }: ToolContext) {
         }
       }
 
-      const parserErrors = await findMermaidSyntaxErrors(diagram);
-      for (const parserError of parserErrors) {
-        pushError(parserError);
-      }
+      // Real syntax validation happens on the client through the same parse
+      // pipeline the renderer uses; see Chat.simple.svelte.
 
       return {
         content: diagram,

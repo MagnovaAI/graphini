@@ -4,7 +4,7 @@
   import { kv } from '$lib/client/stores/kvStore.svelte';
   import { initEditor } from '$lib/client/util/editor/monacoExtra';
   import { setupShiki, shikiThemeName } from '$lib/client/util/editor/shikiSetup';
-  import mermaid from 'mermaid';
+  import { parse as mermaidParse } from '$lib/client/features/diagram/mermaid';
   import { mode } from 'mode-watcher';
   import * as monaco from 'monaco-editor';
   import monacoEditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
@@ -100,20 +100,11 @@
       }
 
       if (!hasError) {
-        // Only do full mermaid parse if basic checks pass
-        // Suppress console to prevent "Syntax error in text" / "mermaid version" messages
-        const _origError = console.error;
-        const _origWarn = console.warn;
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        console.error = () => {};
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        console.warn = () => {};
-        try {
-          await mermaid.parse(code);
-        } finally {
-          console.error = _origError;
-          console.warn = _origWarn;
-        }
+        // Only do full mermaid parse if basic checks pass.
+        // mermaidParse() applies the same enhancedCode transform and registers
+        // icon packs/layout loaders the renderer uses, so editor validation
+        // matches what the canvas will accept.
+        await mermaidParse(code);
         lastValidatedCode = code;
         lastValidationResult = { valid: true };
         kv.set('editor', 'editorValidationError', null);
@@ -251,12 +242,7 @@
         monaco.editor.setTheme(themeName);
         if (editor) {
           const m = editor.getModel();
-          console.log(
-            '[shiki] model language:',
-            m?.getLanguageId(),
-            '| theme set to:',
-            themeName
-          );
+          console.log('[shiki] model language:', m?.getLanguageId(), '| theme set to:', themeName);
           if (m) {
             const lang = m.getLanguageId();
             // Force tokenization refresh

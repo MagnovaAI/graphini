@@ -114,6 +114,49 @@ async function fetchAndCacheSvgIcon(
   }
 }
 
+// ── Strip broken icon annotations ────────────────────────────────────────
+//
+// Mermaid icon shapes (`Node@{ img: "URL", ... }`) render via inline <image>
+// elements. If a URL 404s or returns non-SVG, the browser surfaces "The
+// source image cannot be decoded" and the whole render fails — one bad icon
+// kills the diagram. We probe each unique `img:` URL up front and drop only
+// the annotation lines whose URL fails. Probes are cached, so repeat renders
+// are free.
+const ICON_ANNOTATION_LINE = /^\s*[A-Za-z][\w]*\s*@\{[^}]*\bimg:\s*"([^"]+)"[^}]*\}\s*$/;
+
+async function stripBrokenIconAnnotations(code: string): Promise<string> {
+  const lines = code.split('\n');
+  const seen = new Set<string>();
+  const urls: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(ICON_ANNOTATION_LINE);
+    if (match && !seen.has(match[1])) {
+      seen.add(match[1]);
+      urls.push(match[1]);
+    }
+  }
+  if (urls.length === 0) return code;
+
+  const probeResults = await Promise.all(
+    urls.map(async (url) => {
+      // Data URIs are inlined SVG; trust them without a network probe.
+      if (url.startsWith('data:image/svg+xml')) return [url, true] as const;
+      const cached = await fetchAndCacheSvgIcon(url);
+      return [url, Boolean(cached)] as const;
+    })
+  );
+  const valid = new Map(probeResults);
+
+  return lines
+    .filter((line) => {
+      const match = line.match(ICON_ANNOTATION_LINE);
+      if (!match) return true;
+      return valid.get(match[1]) === true;
+    })
+    .join('\n');
+}
+
 // ── Performance: cache last config to skip redundant mermaid.initialize() ──
 let lastConfigJson = '';
 
@@ -150,6 +193,13 @@ export const render = async (
     if (!hasValidStart) {
       enhancedCode = `flowchart TD\n${enhancedCode}`;
     }
+  }
+
+  // Drop icon annotations whose URL we can't fetch as an SVG. One bad URL
+  // would otherwise make the browser throw "The source image cannot be
+  // decoded" and abort the whole render.
+  if (!isEmptyDiagram) {
+    enhancedCode = await stripBrokenIconAnnotations(enhancedCode);
   }
 
   const dp = (config.dompurifyConfig ?? {}) as Record<string, unknown>;
