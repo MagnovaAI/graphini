@@ -142,7 +142,7 @@
     folding: true,
     fontFamily:
       'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-    fontSize: 13,
+    fontSize: 11,
     glyphMargin: false,
     guides: {
       indentation: true,
@@ -154,7 +154,7 @@
       delay: 200
     },
     lineDecorationsWidth: 0,
-    lineHeight: 20,
+    lineHeight: 14,
     lineNumbers: 'on' as const,
     lineNumbersMinChars: 3,
     minimap: {
