@@ -47,3 +47,4 @@ yarn-error.log*
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .windsurf/rules/snyk_rules.md
+logs/
