@@ -16,7 +16,7 @@
 </script>
 
 <Streamdown
-  class={cn('size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
+  class={cn('prose size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
   shikiTheme={currentTheme}
   baseTheme="shadcn"
   components={{ code: ChatCodeBlock, mermaid: ChatCodeBlock }}

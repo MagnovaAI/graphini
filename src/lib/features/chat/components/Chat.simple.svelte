@@ -1680,6 +1680,58 @@
     isImprovingPrompt = false;
   }
 
+  async function generateConversationTitle(firstMessage: string): Promise<string | null> {
+    const trimmed = firstMessage.trim();
+    if (!trimmed) return null;
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentDiagram: '',
+          currentMarkdown: '',
+          enabledTools: [],
+          isRepair: false,
+          message: `Generate a short, specific title (3-6 words, Title Case, no quotes, no trailing punctuation) for a chat that begins with this user message. Return ONLY the title.\n\nMessage: ${trimmed.slice(0, 600)}`,
+          messages: [],
+          model: promptEnhancerModel,
+          sessionId: `title-${Date.now()}`
+        })
+      });
+      if (!res.ok) return null;
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let title = '';
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'text-delta' || data.type === 'content_block_delta') {
+                title += data.content || data.delta || data.textDelta || '';
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      }
+      const cleaned = title
+        .trim()
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .replace(/[.!?]+$/, '')
+        .slice(0, 60);
+      return cleaned || null;
+    } catch (e) {
+      console.error('Generate title failed:', e);
+      return null;
+    }
+  }
+
   function retryMessage(userText: string) {
     inputText = userText;
     tick().then(() => {
@@ -1912,24 +1964,36 @@
         fileContents.length > 0
           ? `Attachment: ${fileContents.map((file) => file.filename).join(', ')}`
           : 'New chat';
-      conversationTitle = text
+      const provisionalTitle = text
         ? text.length > 50
           ? `${text.slice(0, 50)}…`
           : text
         : attachmentTitle;
+      conversationTitle = provisionalTitle;
       window.dispatchEvent(
         new CustomEvent('conversation-created', {
           detail: { sessionId, title: conversationTitle }
         })
       );
-      // If the chat row was created upfront with a default title (e.g. via the
-      // "New chat" button), rename it to the derived title now that we have
-      // signal from the first user message.
+      // First-message naming: ensure the DB row reflects the user's text
+      // immediately, then ask the model to generate a tighter title in the
+      // background. The model rename only runs when the row currently has a
+      // placeholder title ("New chat", "Untitled", or empty).
       void (async () => {
         const convId = await ensureDbConversation();
         if (!convId) return;
         const { conversationsStore } = await import('$lib/stores/conversations.svelte');
-        void conversationsStore.rename(convId, conversationTitle);
+        const currentRow = conversationsStore.list.find((c) => c.id === convId);
+        const placeholder = ['', 'New chat', 'New Chat', 'Untitled'];
+        const needsAiTitle = !currentRow?.title || placeholder.includes(currentRow.title.trim());
+        await conversationsStore.rename(convId, provisionalTitle);
+        if (needsAiTitle && text.trim()) {
+          const aiTitle = await generateConversationTitle(text);
+          if (aiTitle) {
+            conversationTitle = aiTitle;
+            void conversationsStore.rename(convId, aiTitle);
+          }
+        }
       })();
     }
     currentToolCallId = null;
@@ -3160,7 +3224,7 @@
     class="scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent relative flex-1 overflow-y-auto scroll-smooth">
     {#if !isDataReady}
       <div
-        class="flex h-full items-center justify-center px-6 py-8 text-xs text-muted-foreground"
+        class="flex h-full items-center justify-center px-6 py-8 text-[13px] text-muted-foreground"
         aria-live="polite">
         Restoring session…
       </div>
@@ -3177,7 +3241,7 @@
               onclick={() => {
                 handleSubmit({ text: suggestion.prompt });
               }}
-              class="group flex h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-3 text-left text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
+              class="group flex h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-3 text-left text-[13px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
               aria-label={suggestion.label}>
               <suggestion.icon
                 class="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
@@ -3221,13 +3285,13 @@
                         </div>
                       {:else}
                         <div
-                          class="flex h-8 max-w-[220px] min-w-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[11px] text-muted-foreground"
+                          class="flex h-8 max-w-[220px] min-w-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[13px] text-muted-foreground"
                           title={att.filename}>
                           <FileText class="size-3.5 shrink-0" />
                           <span class="min-w-0 truncate text-foreground/80"
                             >{att.filename || 'File'}</span>
                           <span
-                            class="shrink-0 rounded bg-muted px-1 py-px text-[9px] font-medium text-muted-foreground"
+                            class="shrink-0 rounded bg-muted px-1 py-px text-[13px] font-medium text-muted-foreground"
                             >{(att.ext || '?').toUpperCase()}</span>
                         </div>
                       {/if}
@@ -3247,11 +3311,11 @@
                       })
                       .filter(Boolean) as Array<{ q: string; a: string }>}
                     <div
-                      class="inline-block max-w-[420px] rounded-lg rounded-tr-sm bg-muted px-3 py-2 text-left text-[12px] leading-relaxed">
+                      class="inline-block max-w-[420px] rounded-lg rounded-tr-sm bg-muted px-3 py-2 text-left text-[13px] leading-relaxed">
                       <div class="space-y-1.5">
                         {#each qaPairs as pair}
-                          <div class="flex items-start gap-2">
-                            <span class="mt-0.5 size-1 shrink-0 rounded-full bg-muted-foreground/50"></span>
+                          <div class="flex items-start gap-1">
+                            <span class="mt-[8px] size-1 shrink-0 rounded-full bg-muted-foreground/50"></span>
                             <span class="min-w-0">
                               <span class="text-muted-foreground/80">{pair.q}</span>
                               <span class="text-muted-foreground/40"> · </span>
@@ -3281,7 +3345,7 @@
                         <Response content={part.text} />
                       </div>
                     {:else if part.type === 'thinking'}
-                      <div class="flex items-center px-2 py-0.5 text-xs" aria-live="polite">
+                      <div class="flex items-center px-2 py-0.5 text-[13px]" aria-live="polite">
                         <span class="thinking-shimmer font-medium">Thinking</span>
                       </div>
                     {:else if part.type === 'reasoning'}
@@ -3299,7 +3363,7 @@
                       )}
                       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                       <div
-                        class="group flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-xs"
+                        class="group flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-[13px]"
                         role="button"
                         tabindex="0"
                         onclick={() => {
@@ -3320,7 +3384,7 @@
                         <span class="flex-shrink-0 font-medium whitespace-nowrap">
                           {#if reasoningIsStreaming}
                             <span
-                              class="thinking-shimmer inline-flex h-4 items-center text-xs leading-none"
+                              class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
                               >Thinking{reasoningElapsedSec > 0
                                 ? ` for ${reasoningElapsedSec}s`
                                 : ''}</span>
@@ -3341,7 +3405,7 @@
                           class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
                           style="max-height: 220px; background-color: var(--tool-box-bg);">
                           <p
-                            class="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
+                            class="text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
                             {part.text}
                           </p>
                         </div>
@@ -3352,7 +3416,7 @@
                       {@const expandedKey = `tool-simple-expanded:${part.id}`}
                       {@const isToolExpanded = toolSimpleExpanded[expandedKey] === true}
                       <div
-                        class="group flex items-start gap-1.5 px-2 py-0.5 {hasDetails
+                        class="group flex items-center gap-1.5 px-2 py-0.5 {hasDetails
                           ? 'cursor-pointer'
                           : ''}"
                         role={hasDetails ? 'button' : undefined}
@@ -3460,11 +3524,11 @@
                               ? 'animate-pulse'
                               : ''}" />
                         {/if}
-                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if isPending}
                               <span
-                                class="thinking-shimmer inline-flex h-4 items-center text-xs leading-none"
+                                class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
                                 >{part.titlePending}</span>
                             {:else}
                               {part.titleDone}
@@ -3489,7 +3553,7 @@
                           style="max-height: 250px; background-color: var(--tool-box-bg);">
                           <div class="space-y-0.5">
                             {#each part.details ?? [] as detail, dIdx (`${detail}:${dIdx}`)}
-                              <div class="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground/75">
+                              <div class="flex items-start gap-1.5 text-[13px] leading-relaxed text-muted-foreground/75">
                                 <span class="mt-0.5 shrink-0 text-muted-foreground/40">·</span>
                                 <span class="min-w-0">{detail}</span>
                               </div>
@@ -3518,9 +3582,9 @@
                             <GitBranch
                               class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                           </div>
-                          <span class="flex-1 text-xs font-medium text-foreground/80">
+                          <span class="flex-1 text-[13px] font-medium text-foreground/80">
                             Patch chain
-                            <span class="ml-1 text-[10px] text-muted-foreground">
+                            <span class="ml-1 text-[13px] text-muted-foreground">
                               · {part.parts.length} patch{part.parts.length !== 1 ? 'es' : ''}
                               {#if runningCount > 0}
                                 · {runningCount} running
@@ -3566,7 +3630,7 @@
                                     </div>
                                   {/if}
                                   <div
-                                    class="relative z-10 flex size-5 items-center justify-center rounded-full border bg-background text-[10px] font-medium
+                                    class="relative z-10 flex size-5 items-center justify-center rounded-full border bg-background text-[13px] font-medium
                                     {toolPartStatus(toolPart) === 'running'
                                       ? 'border-primary text-primary'
                                       : 'border-border text-muted-foreground'}">
@@ -3579,25 +3643,25 @@
                                   </div>
                                 </div>
                                 <div class="min-w-0 flex-1 rounded-md bg-background/45 px-2 py-1.5">
-                                  <div class="flex min-w-0 items-center gap-2 text-[11px]">
+                                  <div class="flex min-w-0 items-center gap-2 text-[13px]">
                                     <span
                                       class="min-w-0 flex-1 truncate font-medium text-foreground/75">
                                       {toolPartLabel(toolPart)}
                                     </span>
-                                    <span class="shrink-0 text-[10px] text-muted-foreground/60">
+                                    <span class="shrink-0 text-[13px] text-muted-foreground/60">
                                       {toolPartSummary(toolPart)}
                                     </span>
                                   </div>
                                   {#if details.length > 0}
                                     <details class="mt-1.5">
                                       <summary
-                                        class="cursor-pointer text-[10px] font-medium text-muted-foreground/70">
+                                        class="cursor-pointer text-[13px] font-medium text-muted-foreground/70">
                                         Preview
                                       </summary>
                                       <div class="mt-1 space-y-0.5">
                                         {#each details as detail, detailIdx (`${detail}:${detailIdx}`)}
                                           <div
-                                            class="truncate text-[10px] leading-relaxed text-muted-foreground/75">
+                                            class="truncate text-[13px] leading-relaxed text-muted-foreground/75">
                                             {detail}
                                           </div>
                                         {/each}
@@ -3629,12 +3693,12 @@
                       <div
                         class="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5">
                         <AlertCircle class="size-4 shrink-0 text-red-500" />
-                        <p class="flex-1 text-xs font-medium text-destructive">
+                        <p class="flex-1 text-[13px] font-medium text-destructive">
                           Some error occurred
                         </p>
                         <button
                           type="button"
-                          class="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-2.5 py-1 text-[10px] font-medium text-destructive transition-colors hover:bg-destructive/20"
+                          class="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-2.5 py-1 text-[13px] font-medium text-destructive transition-colors hover:bg-destructive/20"
                           onclick={() =>
                             retryMessage(
                               part.userMessage ||
@@ -3687,11 +3751,11 @@
                           class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
-                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if part.isStreaming}
                               <span
-                                class="thinking-shimmer inline-flex h-4 items-center text-xs leading-none"
+                                class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
                                 >{mdPendingTitle}</span>
                             {:else}
                               {mdDoneTitle}
@@ -3713,21 +3777,21 @@
                           class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
                           style="max-height: 300px; background-color: var(--tool-box-bg);">
                           <pre
-                            class="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/85">{part.content}</pre>
+                            class="text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/85">{part.content}</pre>
                         </div>
                       {/if}
                     {:else if part.type === 'questionnaire'}
                       <!-- Compact summary; the actual answer UI is rendered in the input area below -->
-                      <div class="flex items-start gap-1.5 px-2 py-0.5">
+                      <div class="flex items-center gap-1.5 px-2 py-0.5">
                         <MessageCircleQuestion
                           class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
-                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if part.isStreaming}
                               <span
-                                class="thinking-shimmer inline-flex h-4 items-center text-xs leading-none"
+                                class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
                                 >Preparing questions</span>
                             {:else if part.submitted}
                               Answered
@@ -3748,7 +3812,7 @@
                   {/each}
                 {:else if isLoading && i === messages.length - 1}
                   <div class="flex items-center py-2" aria-live="polite">
-                    <span class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60">
+                    <span class="thinking-shimmer text-[13px] font-medium text-muted-foreground/60">
                       Thinking…
                     </span>
                   </div>
@@ -3777,7 +3841,7 @@
   {#if fileError}
     <div class="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 sm:px-4">
       <div
-        class="flex w-full items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-[11px] font-medium text-destructive">
+        class="flex w-full items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-[13px] font-medium text-destructive">
         <AlertCircle class="size-3.5 shrink-0" />
         <span class="flex-1 truncate">{fileError}</span>
         <button
@@ -3801,7 +3865,7 @@
         class="overflow-hidden rounded-2xl border border-border/50 bg-sidebar text-foreground">
         <div class="flex items-center gap-2 border-b border-border/40 px-3.5 py-2">
           <MessageCircleQuestion class="size-3.5 flex-shrink-0 text-muted-foreground/70" />
-          <span class="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          <span class="text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
             {qPart.questions.length} question{qPart.questions.length !== 1 ? 's' : ''}
           </span>
           <div class="ml-auto">
@@ -3827,14 +3891,14 @@
         </div>
         <div class="max-h-[40vh] overflow-y-auto px-3.5 py-3">
           {#if qPart.context}
-            <p class="mb-3 text-[11px] leading-relaxed text-muted-foreground/70">
+            <p class="mb-3 text-[13px] leading-relaxed text-muted-foreground/70">
               {qPart.context}
             </p>
           {/if}
           <div class="space-y-3">
             {#each qPart.questions as q, qi (q.id)}
               <div>
-                <p class="mb-1.5 text-[12px] font-medium text-foreground/85">
+                <p class="mb-1.5 text-[13px] font-medium text-foreground/85">
                   {qi + 1}. {q.text}
                 </p>
                 {#if q.options.length > 0}
@@ -3847,7 +3911,7 @@
                           : respVal === opt.label}
                       <button
                         type="button"
-                        class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] transition-all {isSelected
+                        class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] transition-all {isSelected
                           ? 'border-foreground/40 bg-foreground/10 text-foreground'
                           : 'border-border/60 text-foreground/75 hover:border-foreground/30 hover:bg-foreground/5'}"
                         onclick={() => {
@@ -3880,7 +3944,7 @@
         <div class="flex items-center justify-end gap-2 px-3.5 py-2">
           <button
             type="button"
-            class="cursor-pointer rounded-md px-3 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+            class="cursor-pointer rounded-md px-3 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
             onclick={() => {
               const parts = messageParts[qAssistantIdx] || [];
               const idx = parts.findIndex(
@@ -3895,7 +3959,7 @@
           </button>
           <button
             type="button"
-            class="cursor-pointer rounded-full bg-foreground px-4 py-1.5 text-[12px] font-medium text-background transition-transform duration-150 hover:scale-105 active:scale-95"
+            class="cursor-pointer rounded-full bg-foreground px-4 py-1.5 text-[13px] font-medium text-background transition-transform duration-150 hover:scale-105 active:scale-95"
             onclick={() =>
               handleQuestionnaireSubmit(
                 qPart.id,
@@ -3999,7 +4063,7 @@
             }}>
             <Popover.Trigger
               aria-label="Select model"
-              class="flex h-7 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-muted-foreground transition-[background-color,color] duration-150 ease-out outline-offset-2 hover:bg-foreground/10 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
+              class="flex h-7 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-muted-foreground transition-[background-color,color] duration-150 ease-out outline-offset-2 hover:bg-foreground/10 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
               <ProviderIcon
                 provider={selectedModel?.provider}
                 modelId={selectedModel?.id}
@@ -4042,7 +4106,7 @@
               <div class="max-h-[360px] overflow-y-auto overscroll-contain p-1">
                 {#if modelsStore.isLoading && modelsStore.models.length === 0}
                   <div class="flex items-center justify-center py-8">
-                    <div class="flex items-center gap-2 text-[12px] text-muted-foreground">
+                    <div class="flex items-center gap-2 text-[13px] text-muted-foreground">
                       <div
                         class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground">
                       </div>
@@ -4052,7 +4116,7 @@
                 {:else if filteredModels.length === 0}
                   <div class="flex flex-col items-center justify-center gap-1.5 py-8">
                     <Search class="size-4 text-muted-foreground/20" />
-                    <span class="text-[12px] text-muted-foreground/60">No models</span>
+                    <span class="text-[13px] text-muted-foreground/60">No models</span>
                   </div>
                 {:else}
                   {#each groupedModels as [provider, providerModels], gIdx (provider)}
@@ -4061,7 +4125,7 @@
                     {/if}
                     <div class="px-2 pt-1.5 pb-0.5">
                       <span
-                        class="text-[10px] font-semibold tracking-wider text-muted-foreground/60 uppercase"
+                        class="text-[13px] font-semibold tracking-wider text-muted-foreground/60 uppercase"
                         >{providerLabel(provider)}</span>
                     </div>
                     {#each providerModels as model (model.id)}

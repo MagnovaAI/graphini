@@ -107,7 +107,7 @@
 {:else}
   <div
     class={cn(
-      'group relative flex h-8 max-w-[240px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded-lg border border-border/70 bg-muted px-2 text-[11px] transition-colors duration-150 hover:border-border',
+      'group relative flex h-8 max-w-[240px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded-lg border border-border/70 bg-muted px-2 text-[13px] transition-colors duration-150 hover:border-border',
       className
     )}
     title={data.filename || 'File'}
@@ -116,7 +116,7 @@
       <FileText class="size-3 {extColor.icon}" />
     </span>
     <span class="min-w-0 flex-1 truncate text-foreground/85">{data.filename || 'File'}</span>
-    <span class="shrink-0 rounded bg-foreground/10 px-1 py-px text-[9px] font-medium {extColor.text}">
+    <span class="shrink-0 rounded bg-foreground/10 px-1 py-px text-[13px] font-medium {extColor.text}">
       {fileExt}
     </span>
     <button

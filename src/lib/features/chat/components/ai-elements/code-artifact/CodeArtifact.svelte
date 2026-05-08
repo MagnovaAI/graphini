@@ -287,11 +287,11 @@
           : ''}" />
     {/if}
 
-    <div class="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+    <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-muted-foreground">
       <!-- Verb -->
       <span class="flex-shrink-0 font-medium whitespace-nowrap">
         {#if isStreaming}
-          <span class="thinking-shimmer inline-flex h-4 items-center text-xs leading-none"
+          <span class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
             >{titlePending}</span>
         {:else}
           {titleDone}
@@ -300,7 +300,7 @@
 
       <!-- Diff stats for patch/update -->
       {#if !isStreaming && (operation === 'patch' || operation === 'update') && previousCode && (addedCount > 0 || removedCount > 0)}
-        <span class="flex-shrink-0 font-mono text-[11px]">
+        <span class="flex-shrink-0 font-mono text-[13px]">
           {#if addedCount > 0}<span class="text-emerald-600 dark:text-emerald-400"
               >+{addedCount}</span
             >{/if}
@@ -325,7 +325,7 @@
   {#if isError && !isCollapsed && errors.length > 0}
     <div class="mt-1 px-2">
       {#each errors as err (err)}
-        <p class="text-[11px] leading-relaxed text-red-600 dark:text-red-400">{err}</p>
+        <p class="text-[13px] leading-relaxed text-red-600 dark:text-red-400">{err}</p>
       {/each}
     </div>
   {/if}
@@ -340,7 +340,7 @@
         : '250px'}; background-color: var(--tool-box-bg);">
       {#if showDiffView}
         <!-- Diff-only view: show only changed regions -->
-        <table class="w-full border-collapse font-mono text-[11.5px] leading-[1.65]">
+        <table class="w-full border-collapse font-mono text-[13px] leading-[1.65]">
           <tbody>
             {#each diffLines as dl, i (`${dl.type}:${dl.lineNum ?? 'gap'}:${dl.text}:${i}`)}
               {@const lineTokens = tokensForLine(
@@ -352,7 +352,7 @@
                 <tr>
                   <td
                     colspan="3"
-                    class="border-y border-border/20 bg-muted/20 px-3 py-0.5 text-center text-[9px] text-muted-foreground/40"
+                    class="border-y border-border/20 bg-muted/20 px-3 py-0.5 text-center text-[13px] text-muted-foreground/40"
                     >···</td>
                 </tr>
               {:else}
@@ -362,7 +362,7 @@
                     {dl.type === 'removed' ? 'bg-red-500/[0.08] dark:bg-red-500/[0.12]' : ''}
                     {dl.type === 'context' ? 'hover:bg-muted/30' : ''}">
                   <td
-                    class="px-0.5 text-center align-top font-mono text-[10px] leading-[1.65] select-none"
+                    class="px-0.5 text-center align-top font-mono text-[13px] leading-[1.65] select-none"
                     style="width: 1.25rem; min-width: 1.25rem;">
                     {#if dl.type === 'added'}<span class="text-emerald-600 dark:text-emerald-400"
                         >+</span
@@ -393,7 +393,7 @@
         </table>
       {:else}
         <!-- Full code view -->
-        <table class="w-full border-collapse font-mono text-[11.5px] leading-[1.65]">
+        <table class="w-full border-collapse font-mono text-[13px] leading-[1.65]">
           <tbody>
             {#each lines as line, i (`${i}:${line}`)}
               {@const lineTokens = codeTokenLines ? codeTokenLines[i] : null}

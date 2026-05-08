@@ -95,10 +95,10 @@
         isExpanded = !isExpanded;
       }
     }}
-    class="group flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-xs">
+    class="group flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-[13px]">
     <span class="flex-shrink-0 font-medium whitespace-nowrap">
       {#if isStreaming}
-        <span class="reasoning-shimmer inline-flex h-4 items-center text-xs leading-none"
+        <span class="reasoning-shimmer inline-flex h-4 items-center text-[13px] leading-none"
           >Thinking{elapsedDisplay ? ` for ${elapsedDisplay}` : ''}</span>
       {:else}
         <span class="text-muted-foreground"
@@ -122,7 +122,7 @@
       <div
         bind:this={scrollEl}
         class="px-3 py-2 {isStreaming ? 'scrollbar-hide max-h-36 overflow-y-auto' : ''}">
-        <p class="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
+        <p class="text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
           {displayContent}{#if isStreaming}<span class="reasoning-cursor"></span>{/if}
         </p>
       </div>
