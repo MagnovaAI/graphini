@@ -4,7 +4,6 @@
   import { kv } from '$lib/client/stores/kvStore.svelte';
   import { initEditor } from '$lib/client/util/editor/monacoExtra';
   import { setupShiki, shikiThemeName } from '$lib/client/util/editor/shikiSetup';
-  import { errorDebug } from '$lib/client/util/bootstrap';
   import mermaid from 'mermaid';
   import { mode } from 'mode-watcher';
   import * as monaco from 'monaco-editor';
@@ -241,7 +240,6 @@
     });
 
     initEditor(monaco);
-    errorDebug();
     editor = monaco.editor.create(divElement, editorOptions);
 
     // Boot shiki + VS Code Dark+/Light+ themes for real mermaid highlighting.
