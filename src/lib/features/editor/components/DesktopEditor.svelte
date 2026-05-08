@@ -3,6 +3,7 @@
   import { stateStore } from '$/util/state/state';
   import { kv } from '$lib/stores/kvStore.svelte';
   import { initEditor } from '$lib/util/editor/monacoExtra';
+  import { setupShiki, shikiThemeName } from '$lib/util/editor/shikiSetup';
   import { errorDebug } from '$lib/util/util';
   import mermaid from 'mermaid';
   import { mode } from 'mode-watcher';
@@ -171,11 +172,15 @@
     renderLineHighlight: 'gutter' as const,
     scrollBeyondLastLine: false,
     scrollbar: {
-      horizontal: 'visible' as const,
+      horizontal: 'auto' as const,
       horizontalHasArrows: false,
+      horizontalScrollbarSize: 4,
+      horizontalSliderSize: 4,
       useShadows: false,
-      vertical: 'visible' as const,
-      verticalHasArrows: false
+      vertical: 'auto' as const,
+      verticalHasArrows: false,
+      verticalScrollbarSize: 4,
+      verticalSliderSize: 4
     },
     // Better selection and highlighting
     selectionHighlight: true,
@@ -238,6 +243,31 @@
     initEditor(monaco);
     errorDebug();
     editor = monaco.editor.create(divElement, editorOptions);
+
+    // Boot shiki + VS Code Dark+/Light+ themes for real mermaid highlighting.
+    // Async — kicks off in the background; theme is applied here once ready.
+    setupShiki(monaco)
+      .then(() => {
+        const currentMode = get(mode);
+        const themeName = shikiThemeName(currentMode === 'dark' ? 'dark' : 'light');
+        monaco.editor.setTheme(themeName);
+        if (editor) {
+          const m = editor.getModel();
+          console.log(
+            '[shiki] model language:',
+            m?.getLanguageId(),
+            '| theme set to:',
+            themeName
+          );
+          if (m) {
+            const lang = m.getLanguageId();
+            // Force tokenization refresh
+            monaco.editor.setModelLanguage(m, 'plaintext');
+            monaco.editor.setModelLanguage(m, lang);
+          }
+        }
+      })
+      .catch((err) => console.error('shiki init failed', err));
 
     // Initialize editor with current state immediately
     const currentState = get(stateStore);
@@ -309,7 +339,7 @@
 
     const unsubscribeMode = mode.subscribe((mode) => {
       if (editor) {
-        monaco.editor.setTheme(`mermaid${mode === 'dark' ? '-dark' : ''}`);
+        monaco.editor.setTheme(shikiThemeName(mode === 'dark' ? 'dark' : 'light'));
       }
     });
     const resizeObserver = new ResizeObserver((entries) => {
@@ -378,6 +408,6 @@
   });
 </script>
 
-<div class="relative h-full flex-1 overflow-hidden bg-card">
+<div class="relative h-full flex-1 overflow-hidden bg-background">
   <div bind:this={divElement} id="editor" class="h-full flex-1 overflow-hidden"></div>
 </div>
