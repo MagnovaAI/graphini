@@ -281,7 +281,7 @@ export const updateConfig = (config: string): void => {
   updateCodeStore({ mermaid: config });
 };
 
-export type LayoutOption = 'dagre' | 'elk';
+export type LayoutOption = 'dagre' | 'elk' | 'tidy-tree';
 
 export const setLayout = (layout: LayoutOption): void => {
   inputStateStore.update((state) => {
@@ -304,6 +304,11 @@ export const setLayout = (layout: LayoutOption): void => {
     if (layout === 'elk') {
       fc.defaultRenderer = 'elk';
       config.elk = { ...config.elk };
+    } else if (layout === 'tidy-tree') {
+      // tidy-tree handled by mermaid via the config.layout field; flowchart
+      // renderer must not force elk/dagre-wrapper.
+      delete fc.defaultRenderer;
+      delete config.elk;
     } else {
       // dagre — use 'dagre-wrapper' which is the valid type
       fc.defaultRenderer = 'dagre-wrapper';
