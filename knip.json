@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": [
+    "scripts/classify-icons.mjs",
+    "scripts/encrypt-existing-secrets.mjs",
+    "src/lib/client/features/diagram/components/FontAwesomeCSS.svelte"
+  ],
+  "ignoreDependencies": [
+    "@iconify-json/material-symbols",
+    "@fortawesome/fontawesome-free"
+  ]
+}
