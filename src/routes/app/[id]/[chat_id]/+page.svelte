@@ -33,8 +33,9 @@
   import { cn } from '$lib/utils';
   import {
     AlertCircle,
+    AlignLeft,
     ArrowLeft,
-    Code2,
+    Braces,
     Eraser,
     FileText,
     GitBranch,
@@ -114,6 +115,28 @@
 
   const storedEngine = $derived(workspaceStore.workspace?.document?.engine ?? 'mermaid');
   const activeDiagramEngine = $derived(detectEngine($inputStateStore.code || '', storedEngine));
+  const EngineIcon = $derived.by(() => {
+    switch (activeDiagramEngine) {
+      case 'json':
+        return Braces;
+      case 'yaml':
+        return AlignLeft;
+      case 'markdown':
+        return FileText;
+      default:
+        return Workflow;
+    }
+  });
+  const engineShort = $derived.by(() => {
+    switch (activeDiagramEngine) {
+      case 'mermaid':
+        return 'mmd';
+      case 'markdown':
+        return 'md';
+      default:
+        return activeDiagramEngine;
+    }
+  });
   const isMermaidDiagram = $derived(activeDiagramEngine === 'mermaid');
   const isMarkdownDocument = $derived(activeDiagramEngine === 'markdown');
   const isDocumentPanelRenderable = $derived(isMarkdownDocument);
@@ -126,11 +149,161 @@
   const hasWorkspaceContentPanel = $derived(
     panels.panels.canvas.visible || panels.panels.code.visible || panels.panels.document.visible
   );
+  const leftmostVisiblePanel = $derived.by(() => {
+    for (const id of panels.order) {
+      if (id === 'chat' ? panels.panels.chat.visible : panels.panels[id].visible) return id;
+    }
+    return null;
+  });
   let isViewRendering = $state(false);
   let viewRenderError = $state('');
   $effect(() => {
     canvasStatus.renderError = viewRenderError;
     canvasStatus.isRendering = isViewRendering;
+  });
+
+  let lastLoadedChatId: string | null = null;
+  let isInitialChatLoad = true;
+  let pendingChatLoadId: string | null = null;
+
+  // Metadata cache: each conversation has an immutable workspace_id + user_id,
+  // so we never need to refetch /api/conversations/:id for chats we've already
+  // resolved this session. Skipping that fetch is what makes rapid switches /
+  // deletes feel instant instead of a network roundtrip per click.
+  const conversationMetaCache = new Map<string, { workspaceId: string; ownerId: string }>();
+  const inflightMetaFetches = new Map<string, Promise<void>>();
+
+  function prefetchConversation(chatId: string): void {
+    if (!chatId || conversationMetaCache.has(chatId) || inflightMetaFetches.has(chatId)) return;
+    const promise = (async () => {
+      try {
+        const res = await fetch(`/api/conversations/${encodeURIComponent(chatId)}`, {
+          credentials: 'include'
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const workspaceId = data.conversation?.workspace_id;
+        const ownerId = data.conversation?.user_id;
+        if (workspaceId && ownerId) {
+          conversationMetaCache.set(chatId, { workspaceId, ownerId });
+        }
+      } catch {
+        /* ignore — best-effort prefetch */
+      } finally {
+        inflightMetaFetches.delete(chatId);
+      }
+    })();
+    inflightMetaFetches.set(chatId, promise);
+  }
+
+  // Generation token + AbortController so only the most recent loadChat call
+  // affects state. Without this, rapid deletes/switches let an older fetch
+  // resolve last and stomp the workspace with stale data — the crash the user
+  // hit when chaining deletes.
+  let loadGeneration = 0;
+  let loadAbort: AbortController | null = null;
+
+  async function loadChat(chatId: string, ownerId: string) {
+    if (chatId === lastLoadedChatId) return;
+    lastLoadedChatId = chatId;
+
+    loadAbort?.abort();
+    loadAbort = new AbortController();
+    const gen = ++loadGeneration;
+    const signal = loadAbort.signal;
+    const isStale = () => gen !== loadGeneration;
+
+    if (isInitialChatLoad) wsLoading = true;
+    wsError = '';
+    try {
+      let workspaceId: string | undefined;
+      let conversationOwner: string | undefined;
+
+      // If a hover-triggered prefetch is already in flight for this chat,
+      // await it instead of firing a duplicate request.
+      const inflight = inflightMetaFetches.get(chatId);
+      if (inflight) await inflight;
+      if (isStale()) return;
+
+      const cached = conversationMetaCache.get(chatId);
+      if (cached) {
+        workspaceId = cached.workspaceId;
+        conversationOwner = cached.ownerId;
+      } else {
+        const res = await fetch(`/api/conversations/${encodeURIComponent(chatId)}`, {
+          credentials: 'include',
+          signal
+        });
+        if (isStale()) return;
+        if (!res.ok) {
+          wsError =
+            res.status === 401
+              ? 'Sign in to open this chat'
+              : res.status === 404
+                ? 'Chat not found'
+                : 'Failed to load chat';
+          return;
+        }
+        const data = await res.json();
+        if (isStale()) return;
+        workspaceId = data.conversation?.workspace_id;
+        conversationOwner = data.conversation?.user_id;
+        if (workspaceId && conversationOwner) {
+          conversationMetaCache.set(chatId, { workspaceId, ownerId: conversationOwner });
+        }
+      }
+
+      if (conversationOwner && conversationOwner !== ownerId) {
+        wsError = 'Chat not found';
+        return;
+      }
+      if (!workspaceId) {
+        wsError = 'Chat is missing a workspace';
+        return;
+      }
+
+      const currentId = workspaceStore.workspace?.id;
+      if (workspaceId !== currentId) {
+        const ok = await workspaceStore.load(workspaceId);
+        if (isStale()) return;
+        if (!ok) wsError = workspaceStore.state.error || 'Failed to load workspace';
+      }
+
+      conversationsStore.setActive(chatId);
+      // Defer the chat load if the panel hasn't mounted yet; an effect below
+      // picks it up the moment chatComponent becomes available. Avoids the
+      // old 50ms-tick busy-wait that capped first-load latency at 1.5s.
+      if (chatComponent) {
+        await chatComponent.loadConversation(chatId);
+      } else {
+        pendingChatLoadId = chatId;
+      }
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
+      if (isStale()) return;
+      wsError = 'Failed to load chat';
+    } finally {
+      if (!isStale()) {
+        wsLoading = false;
+        isInitialChatLoad = false;
+      }
+    }
+  }
+
+  $effect(() => {
+    const chatId = $page.params.chat_id;
+    const ownerId = $page.params.id;
+    if (!chatId || !ownerId) return;
+    conversationsStore.setActive(chatId);
+    void loadChat(chatId, ownerId);
+  });
+
+  // Drains the pending chat-load the moment the Chat component mounts.
+  $effect(() => {
+    if (!chatComponent || !pendingChatLoadId) return;
+    const id = pendingChatLoadId;
+    pendingChatLoadId = null;
+    void chatComponent.loadConversation(id);
   });
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let selectedElementLabel = $state<string | null>(null);
@@ -157,7 +330,9 @@
   ).subscribe((state: unknown) => {
     try {
       const config = JSON.parse(state.mermaid);
-      currentLayout = config.layout === 'elk' ? 'elk' : 'dagre';
+      if (config.layout === 'elk') currentLayout = 'elk';
+      else if (config.layout === 'tidy-tree') currentLayout = 'tidy-tree';
+      else currentLayout = 'dagre';
     } catch {
       currentLayout = 'dagre';
     }
@@ -194,69 +369,9 @@
     panels.hide('canvas');
     panels.hide('document');
 
-    // Resolve chat_id -> workspace_id via the conversations API. The endpoint
-    // creates a workspace on demand the first time a chat is opened, and
-    // enforces user ownership server-side.
-    const chatId = $page.params.chat_id;
-    const ownerId = $page.params.id;
-
-    (async () => {
-      try {
-        const res = await fetch(`/api/conversations/${encodeURIComponent(chatId)}`, {
-          credentials: 'include'
-        });
-        if (!res.ok) {
-          wsError =
-            res.status === 401
-              ? 'Sign in to open this chat'
-              : res.status === 404
-                ? 'Chat not found'
-                : 'Failed to load chat';
-          wsLoading = false;
-          return;
-        }
-        const data = await res.json();
-        const workspaceId = data.conversation?.workspace_id;
-        const conversationOwner = data.conversation?.user_id;
-
-        // Surface URL/owner mismatches so a user cannot pretend to own
-        // someone else's chat by editing the URL prefix.
-        if (conversationOwner && conversationOwner !== ownerId) {
-          wsError = 'Chat not found';
-          wsLoading = false;
-          return;
-        }
-
-        if (!workspaceId) {
-          wsError = 'Chat is missing a workspace';
-          wsLoading = false;
-          return;
-        }
-
-        const currentId = workspaceStore.workspace?.id;
-        if (workspaceId !== currentId) {
-          if (currentId) workspaceStore.unload();
-          const ok = await workspaceStore.load(workspaceId);
-          if (!ok) {
-            wsError = workspaceStore.state.error || 'Failed to load workspace';
-          }
-        }
-        // Activate the conversation so the chat panel shows its messages.
-        conversationsStore.setActive(chatId);
-
-        // Make sure the Chat component loads messages for this chat instead of
-        // whatever conversation it last cached in KV. We poll briefly because
-        // chatComponent is bound after this onMount completes.
-        for (let i = 0; i < 30 && !chatComponent; i++) {
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        await chatComponent?.loadConversation(chatId);
-      } catch {
-        wsError = 'Failed to load chat';
-      } finally {
-        wsLoading = false;
-      }
-    })();
+    // Conversation/workspace loading lives in the $effect above so it re-runs
+    // whenever $page.params.chat_id changes (e.g. clicking "New chat" or a
+    // sidebar conversation). onMount only fires once per route component.
 
     setupPanZoomObserver();
 
@@ -607,14 +722,30 @@
     await goto(`/app/${userId}/${id}`);
   }
 
+  // Track in-flight deletes so a user mashing the trash icon doesn't fire a
+  // second DELETE for the same row before the first resolves.
+  const pendingDeletes = new Set<string>();
+
   async function deleteConversation(id: string) {
-    const wasActive = conversationsStore.activeId === id;
-    await conversationsStore.delete(id);
-    window.dispatchEvent(new CustomEvent('conversation-deleted', { detail: { id, wasActive } }));
-    if (wasActive) {
-      // After deleting the open chat, send the user to /app which redirects to
-      // their next-most-recent chat (or auto-creates one).
-      await goto(resolve('/app'), { replaceState: true });
+    if (pendingDeletes.has(id)) return;
+    pendingDeletes.add(id);
+    try {
+      const wasActive = conversationsStore.activeId === id;
+      conversationMetaCache.delete(id);
+      await conversationsStore.delete(id);
+      window.dispatchEvent(new CustomEvent('conversation-deleted', { detail: { id, wasActive } }));
+      if (!wasActive) return;
+      const userId = authStore.user?.id ?? $page.params.id;
+      if (!userId) return;
+      // Pick the next still-existing chat. The store's delete already filtered
+      // the list synchronously after the API responded, so list[0] is safe.
+      const next = conversationsStore.list[0];
+      const targetId = next?.id ?? (await conversationsStore.create('New chat'))?.id;
+      if (targetId) {
+        await goto(`/app/${userId}/${targetId}`, { replaceState: true });
+      }
+    } finally {
+      pendingDeletes.delete(id);
     }
   }
 
@@ -670,6 +801,7 @@
           onNewChat={startNewChat}
           onSelectConversation={selectConversation}
           onDeleteConversation={deleteConversation}
+          onPrefetchConversation={prefetchConversation}
           onTogglePanel={handleTogglePanel}
           onOpenSettings={() => (isSettingsModalOpen = true)} />
       {/snippet}
@@ -678,19 +810,24 @@
           {#if panels.panels[panelId].visible || panelId === 'chat'}
             {#if panelId === 'canvas'}
               <div
-                class="relative flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border">
+                class={cn(
+                  'relative flex min-w-0 flex-1 flex-col overflow-hidden',
+                  leftmostVisiblePanel !== 'canvas' && 'border-l border-border'
+                )}>
                 {#if !isMarkdownDocument}
                   <div class="flex shrink-0 flex-col border-b border-border bg-background">
-                    <div class="flex h-12 shrink-0 items-center gap-2 px-3">
+                    <div class="flex h-9 shrink-0 items-center gap-1.5 px-3">
+                      {#if leftmostVisiblePanel === 'canvas'}
+                        <SidebarTrigger class="-ml-1" />
+                      {/if}
+                      <EngineIcon class="size-4 text-muted-foreground" />
                       <span class="text-[13px] font-semibold text-foreground">Canvas</span>
-                      <span
-                        class="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase">
-                        {activeDiagramEngine}
-                      </span>
+                      <span class="text-[12px] text-muted-foreground/60">|</span>
+                      <span class="text-[12px] text-muted-foreground">{engineShort}</span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
+                        class="toolbar-btn size-7 {isGridVisible ? 'active' : ''}"
                         title={isGridVisible
                           ? gridStyle === 'dots'
                             ? 'Grid: dots'
@@ -702,7 +839,7 @@
                           <Button
                             variant="ghost"
                             size="icon"
-                            class="toolbar-btn active size-8"
+                            class="toolbar-btn active size-7"
                             title="Layout Options"
                             onclick={() => (showLayoutDropdown = !showLayoutDropdown)}>
                             <Workflow class="size-4" />
@@ -716,15 +853,15 @@
                                   currentLayout === 'dagre' && 'active'
                                 )}
                                 onclick={() => handleLayoutChange('dagre')}>
-                                <GitBranch class="size-3" />
-                                Dagre
+                                <GitBranch />
+                                <span>Dagre</span>
                               </button>
                               <button
                                 type="button"
                                 class={cn('layout-menu-item', currentLayout === 'elk' && 'active')}
                                 onclick={() => handleLayoutChange('elk')}>
-                                <Network class="size-3" />
-                                ELK
+                                <Network />
+                                <span>ELK</span>
                               </button>
                             </div>
                           {/if}
@@ -733,34 +870,34 @@
                       <Button
                         variant="ghost"
                         size="icon"
-                        class="toolbar-btn size-8"
+                        class="toolbar-btn size-7"
                         title="Fullscreen"
                         onclick={toggleFullscreen}><Maximize2 class="size-4" /></Button>
                       <div class="toolbar-separator"></div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        class="toolbar-btn size-8"
+                        class="toolbar-btn size-7"
                         title="Zoom In"
                         onclick={zoomIn}><ZoomIn class="size-4" /></Button>
                       <div class="toolbar-zoom-label">{zoomLevel}%</div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        class="toolbar-btn size-8"
+                        class="toolbar-btn size-7"
                         title="Zoom Out"
                         onclick={zoomOut}><ZoomOut class="size-4" /></Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        class="toolbar-btn size-8"
+                        class="toolbar-btn size-7"
                         title="Reset View"
                         onclick={resetView}><Scan class="size-4" /></Button>
                       <div class="toolbar-separator"></div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        class="toolbar-btn size-8 text-muted-foreground hover:text-destructive"
+                        class="toolbar-btn size-7 text-muted-foreground hover:text-destructive"
                         title="Clear diagram"
                         onclick={clearDiagram}><Eraser class="size-4" /></Button>
                       <div class="ml-auto">
@@ -839,7 +976,10 @@
             {:else if panelId === 'document'}
               {#if isDocumentPanelRenderable}
                 <div
-                  class="relative min-w-0 overflow-hidden border-l border-border"
+                  class={cn(
+                    'relative min-w-0 overflow-hidden',
+                    leftmostVisiblePanel !== 'document' && 'border-l border-border'
+                  )}
                   style="{panels.panels.canvas.visible
                     ? `width: ${panels.panels.document.width}px;`
                     : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels
@@ -854,28 +994,36 @@
               {/if}
             {:else if panelId === 'code'}
               <div
-                class="relative min-w-0 overflow-hidden border-l border-border"
+                class={cn(
+                  'relative min-w-0 overflow-hidden',
+                  leftmostVisiblePanel !== 'code' && 'border-l border-border'
+                )}
                 style="{panels.panels.canvas.visible
                   ? `width: ${panels.panels.code.width}px;`
                   : ''} min-width: {panels.panels.code.minWidth}px; flex: {!panels.panels.canvas
                   .visible
                   ? '1 1 0%'
                   : '0 0 auto'};">
-                <PanelResizeHandle
-                  position="left"
-                  onResize={(delta) => handlePanelResize('code', delta)} />
+                {#if panels.panels.canvas.visible}
+                  <PanelResizeHandle
+                    position="right"
+                    onResize={(delta) => handlePanelResize('code', delta)} />
+                {/if}
                 <div class="flex h-full flex-col bg-background">
                   <div
-                    class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
+                    class="box-content flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
                     <div class="flex items-center gap-1.5">
-                      <Code2 class="size-4 text-muted-foreground" />
-                      <span class="text-xs font-semibold text-foreground">Code</span>
-                      <span
-                        class="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase">
+                      {#if leftmostVisiblePanel === 'code'}
+                        <SidebarTrigger class="-ml-1" />
+                      {/if}
+                      <EngineIcon class="size-4 text-muted-foreground" />
+                      <span class="text-[13px] font-semibold text-foreground">Code</span>
+                      <span class="text-[12px] text-muted-foreground/60">|</span>
+                      <span class="text-[12px] text-muted-foreground">
                         {#if isMermaidDiagram && $stateStore.editorMode === 'config'}
                           config
                         {:else}
-                          {activeDiagramEngine}
+                          {engineShort}
                         {/if}
                       </span>
                     </div>
@@ -923,7 +1071,8 @@
                     onResize={(delta) => handlePanelResize('chat', delta)} />
                 {/if}
                 <header
-                  class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
+                  class="box-content flex h-9 shrink-0 items-center gap-2 border-b border-border px-3"
+                  style="background-color: var(--chat-background);">
                   <SidebarTrigger class="-ml-1" />
                   <p
                     class="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-foreground"
@@ -1054,18 +1203,27 @@
   }
 
   .toolbar-zoom-label {
-    @apply flex h-8 min-w-10 items-center justify-center rounded-[5px] px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums;
+    @apply flex h-7 min-w-10 items-center justify-center rounded-[5px] px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums;
   }
 
   .layout-menu {
-    @apply absolute bottom-full left-1/2 z-50 mb-2 w-32 -translate-x-1/2 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-sm;
+    @apply absolute top-full right-0 z-50 mt-1 w-28 overflow-hidden rounded-md border border-border bg-popover p-0.5 text-popover-foreground shadow-md;
   }
 
   .layout-menu-item {
-    @apply flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground;
+    @apply flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-[5px] px-1.5 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground;
   }
 
   .layout-menu-item.active {
-    @apply bg-accent font-medium text-foreground;
+    @apply bg-foreground/10 text-foreground;
+  }
+
+  .layout-menu-item :global(svg) {
+    @apply size-3 shrink-0 text-muted-foreground/70;
+  }
+
+  .layout-menu-item.active :global(svg),
+  .layout-menu-item:hover :global(svg) {
+    @apply text-foreground;
   }
 </style>
