@@ -6,7 +6,7 @@
   } from '$/features/diagram/mermaid';
   import { PanZoomState } from '$/features/diagram/panZoom';
   import type { State, ValidatedState } from '$/types';
-  import { recordRenderTime, shouldRefreshView } from '$/util/autoSync';
+  import { recordRenderTime, setTrailingCallback, shouldRefreshView } from '$/util/autoSync';
   import { findNodeDefinition, svgIdToNodeName } from '$/util/diagram/diagramMapper';
   import { inputStateStore, stateStore, updateCodeStore } from '$/util/state/state';
   import { logEvent, saveStatistics } from '$/util/stats';
@@ -731,6 +731,13 @@
   let pendingStateChange = Promise.resolve();
   stateStore.subscribe((state) => {
     // eslint-disable-next-line @typescript-eslint/no-empty-function
+    pendingStateChange = pendingStateChange.then(() => handleStateChange(state).catch(() => {}));
+  });
+
+  // When a render is throttled, autoSync schedules a trailing fire so the
+  // final state always lands on the canvas.
+  setTrailingCallback(() => {
+    const state = get(stateStore);
     pendingStateChange = pendingStateChange.then(() => handleStateChange(state).catch(() => {}));
   });
 
