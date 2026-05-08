@@ -9,9 +9,16 @@ export interface ConversationCreateResult {
   id: string | null;
 }
 
+export interface GuestLimitError {
+  kind: 'guest_conversation_limit_reached';
+  message: string;
+  limit: number;
+  used: number;
+}
+
 export async function createConversation(
   input: ConversationCreateInput
-): Promise<ConversationCreateResult | null> {
+): Promise<ConversationCreateResult | GuestLimitError | null> {
   try {
     const res = await fetch('/api/conversations', {
       method: 'POST',
@@ -22,12 +29,33 @@ export async function createConversation(
         metadata: { fileId: input.fileId }
       })
     });
+    if (res.status === 402) {
+      const body = await res.json().catch(() => ({}));
+      if (body && body.error === 'guest_conversation_limit_reached') {
+        return {
+          kind: 'guest_conversation_limit_reached',
+          message: body.message ?? 'Guest chat limit reached.',
+          limit: body.limit ?? 15,
+          used: body.used ?? 15
+        };
+      }
+    }
     if (!res.ok) return null;
     const data = await res.json();
     return { id: data.conversation?.id || null };
   } catch {
     return null;
   }
+}
+
+export function isGuestLimitError(
+  value: unknown
+): value is GuestLimitError {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    (value as Record<string, unknown>).kind === 'guest_conversation_limit_reached'
+  );
 }
 
 export interface FetchMessagesResult {

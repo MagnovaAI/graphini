@@ -122,6 +122,20 @@ export async function getConversation(
   return conv ? mapConversation(conv) : null;
 }
 
+export async function countConversations(
+  db: NeonHttpDatabase<typeof schema>,
+  user_id: string,
+  options?: { include_archived?: boolean }
+): Promise<number> {
+  const conditions = [eq(schema.conversations.user_id, user_id)];
+  if (!options?.include_archived) conditions.push(eq(schema.conversations.is_archived, false));
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.conversations)
+    .where(and(...conditions));
+  return count;
+}
+
 export async function listConversations(
   db: NeonHttpDatabase<typeof schema>,
   options?: {

@@ -1,6 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { applyAdminEmailRoleOverrides, createLocalSession, localSessionCookie } from '$lib/server/auth';
+import {
+  applyAdminEmailRoleOverrides,
+  clearGuestCookieHeader,
+  createLocalSession,
+  findGuestUserForRequest,
+  localSessionCookie
+} from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 
@@ -51,8 +57,25 @@ export const POST: RequestHandler = async ({ request, url }) => {
     const effective = applyAdminEmailRoleOverrides(user);
     const secureCookie = url.protocol === 'https:';
 
-    return json(
-      {
+    // If this request also carries a guest cookie, migrate that guest's data
+    // into the new account.
+    let guestClear: string | null = null;
+    try {
+      const guest = await findGuestUserForRequest(request);
+      if (guest && guest.id !== effective.id) {
+        await db.mergeUsers(guest.id, effective.id);
+        guestClear = clearGuestCookieHeader(secureCookie);
+      }
+    } catch (err) {
+      console.error('[auth/register] guest merge failed:', err);
+    }
+
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    headers.append('Set-Cookie', localSessionCookie(signed, secureCookie));
+    if (guestClear) headers.append('Set-Cookie', guestClear);
+
+    return new Response(
+      JSON.stringify({
         user: {
           avatar_url: effective.avatar_url,
           created_at: effective.created_at,
@@ -61,13 +84,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
           id: effective.id,
           role: effective.role
         }
-      },
-      {
-        status: 201,
-        headers: {
-          'Set-Cookie': localSessionCookie(signed, secureCookie)
-        }
-      }
+      }),
+      { status: 201, headers }
     );
   } catch {
     return json({ error: 'Registration failed' }, { status: 500 });

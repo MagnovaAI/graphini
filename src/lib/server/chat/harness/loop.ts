@@ -1,5 +1,5 @@
-import { getChatProviderOptions, resolveChatModel } from '$lib/server/chat/model';
-import { isLoopFinished, streamText, type ToolSet } from 'ai';
+import { getChatProviderOptions } from '$lib/server/chat/model';
+import { isLoopFinished, streamText, type LanguageModel, type ToolSet } from 'ai';
 import {
   stepCalledTool,
   stepReturnedInvalidErrorCheck,
@@ -9,18 +9,28 @@ import {
 
 interface RunOptions {
   messages: Record<string, unknown>[];
-  model: string;
+  /** Pre-resolved language model instance (already bound to per-user creds). */
+  model: LanguageModel;
+  /** The original modelId string (used for provider-options lookup). */
+  modelId: string;
   providerHint?: string;
   system: string;
   tools: ToolSet;
 }
 
-export function runChatStream({ messages, model, providerHint, system, tools }: RunOptions) {
+export function runChatStream({
+  messages,
+  model,
+  modelId,
+  providerHint,
+  system,
+  tools
+}: RunOptions) {
   const allTools = tools;
 
   return streamText<typeof allTools>({
     messages: messages as never,
-    model: resolveChatModel(model, providerHint),
+    model,
     prepareStep: ({ steps }) => {
       const lastStep = steps.at(-1);
 
@@ -48,7 +58,7 @@ export function runChatStream({ messages, model, providerHint, system, tools }: 
       }
       return undefined;
     },
-    providerOptions: getChatProviderOptions(model, providerHint),
+    providerOptions: getChatProviderOptions(modelId, providerHint),
     // Keep stepping while the model emits tool calls; exit when it returns
     // a step with no tool calls. isLoopFinished returns false so the SDK
     // never stops on its own — the model decides when the turn is done.

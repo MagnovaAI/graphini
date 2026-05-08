@@ -29,8 +29,10 @@ export const users = pgTable(
     email_verified: boolean('email_verified').notNull().default(false),
     firebase_uid: text('firebase_uid').unique(),
     id: uuid('id').primaryKey().defaultRandom(),
+    ip_address: text('ip_address'),
     is_active: boolean('is_active').notNull().default(true),
     last_login_at: timestamp('last_login_at', { withTimezone: true }),
+    last_seen_at: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
     metadata: jsonb('metadata').default({}),
     password_hash: text('password_hash'),
     role: text('role', { enum: ['user', 'admin', 'superadmin'] })
@@ -41,7 +43,8 @@ export const users = pgTable(
   (t) => [
     index('idx_users_email').on(t.email),
     index('idx_users_role').on(t.role),
-    index('idx_users_firebase_uid').on(t.firebase_uid)
+    index('idx_users_firebase_uid').on(t.firebase_uid),
+    index('idx_users_last_seen').on(t.last_seen_at)
   ]
 );
 

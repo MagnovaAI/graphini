@@ -39,7 +39,9 @@
   import {
     createConversation,
     fetchConversationMessages,
-    postConversationMessages
+    isGuestLimitError,
+    postConversationMessages,
+    type GuestLimitError
   } from '$lib/client/features/chat/persistence/db-api';
   import { messagesFromDbRows, partsFromDbRows } from '$lib/client/features/chat/persistence/db-mappers';
   import type { DbMessageRow } from '$lib/client/features/chat/persistence/db-types';
@@ -229,6 +231,7 @@
   // ── DB Sync for chat persistence ──
   let dbConversationId: string | null = null;
   let dbSyncedMessageCount = 0;
+  let guestLimitNotice = $state<GuestLimitError | null>(null);
   let dbSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function getDbConversationId(): string | null {
@@ -276,7 +279,9 @@
   }
 
   async function ensureDbConversation(): Promise<string | null> {
-    if (!authStore.isLoggedIn) return null;
+    // Both logged-in users and guests can persist conversations. Only fully
+    // anonymous (no auth user object at all) callers are skipped.
+    if (!authStore.user) return null;
     if (dbConversationId) return dbConversationId;
     const saved = getDbConversationId();
     if (saved) {
@@ -287,6 +292,10 @@
       fileId: getCurrentFileId(),
       title: conversationTitle || 'New Chat'
     });
+    if (isGuestLimitError(created)) {
+      guestLimitNotice = created;
+      return null;
+    }
     if (!created) return null;
     const newConvId = created.id;
     setDbConversationId(newConvId);
@@ -310,7 +319,7 @@
   }
 
   async function syncMessagesToDb() {
-    if (!authStore.isLoggedIn || messages.length === 0 || !conversationStarted) return;
+    if (!authStore.hasIdentity || messages.length === 0 || !conversationStarted) return;
     const convId = await ensureDbConversation();
     if (!convId) return;
     // Re-sync the trailing window so messages whose state finalized after
@@ -377,7 +386,7 @@
   }
 
   async function restoreChatFromDb(): Promise<boolean> {
-    if (!authStore.isLoggedIn) return false;
+    if (!authStore.hasIdentity) return false;
     const convId = getDbConversationId();
     if (!convId) return false;
     const result = await fetchConversationMessages(convId);
@@ -405,7 +414,7 @@
     const initAndRestore = async () => {
       try {
         // Ensure KV store cache is populated before reading from it
-        await kv.init({ force: authStore.isLoggedIn });
+        await kv.init({ force: authStore.hasIdentity });
         toolsStore.syncFromKv();
         // Restore from KV cache (instant after init)
         restoreChatState();
@@ -415,7 +424,7 @@
           if (authStore.isInitialized) break;
           await new Promise((r) => setTimeout(r, 100));
         }
-        if (authStore.isLoggedIn) {
+        if (authStore.hasIdentity) {
           // Check if there's a saved active conversation ID (from switching conversations)
           const savedActiveConvId = kv.get<string | null>('chat', chatKey('activeConversationId'));
           if (savedActiveConvId) {
@@ -435,10 +444,9 @@
               conversationStarted = messages.length > 0;
             }
           }
-        } else if (authStore.isInitialized && !authStore.isLoggedIn) {
-          // Not signed in (could be a guest or fully anonymous). Reset chat
-          // panel to a clean slate; guests still get their server messages
-          // via Stage 2 navigation logic, not via the legacy KV-restore path.
+        } else if (authStore.isInitialized && !authStore.hasIdentity) {
+          // Genuinely anonymous (no auth user, no guest cookie). Reset chat to
+          // a clean slate; nothing to restore from server.
           try {
             clearCurrentFileChatCache();
           } catch {
@@ -489,7 +497,7 @@
       saveChatState();
       // Force-flush KV writes immediately so they aren't lost on refresh
       kv.flush();
-      if (authStore.isLoggedIn && messages.length > dbSyncedMessageCount) {
+      if (authStore.hasIdentity && messages.length > dbSyncedMessageCount) {
         syncMessagesToDb();
       }
     };
@@ -497,7 +505,7 @@
 
     // Periodic DB sync every 60s to avoid data loss
     const periodicSyncInterval = setInterval(() => {
-      if (authStore.isLoggedIn && messages.length > dbSyncedMessageCount) {
+      if (authStore.hasIdentity && messages.length > dbSyncedMessageCount) {
         syncMessagesToDb();
       }
     }, 60000);
@@ -540,8 +548,8 @@
     dbSyncedMessageCount = 0;
     // Restore from localStorage first
     restoreChatState();
-    // Then try DB restore if logged in
-    if (authStore.isLoggedIn && dbConversationId) {
+    // Then try DB restore if we have any identity (logged-in OR guest)
+    if (authStore.hasIdentity && dbConversationId) {
       restoreChatFromDb().then((restored) => {
         if (restored) conversationStarted = messages.length > 0;
       });
@@ -1271,7 +1279,7 @@
     if (conversationStarted && messages.length > 0) {
       saveChatState();
       kv.flush();
-      if (authStore.isLoggedIn) {
+      if (authStore.hasIdentity) {
         await syncMessagesToDb();
       }
     }
@@ -1317,7 +1325,7 @@
     if (conversationStarted && messages.length > 0) {
       saveChatState();
       kv.flush();
-      if (authStore.isLoggedIn) {
+      if (authStore.hasIdentity) {
         await syncMessagesToDb();
       }
     }
@@ -1646,8 +1654,9 @@
     const files = message.files || [];
     if ((!text && files.length === 0) || isLoading || isProcessingFiles || !selectedModel) return;
 
-    // Soft auth check — prompt login if not signed in
-    if (!authStore.isLoggedIn) {
+    // Soft auth check — both guests and logged-in users can chat. Only fully
+    // anonymous (no auth user object at all) callers are prompted to sign in.
+    if (!authStore.hasIdentity) {
       messages = [
         ...messages,
         { id: uuidv4(), role: 'user', content: text },
@@ -1852,8 +1861,19 @@
     };
 
     ensureDbConversation()
-      .then(() => sendRequest())
+      .then((convId) => {
+        if (guestLimitNotice) {
+          // Guest hit the 15-conversation cap before the request even fired.
+          // Roll back the optimistic user/assistant pair we just appended so
+          // the user only sees the banner, not a stranded turn.
+          isLoading = false;
+          messages = messages.slice(0, -2);
+          return null;
+        }
+        return sendRequest();
+      })
       .then(async (res) => {
+        if (!res) return;
         if (!res.ok) {
           // Try to parse error body for specific messages
           let errMsg = `API error ${res.status}`;
@@ -2588,6 +2608,29 @@
 </script>
 
 <div class="flex h-full flex-col" style="background-color: var(--chat-background);">
+  {#if guestLimitNotice}
+    <div
+      role="alert"
+      class="flex items-center gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[13px] text-amber-100">
+      <span class="flex-1">
+        {guestLimitNotice.message}
+      </span>
+      <button
+        type="button"
+        class="rounded-md border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-[12px] font-medium text-amber-50 hover:bg-amber-500/30"
+        onclick={() => window.dispatchEvent(new CustomEvent('open-auth-modal'))}>
+        Sign in
+      </button>
+      <button
+        type="button"
+        aria-label="Dismiss"
+        class="rounded-md p-1 text-amber-200/70 hover:text-amber-100"
+        onclick={() => (guestLimitNotice = null)}>
+        <X class="size-3.5" />
+      </button>
+    </div>
+  {/if}
+
   <!-- Messages Area -->
   <div
     bind:this={messagesContainer}

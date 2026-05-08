@@ -12,6 +12,8 @@ export interface User {
   is_active: boolean;
   email_verified: boolean;
   last_login_at: string | null;
+  last_seen_at: string;
+  ip_address: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;

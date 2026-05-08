@@ -343,22 +343,51 @@ export function guestCookieHeader(token: string, secure = false): string {
 const GUEST_FIREBASE_PREFIX = 'guest:';
 
 /**
+ * Best-effort IP extraction from the request. Trusts standard reverse-proxy
+ * headers in priority order. Returns null if nothing usable is present (e.g.
+ * a direct request in dev with no proxy in front).
+ */
+export function extractClientIp(request: Request): string | null {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  const real = request.headers.get('x-real-ip');
+  if (real) return real.trim();
+  const cfConn = request.headers.get('cf-connecting-ip');
+  if (cfConn) return cfConn.trim();
+  return null;
+}
+
+/**
  * Get-or-create the synthetic users row that backs a guest cookie token.
  * The token is reused as `firebase_uid = guest:<token>` so each browser maps
  * to exactly one stable user_id, satisfying every existing FK constraint.
  */
-async function ensureGuestUser(token: string): Promise<User | null> {
+async function ensureGuestUser(token: string, ip: string | null): Promise<User | null> {
   if (!token) return null;
   const db = getDb();
   const firebaseUid = `${GUEST_FIREBASE_PREFIX}${token}`;
   const user = await db.getUserByFirebaseUid(firebaseUid);
-  if (user) return { ...user, is_guest: true };
+  if (user) {
+    // Refresh last_seen_at and IP on every hit so expiry is based on activity.
+    await db.touchUser(user.id, { ip_address: ip ?? undefined }).catch(() => {
+      /* non-fatal */
+    });
+    return { ...user, is_guest: true };
+  }
 
   const inserted = await db.upsertUserFromFirebase({
     firebase_uid: firebaseUid,
     email: null,
     display_name: 'Guest'
   });
+  if (inserted && ip) {
+    await db.touchUser(inserted.id, { ip_address: ip }).catch(() => {
+      /* non-fatal */
+    });
+  }
   return inserted ? { ...inserted, is_guest: true } : null;
 }
 
@@ -371,5 +400,35 @@ export async function validateSessionOrGuest(request: Request): Promise<User | n
   if (real) return real;
   const guestToken = readGuestCookie(request);
   if (!guestToken) return null;
-  return ensureGuestUser(guestToken);
+  return ensureGuestUser(guestToken, extractClientIp(request));
+}
+
+/**
+ * Look up the guest user (if any) bound to the request's guest cookie.
+ * Returns null when no cookie is set or the cookie doesn't map to a row yet.
+ * Does NOT auto-create — used when we want to migrate an existing guest into
+ * a real account without ever upserting a fresh one.
+ */
+export async function findGuestUserForRequest(request: Request): Promise<User | null> {
+  const token = readGuestCookie(request);
+  if (!token) return null;
+  const db = getDb();
+  const user = await db.getUserByFirebaseUid(`${GUEST_FIREBASE_PREFIX}${token}`);
+  return user ? { ...user, is_guest: true } : null;
+}
+
+/**
+ * Header value that clears the guest cookie on the client. Use after a
+ * successful guest -> real-account merge.
+ */
+export function clearGuestCookieHeader(secure = false): string {
+  const attrs = [
+    `${GUEST_COOKIE_NAME}=`,
+    'Path=/',
+    'Max-Age=0',
+    'SameSite=Lax',
+    'HttpOnly'
+  ];
+  if (secure) attrs.push('Secure');
+  return attrs.join('; ');
 }

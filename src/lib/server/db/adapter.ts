@@ -56,6 +56,12 @@ export interface DatabaseAdapter {
   listUsers(
     options?: PaginationOptions & { search?: string }
   ): Promise<{ users: User[]; total: number }>;
+  /** Bump `last_seen_at` to now and optionally update `ip_address`. */
+  touchUser(id: string, data?: { ip_address?: string }): Promise<void>;
+  /** Re-parent every row owned by `fromUserId` to `toUserId`, then delete `fromUserId`. */
+  mergeUsers(fromUserId: string, toUserId: string): Promise<void>;
+  /** List ids of guest users (firebase_uid like 'guest:%') whose last_seen_at is older than the cutoff. */
+  listExpiredGuestUserIds(olderThan: Date): Promise<string[]>;
 
   // ── Sessions ──────────────────────────────────────────────────────────
   createSession(data: {
@@ -131,6 +137,7 @@ export interface DatabaseAdapter {
     metadata?: Record<string, unknown>;
   }): Promise<Conversation>;
   getConversation(id: string): Promise<Conversation | null>;
+  countConversations(user_id: string, options?: { include_archived?: boolean }): Promise<number>;
   listConversations(
     options?: {
       user_id?: string;

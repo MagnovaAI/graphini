@@ -105,6 +105,18 @@ export class NeonAdapter implements DatabaseAdapter {
     return usersDomain.listUsers(this.db, options);
   }
 
+  async touchUser(id: string, data?: { ip_address?: string }): Promise<void> {
+    return usersDomain.touchUser(this.db, id, data);
+  }
+
+  async mergeUsers(fromUserId: string, toUserId: string): Promise<void> {
+    return usersDomain.mergeUsers(this.db, fromUserId, toUserId);
+  }
+
+  async listExpiredGuestUserIds(olderThan: Date): Promise<string[]> {
+    return usersDomain.listExpiredGuestUserIds(this.db, olderThan);
+  }
+
   // ── Sessions ──────────────────────────────────────────────────────────
 
   async createSession(data: {
@@ -260,6 +272,13 @@ export class NeonAdapter implements DatabaseAdapter {
 
   async getConversation(id: string): Promise<Conversation | null> {
     return conversationsDomain.getConversation(this.db, id);
+  }
+
+  async countConversations(
+    user_id: string,
+    options?: { include_archived?: boolean }
+  ): Promise<number> {
+    return conversationsDomain.countConversations(this.db, user_id, options);
   }
 
   async listConversations(

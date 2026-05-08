@@ -2,7 +2,9 @@ import { json, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
   applyAdminEmailRoleOverrides,
+  clearGuestCookieHeader,
   createLocalSession,
+  findGuestUserForRequest,
   getAuthUrl,
   getDevBypassEmail,
   localSessionCookie,
@@ -10,6 +12,36 @@ import {
 } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
+
+/**
+ * If the request carries a guest cookie that maps to a different user than the
+ * one we just logged in, merge guest data into the real account and return the
+ * Set-Cookie header that clears the guest cookie. Otherwise null.
+ */
+async function maybeMergeGuestIntoUser(
+  request: Request,
+  realUserId: string,
+  secureCookie: boolean
+): Promise<string | null> {
+  try {
+    const guest = await findGuestUserForRequest(request);
+    if (!guest || guest.id === realUserId) return null;
+    await getDb().mergeUsers(guest.id, realUserId);
+    return clearGuestCookieHeader(secureCookie);
+  } catch (err) {
+    console.error('[auth] guest merge failed:', err);
+    // Don't block the login if merge fails — guest data simply stays orphaned
+    // until the cleanup pass prunes it.
+    return null;
+  }
+}
+
+function withCookies(headers: Record<string, string>, ...cookies: (string | null)[]) {
+  const h = new Headers();
+  for (const [k, v] of Object.entries(headers)) h.set(k, v);
+  for (const c of cookies) if (c) h.append('Set-Cookie', c);
+  return h;
+}
 
 /**
  * GET /api/auth/login — redirect to magnova-auth for OAuth login.
@@ -44,8 +76,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
       if (devUser) {
         const signed = await createLocalSession(devUser.email);
         const secureCookie = url.protocol === 'https:';
-        return json(
-          {
+        const guestClear = await maybeMergeGuestIntoUser(request, devUser.id, secureCookie);
+        return new Response(
+          JSON.stringify({
             user: {
               avatar_url: devUser.avatar_url,
               created_at: devUser.created_at,
@@ -54,8 +87,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
               id: devUser.id,
               role: devUser.role
             }
-          },
-          { headers: { 'Set-Cookie': localSessionCookie(signed, secureCookie) } }
+          }),
+          {
+            headers: withCookies(
+              { 'Content-Type': 'application/json' },
+              localSessionCookie(signed, secureCookie),
+              guestClear
+            )
+          }
         );
       }
     }
@@ -114,9 +153,10 @@ export const POST: RequestHandler = async ({ request, url }) => {
     const signed = await createLocalSession(email);
     const effective = applyAdminEmailRoleOverrides(user);
     const secureCookie = url.protocol === 'https:';
+    const guestClear = await maybeMergeGuestIntoUser(request, effective.id, secureCookie);
 
-    return json(
-      {
+    return new Response(
+      JSON.stringify({
         user: {
           avatar_url: effective.avatar_url,
           created_at: effective.created_at,
@@ -125,11 +165,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
           id: effective.id,
           role: effective.role
         }
-      },
+      }),
       {
-        headers: {
-          'Set-Cookie': localSessionCookie(signed, secureCookie)
-        }
+        headers: withCookies(
+          { 'Content-Type': 'application/json' },
+          localSessionCookie(signed, secureCookie),
+          guestClear
+        )
       }
     );
   } catch {

@@ -119,6 +119,26 @@ export async function cacheCleanup(db: NeonHttpDatabase<typeof schema>): Promise
 
 // ── KV Store (App Settings) ────────────────────────────────────────────────
 
+import {
+  decryptFromStorage,
+  encryptForStorage,
+  isSensitiveSetting
+} from '$lib/server/crypto';
+
+function unwrapKv(raw: unknown): unknown {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && '__kv' in raw) {
+    return (raw as Record<string, unknown>).__kv;
+  }
+  return raw;
+}
+
+function wrapForStorage(value: unknown): Record<string, unknown> {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return { __kv: value };
+}
+
 export async function kvGet(
   db: NeonHttpDatabase<typeof schema>,
   user_id: string,
@@ -136,9 +156,8 @@ export async function kvGet(
       )
     );
   if (!row) return null;
-  const raw = row.value as Record<string, unknown>;
-  if (raw && typeof raw === 'object' && '__kv' in raw) return raw.__kv;
-  return raw ?? null;
+  const unwrapped = unwrapKv(row.value);
+  return decryptFromStorage(category, key, unwrapped);
 }
 
 export async function kvSet(
@@ -148,8 +167,8 @@ export async function kvSet(
   key: string,
   value: unknown
 ): Promise<void> {
-  const jsonbValue =
-    value !== null && typeof value === 'object' && !Array.isArray(value) ? value : { __kv: value };
+  const stored = encryptForStorage(category, key, value);
+  const jsonbValue = wrapForStorage(stored);
 
   await db
     .insert(schema.appSettings)
@@ -157,12 +176,14 @@ export async function kvSet(
       user_id,
       category,
       key,
-      value: jsonbValue as Record<string, unknown>
+      is_sensitive: isSensitiveSetting(category, key),
+      value: jsonbValue
     })
     .onConflictDoUpdate({
       target: [schema.appSettings.user_id, schema.appSettings.category, schema.appSettings.key],
       set: {
-        value: jsonbValue as Record<string, unknown>,
+        value: jsonbValue,
+        is_sensitive: isSensitiveSetting(category, key),
         updated_at: new Date()
       }
     });
@@ -202,11 +223,11 @@ export async function kvGetAll(
     .from(schema.appSettings)
     .where(and(...conditions));
 
-  return rows.map((r) => {
-    const raw = r.value as Record<string, unknown>;
-    const unwrapped = raw && typeof raw === 'object' && '__kv' in raw ? raw.__kv : raw;
-    return { category: r.category, key: r.key, value: unwrapped };
-  });
+  return rows.map((r) => ({
+    category: r.category,
+    key: r.key,
+    value: decryptFromStorage(r.category, r.key, unwrapKv(r.value))
+  }));
 }
 
 export async function kvSetBatch(

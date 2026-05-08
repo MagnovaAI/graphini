@@ -1,10 +1,11 @@
-import { validateSession } from '$lib/server/auth';
+import { validateSessionOrGuest } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import {
-  hasProviderCredential,
+  hasProviderCredentialFor,
   loadProviderApiKeys,
   missingProviderCredentialMessage,
-  normalizeChatModelId
+  normalizeChatModelId,
+  resolveChatModelFor
 } from '$lib/server/chat/model';
 import type { ChatProvider } from '$lib/server/chat/model';
 import { codeStore, diagramStore, markdownStore } from '$lib/server/chat/state';
@@ -100,7 +101,7 @@ export async function runChatTurn(request: Request): Promise<Response> {
 
   const turnSessionId = sessionId ?? conversationId ?? 'default';
 
-  const user = await validateSession(request).catch((authErr) => {
+  const user = await validateSessionOrGuest(request).catch((authErr) => {
     console.warn('Auth check during chat:', authErr);
     return null;
   });
@@ -119,7 +120,7 @@ export async function runChatTurn(request: Request): Promise<Response> {
   const { modelId: actualModelId } = normalizedModel;
   await loadProviderApiKeys();
   const normalizedProvider = normalizedModel.provider as ChatProvider;
-  if (!(await hasProviderCredential(normalizedProvider))) {
+  if (!(await hasProviderCredentialFor(normalizedProvider, userId))) {
     throw error(400, missingProviderCredentialMessage(normalizedProvider));
   }
 
@@ -168,9 +169,11 @@ export async function runChatTurn(request: Request): Promise<Response> {
     ? `${systemPrompt}\n\nCompacted prior chat history:\n${chatContext.summary}`
     : systemPrompt;
 
+  const resolvedModel = await resolveChatModelFor(userId, model, providerHint);
   const result = runChatStream({
     messages: chatContext.messages,
-    model,
+    model: resolvedModel,
+    modelId: model,
     providerHint,
     system,
     tools: allTools as unknown as ToolSet

@@ -6,6 +6,7 @@
 
 import { getDb } from '$lib/server/db';
 import { getCache } from './cache';
+import { decryptFromStorage, encryptForStorage, isSensitiveSetting } from '$lib/server/crypto';
 import { NeonAdapter } from '$lib/server/db/neon-adapter';
 import * as schema from '$lib/server/db/schema';
 import { and, asc, desc, eq, gt, gte, sql } from 'drizzle-orm';
@@ -136,7 +137,9 @@ export const settingsManager = {
 
         if (row) {
           const raw = row.value as Record<string, unknown>;
-          const value = raw && typeof raw === 'object' && '__kv' in raw ? raw.__kv : raw;
+          const unwrapped =
+            raw && typeof raw === 'object' && '__kv' in raw ? raw.__kv : raw;
+          const value = decryptFromStorage(category, key, unwrapped);
           await settingsCache.setSetting(userId, category, key, value);
           return value as T;
         }
@@ -161,10 +164,11 @@ export const settingsManager = {
       } else {
         const drizzle = getDrizzle();
         if (!drizzle) return;
+        const stored = encryptForStorage(category, key, value);
         const jsonbValue =
-          value !== null && typeof value === 'object' && !Array.isArray(value)
-            ? value
-            : { __kv: value };
+          stored !== null && typeof stored === 'object' && !Array.isArray(stored)
+            ? (stored as Record<string, unknown>)
+            : { __kv: stored };
 
         await drizzle
           .delete(schema.appSettings)
@@ -178,10 +182,10 @@ export const settingsManager = {
         await drizzle.insert(schema.appSettings).values({
           category,
           description: _options?.description,
-          is_sensitive: _options?.isSensitive ?? false,
+          is_sensitive: isSensitiveSetting(category, key) || (_options?.isSensitive ?? false),
           key,
           user_id: null,
-          value: jsonbValue as Record<string, unknown>
+          value: jsonbValue
         });
       }
       await settingsCache.invalidateUser(userId);
@@ -209,17 +213,22 @@ export const settingsManager = {
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(asc(schema.appSettings.category), asc(schema.appSettings.key));
 
-      return rows.map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        category: row.category,
-        key: row.key,
-        value: row.value,
-        description: row.description,
-        isSensitive: row.is_sensitive ?? false,
-        createdAt: new Date(row.created_at),
-        updatedAt: new Date(row.updated_at)
-      }));
+      return rows.map((row) => {
+        const sensitive =
+          (row.is_sensitive ?? false) || isSensitiveSetting(row.category, row.key);
+        return {
+          id: row.id,
+          userId: row.user_id,
+          category: row.category,
+          key: row.key,
+          // Never bleed plaintext secrets through bulk listings.
+          value: sensitive ? null : row.value,
+          description: row.description,
+          isSensitive: sensitive,
+          createdAt: new Date(row.created_at),
+          updatedAt: new Date(row.updated_at)
+        };
+      });
     } catch {
       return [];
     }

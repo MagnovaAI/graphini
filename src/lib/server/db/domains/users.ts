@@ -18,8 +18,10 @@ export function mapUser(row: typeof schema.users.$inferSelect): User {
     email_verified: row.email_verified,
     firebase_uid: row.firebase_uid,
     id: row.id,
+    ip_address: row.ip_address,
     is_active: row.is_active,
     last_login_at: row.last_login_at?.toISOString() ?? null,
+    last_seen_at: row.last_seen_at.toISOString(),
     metadata: (row.metadata as Record<string, unknown>) ?? {},
     role: row.role as User['role'],
     updated_at: row.updated_at.toISOString()
@@ -149,6 +151,112 @@ export async function updateUser(
 
 export async function deleteUser(db: NeonHttpDatabase<typeof schema>, id: string): Promise<void> {
   await db.delete(schema.users).where(eq(schema.users.id, id));
+}
+
+export async function touchUser(
+  db: NeonHttpDatabase<typeof schema>,
+  id: string,
+  data?: { ip_address?: string }
+): Promise<void> {
+  const updates: Record<string, unknown> = { last_seen_at: new Date() };
+  if (data?.ip_address !== undefined) updates.ip_address = data.ip_address;
+  await db.update(schema.users).set(updates).where(eq(schema.users.id, id));
+}
+
+const GUEST_FIREBASE_UID_PATTERN = sql`${schema.users.firebase_uid} LIKE 'guest:%'`;
+
+export async function listExpiredGuestUserIds(
+  db: NeonHttpDatabase<typeof schema>,
+  olderThan: Date
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(GUEST_FIREBASE_UID_PATTERN, sql`${schema.users.last_seen_at} < ${olderThan}`));
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Re-parent every row owned by `fromUserId` to `toUserId`, then delete
+ * `fromUserId`. Tables touched (in dependency order, safe under FK cascades):
+ *   conversations.user_id, workspaces.owner_id, diagram_workspaces.user_id,
+ *   files.user_id, app_settings.user_id, usage_stats.user_id,
+ *   credit_transactions.user_id, credit_balances.user_id (merged additively).
+ *
+ * Note: Neon HTTP serverless does NOT support multi-statement transactions,
+ * so we run each statement sequentially and accept eventual consistency in the
+ * extremely rare case of a mid-merge failure. If you need full atomicity,
+ * promote this to a stored procedure or run via a pooled connection.
+ */
+export async function mergeUsers(
+  db: NeonHttpDatabase<typeof schema>,
+  fromUserId: string,
+  toUserId: string
+): Promise<void> {
+  if (fromUserId === toUserId) return;
+
+  await db
+    .update(schema.conversations)
+    .set({ user_id: toUserId })
+    .where(eq(schema.conversations.user_id, fromUserId));
+
+  await db
+    .update(schema.workspaces)
+    .set({ owner_id: toUserId })
+    .where(eq(schema.workspaces.owner_id, fromUserId));
+
+  await db
+    .update(schema.diagramWorkspaces)
+    .set({ user_id: toUserId })
+    .where(eq(schema.diagramWorkspaces.user_id, fromUserId));
+
+  await db
+    .update(schema.files)
+    .set({ user_id: toUserId })
+    .where(eq(schema.files.user_id, fromUserId));
+
+  await db
+    .update(schema.usageStats)
+    .set({ user_id: toUserId })
+    .where(eq(schema.usageStats.user_id, fromUserId));
+
+  await db
+    .update(schema.creditTransactions)
+    .set({ user_id: toUserId })
+    .where(eq(schema.creditTransactions.user_id, fromUserId));
+
+  // app_settings has unique (user_id, category, key). Move only rows that won't
+  // collide with the destination user's existing settings; drop the rest.
+  await db.execute(sql`
+    UPDATE app_settings AS guest
+    SET user_id = ${toUserId}
+    WHERE guest.user_id = ${fromUserId}
+      AND NOT EXISTS (
+        SELECT 1 FROM app_settings AS target
+        WHERE target.user_id = ${toUserId}
+          AND target.category = guest.category
+          AND target.key = guest.key
+      );
+    DELETE FROM app_settings WHERE user_id = ${fromUserId};
+  `);
+
+  // Credit balance: add the guest's balance into the target's, then drop the
+  // guest balance row. Single row per user_id (unique constraint).
+  await db.execute(sql`
+    INSERT INTO credit_balances (user_id, balance, lifetime_earned, lifetime_spent)
+    SELECT ${toUserId}, balance, lifetime_earned, lifetime_spent
+    FROM credit_balances WHERE user_id = ${fromUserId}
+    ON CONFLICT (user_id) DO UPDATE SET
+      balance = credit_balances.balance + EXCLUDED.balance,
+      lifetime_earned = credit_balances.lifetime_earned + EXCLUDED.lifetime_earned,
+      lifetime_spent = credit_balances.lifetime_spent + EXCLUDED.lifetime_spent,
+      updated_at = NOW();
+    DELETE FROM credit_balances WHERE user_id = ${fromUserId};
+  `);
+
+  // Sessions and analytics: cascade or set-null per their FK definitions when
+  // we delete the user row.
+  await db.delete(schema.users).where(eq(schema.users.id, fromUserId));
 }
 
 export async function listUsers(

@@ -216,6 +216,14 @@ export const authStore = {
   get isLoggedIn() {
     return !!state.user && state.user.is_guest !== true;
   },
+  /**
+   * True when there is *any* identity attached (real user OR guest cookie).
+   * Use this to gate DB persistence — guests get to persist too, just inside
+   * their own quota.
+   */
+  get hasIdentity() {
+    return !!state.user;
+  },
   login,
   loginLocal,
   logout,
