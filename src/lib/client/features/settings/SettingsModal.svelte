@@ -154,6 +154,86 @@
   let openAiApiKeyInput = $state('');
   let openRouterApiKeyInput = $state('');
 
+  // Per-user search-provider keys (stored via /api/user/api-keys, encrypted
+  // server-side). Unlike AI provider keys above, these are NOT global —
+  // every user (including guests) carries their own.
+  let braveSearchInput = $state('');
+  let tavilyInput = $state('');
+  let braveSearchPresent = $state(false);
+  let tavilyPresent = $state(false);
+  let searchKeySaving = $state(false);
+  let searchKeyMessage = $state<{ kind: 'error' | 'notice'; text: string } | null>(null);
+
+  async function loadUserApiKeys() {
+    try {
+      const res = await fetch('/api/user/api-keys', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      braveSearchPresent = Boolean(data?.providers?.brave_search);
+      tavilyPresent = Boolean(data?.providers?.tavily);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  async function saveUserApiKey(provider: 'brave_search' | 'tavily', key: string) {
+    if (!key.trim() || key.trim().length < 8) {
+      searchKeyMessage = { kind: 'error', text: 'Key must be at least 8 characters.' };
+      return;
+    }
+    searchKeySaving = true;
+    searchKeyMessage = null;
+    try {
+      const res = await fetch('/api/user/api-keys', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ provider, key: key.trim() })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Failed to save ${provider}`);
+      }
+      if (provider === 'brave_search') {
+        braveSearchInput = '';
+        braveSearchPresent = true;
+      } else {
+        tavilyInput = '';
+        tavilyPresent = true;
+      }
+      searchKeyMessage = { kind: 'notice', text: 'Saved.' };
+    } catch (err) {
+      searchKeyMessage = {
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'Failed to save key'
+      };
+    } finally {
+      searchKeySaving = false;
+    }
+  }
+
+  async function clearUserApiKey(provider: 'brave_search' | 'tavily') {
+    searchKeySaving = true;
+    searchKeyMessage = null;
+    try {
+      const res = await fetch(
+        `/api/user/api-keys?provider=${encodeURIComponent(provider)}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (!res.ok) throw new Error('Failed to clear key');
+      if (provider === 'brave_search') braveSearchPresent = false;
+      else tavilyPresent = false;
+      searchKeyMessage = { kind: 'notice', text: 'Cleared.' };
+    } catch (err) {
+      searchKeyMessage = {
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'Failed to clear key'
+      };
+    } finally {
+      searchKeySaving = false;
+    }
+  }
+
   let enabledModels = $state<Record<string, any>[]>([]);
   let enabledModelsLoading = $state(false);
   let modelSearchProvider = $state<ModelSearchProvider>('openrouter');
@@ -440,6 +520,7 @@
     loadEnabledModels();
     loadChatCompactionSettings();
     loadVoiceSettings();
+    loadUserApiKeys();
     // Load memories
     loadMemories();
 
@@ -728,6 +809,104 @@
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div class="rounded-md border border-border p-3">
+                <div class="mb-3">
+                  <div class="text-[13px] font-medium">Search Providers</div>
+                  <div class="mt-1 text-[13px] text-muted-foreground">
+                    Per-user keys for the Web Search tool. Stored encrypted server-side. Tavily is
+                    used when both are set (richer results); Brave is the fallback.
+                  </div>
+                </div>
+                <div class="grid gap-3 lg:grid-cols-2">
+                  <div class="rounded-md border border-border p-3">
+                    <div class="mb-3 flex items-center justify-between">
+                      <span class="text-[13px] font-medium">Tavily</span>
+                      <Badge variant="outline" class="text-[13px]"
+                        >{tavilyPresent ? 'Saved' : 'Not set'}</Badge>
+                    </div>
+                    <div class="flex gap-2">
+                      <Input
+                        class="h-8 font-mono text-[12px]"
+                        type="password"
+                        autocomplete="off"
+                        placeholder="tvly-..."
+                        bind:value={tavilyInput}
+                        onkeydown={(event) =>
+                          event.key === 'Enter' && saveUserApiKey('tavily', tavilyInput)} />
+                      <Button
+                        size="sm"
+                        class="h-8 px-2"
+                        disabled={searchKeySaving || !tavilyInput.trim()}
+                        onclick={() => saveUserApiKey('tavily', tavilyInput)}
+                        ><Save class="size-3.5" /></Button>
+                      {#if tavilyPresent}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          class="h-8 px-2"
+                          disabled={searchKeySaving}
+                          onclick={() => clearUserApiKey('tavily')}>Clear</Button>
+                      {/if}
+                    </div>
+                    <div class="mt-2 text-[12px] text-muted-foreground">
+                      Free tier: 1k queries/month — <a
+                        class="underline hover:text-foreground"
+                        href="https://tavily.com"
+                        target="_blank"
+                        rel="noopener">tavily.com</a>
+                    </div>
+                  </div>
+                  <div class="rounded-md border border-border p-3">
+                    <div class="mb-3 flex items-center justify-between">
+                      <span class="text-[13px] font-medium">Brave Search</span>
+                      <Badge variant="outline" class="text-[13px]"
+                        >{braveSearchPresent ? 'Saved' : 'Not set'}</Badge>
+                    </div>
+                    <div class="flex gap-2">
+                      <Input
+                        class="h-8 font-mono text-[12px]"
+                        type="password"
+                        autocomplete="off"
+                        placeholder="BSA..."
+                        bind:value={braveSearchInput}
+                        onkeydown={(event) =>
+                          event.key === 'Enter' &&
+                          saveUserApiKey('brave_search', braveSearchInput)} />
+                      <Button
+                        size="sm"
+                        class="h-8 px-2"
+                        disabled={searchKeySaving || !braveSearchInput.trim()}
+                        onclick={() => saveUserApiKey('brave_search', braveSearchInput)}
+                        ><Save class="size-3.5" /></Button>
+                      {#if braveSearchPresent}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          class="h-8 px-2"
+                          disabled={searchKeySaving}
+                          onclick={() => clearUserApiKey('brave_search')}>Clear</Button>
+                      {/if}
+                    </div>
+                    <div class="mt-2 text-[12px] text-muted-foreground">
+                      Free tier: 2k queries/month — <a
+                        class="underline hover:text-foreground"
+                        href="https://brave.com/search/api/"
+                        target="_blank"
+                        rel="noopener">brave.com/search/api</a>
+                    </div>
+                  </div>
+                </div>
+                {#if searchKeyMessage}
+                  <div
+                    class={'mt-3 rounded-md border px-3 py-2 text-[13px] ' +
+                      (searchKeyMessage.kind === 'error'
+                        ? 'border-warning/20 bg-warning/10 text-warning dark:text-warning'
+                        : 'border-success/20 bg-success/10 text-success dark:text-success')}>
+                    {searchKeyMessage.text}
+                  </div>
+                {/if}
               </div>
 
               {#if modelAdminError}

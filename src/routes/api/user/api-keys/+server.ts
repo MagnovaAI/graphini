@@ -31,7 +31,8 @@ const PROVIDERS: readonly ProviderSpec[] = [
   { id: 'openai', category: 'ai_provider', storageKey: 'openai_api_key' },
   { id: 'anthropic', category: 'ai_provider', storageKey: 'anthropic_api_key' },
   { id: 'gemini', category: 'ai_provider', storageKey: 'gemini_api_key' },
-  { id: 'brave_search', category: 'search_provider', storageKey: 'brave_search_api_key' }
+  { id: 'brave_search', category: 'search_provider', storageKey: 'brave_search_api_key' },
+  { id: 'tavily', category: 'search_provider', storageKey: 'tavily_api_key' }
 ] as const;
 
 const PROVIDER_IDS = PROVIDERS.map((p) => p.id);
