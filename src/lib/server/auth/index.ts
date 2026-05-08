@@ -72,7 +72,7 @@ function getCookieSecret(): string {
   return secret;
 }
 
-export async function signValue(value: string): Promise<string> {
+async function signValue(value: string): Promise<string> {
   const secret = getCookieSecret();
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -89,7 +89,7 @@ export async function signValue(value: string): Promise<string> {
   return `${value}.${sigHex}`;
 }
 
-export async function verifySignedValue(signedValue: string): Promise<string | null> {
+async function verifySignedValue(signedValue: string): Promise<string | null> {
   const lastDot = signedValue.lastIndexOf('.');
   if (lastDot === -1) return null;
 
@@ -347,7 +347,7 @@ const GUEST_FIREBASE_PREFIX = 'guest:';
  * headers in priority order. Returns null if nothing usable is present (e.g.
  * a direct request in dev with no proxy in front).
  */
-export function extractClientIp(request: Request): string | null {
+function extractClientIp(request: Request): string | null {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
     const first = forwarded.split(',')[0]?.trim();

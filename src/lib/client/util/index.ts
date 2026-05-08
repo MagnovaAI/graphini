@@ -2,7 +2,6 @@
 export * from './autoSync';
 export * from './env';
 export * from './error/errorHandling';
-export * from './error/errorToString';
 export * from './loading';
 export * from './state/migrations';
 export * from './editor/monacoExtra';

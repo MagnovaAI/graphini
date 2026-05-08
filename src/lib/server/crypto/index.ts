@@ -54,11 +54,11 @@ function getKey(): Buffer {
 }
 
 /** True when the value looks like a v1 ciphertext (i.e., already encrypted). */
-export function isEncrypted(value: unknown): value is string {
+function isEncrypted(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith(PREFIX);
 }
 
-export function encrypt(plaintext: string): string {
+function encrypt(plaintext: string): string {
   const key = getKey();
   const iv = randomBytes(IV_LEN);
   const cipher = createCipheriv(ALGO, key, iv);
@@ -68,7 +68,7 @@ export function encrypt(plaintext: string): string {
   return `${PREFIX}${iv.toString('base64')}:${payload.toString('base64')}`;
 }
 
-export function decrypt(ciphertext: string): string {
+function decrypt(ciphertext: string): string {
   if (!isEncrypted(ciphertext)) {
     throw new Error('[crypto] decrypt() called on non-ciphertext value');
   }
@@ -87,14 +87,6 @@ export function decrypt(ciphertext: string): string {
   const decipher = createDecipheriv(ALGO, getKey(), iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
-}
-
-/**
- * Try to decrypt. If the input isn't encrypted, return it as-is. Used during
- * the rollout window where some rows are still plaintext.
- */
-export function decryptIfNeeded(value: string): string {
-  return isEncrypted(value) ? decrypt(value) : value;
 }
 
 const SENSITIVE_KEY_PATTERN = /(api_key|auth_token|access_token|refresh_token|secret|password)$/i;

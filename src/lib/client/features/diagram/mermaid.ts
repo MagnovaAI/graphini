@@ -4,13 +4,7 @@
  */
 
 // Parser (no DOM dependency)
-export {
-  DIAGRAM_TYPES,
-  DIAGRAM_TYPES_LOWER,
-  getSampleDiagrams,
-  parse,
-  standardizeDiagramType
-} from './mermaid-parser';
+export { parse } from './mermaid-parser';
 
 // Renderer (browser-only, DOM-dependent)
 export {

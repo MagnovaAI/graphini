@@ -18,25 +18,9 @@ import { GUEST_INACTIVITY_TTL_MS } from './limits';
 const COOLDOWN_KEY = 'guest-prune:last-run';
 const COOLDOWN_SECONDS = 60 * 60; // run at most once per hour
 
-export interface PruneResult {
+interface PruneResult {
   ran: boolean;
   deleted: number;
-}
-
-/** Force-run the prune, ignoring the cooldown. Returns the number of users deleted. */
-export async function pruneExpiredGuests(): Promise<number> {
-  const cutoff = new Date(Date.now() - GUEST_INACTIVITY_TTL_MS);
-  const ids = await getDb().listExpiredGuestUserIds(cutoff);
-  if (ids.length === 0) return 0;
-  const db = getDb();
-  for (const id of ids) {
-    try {
-      await db.deleteUser(id);
-    } catch (err) {
-      console.error(`[prune-guests] failed to delete ${id}:`, err);
-    }
-  }
-  return ids.length;
 }
 
 /**
@@ -54,7 +38,19 @@ export async function maybePruneExpiredGuests(): Promise<PruneResult> {
     // Mark the cooldown BEFORE doing the work so a slow run doesn't get
     // re-triggered concurrently by another request.
     await cache.set(COOLDOWN_KEY, Date.now(), { ttlSeconds: COOLDOWN_SECONDS });
-    const deleted = await pruneExpiredGuests();
+
+    const cutoff = new Date(Date.now() - GUEST_INACTIVITY_TTL_MS);
+    const db = getDb();
+    const ids = await db.listExpiredGuestUserIds(cutoff);
+    let deleted = 0;
+    for (const id of ids) {
+      try {
+        await db.deleteUser(id);
+        deleted++;
+      } catch (err) {
+        console.error(`[prune-guests] failed to delete ${id}:`, err);
+      }
+    }
     return { ran: true, deleted };
   } catch (err) {
     console.error('[prune-guests] background prune failed:', err);

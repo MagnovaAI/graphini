@@ -57,7 +57,7 @@ export async function loadProviderApiKeys() {
 }
 
 /** Per-user API key lookup. Falls back to env/global when the user hasn't set one. */
-export async function getUserScopedKey(
+async function getUserScopedKey(
   userId: string | null,
   provider: ChatProvider | 'gemini',
   fallback: string
@@ -72,13 +72,13 @@ export async function getUserScopedKey(
   return fallback;
 }
 
-export async function getOpenRouterKeyFor(userId: string | null): Promise<string> {
+async function getOpenRouterKeyFor(userId: string | null): Promise<string> {
   return getUserScopedKey(userId, 'openrouter', await loadOpenRouterApiKey());
 }
-export async function getOpenAiKeyFor(userId: string | null): Promise<string> {
+async function getOpenAiKeyFor(userId: string | null): Promise<string> {
   return getUserScopedKey(userId, 'openai', await loadOpenAiApiKey());
 }
-export async function getAnthropicKeyFor(userId: string | null): Promise<string> {
+async function getAnthropicKeyFor(userId: string | null): Promise<string> {
   return getUserScopedKey(userId, 'anthropic', await loadAnthropicApiKey());
 }
 
@@ -91,11 +91,6 @@ export async function hasProviderCredentialFor(
   // Anthropic: per-user api_key OR global auth_token (OAuth) OR env api_key.
   if (await getAnthropicKeyFor(userId)) return true;
   return Boolean(await loadAnthropicAuthToken());
-}
-
-/** @deprecated kept so legacy tool callers compile; prefer hasProviderCredentialFor. */
-export async function hasProviderCredential(provider: ChatProvider) {
-  return hasProviderCredentialFor(provider, null);
 }
 
 export function missingProviderCredentialMessage(provider: ChatProvider) {
@@ -239,16 +234,21 @@ function buildAnthropicChat(modelId: string, apiKey: string, authToken: string) 
   return anthropic(modelId);
 }
 
-/** @deprecated env-only constructor; use resolveChatModelFor with a userId. */
+/**
+ * Env-only OpenRouter constructor used by subagent tool calls (fileManager,
+ * markdownWrite, iconifier, ...). Subagents intentionally use the global key
+ * rather than per-user keys today; per-user wiring would require threading
+ * userId through every tool's session context.
+ */
 export function openrouterFastChat(modelId: string) {
   return buildOpenRouterChat(modelId, getOpenRouterApiKey());
 }
-/** @deprecated env-only constructor; use resolveChatModelFor with a userId. */
-export function openaiChat(modelId: string) {
+
+function openaiChat(modelId: string) {
   return buildOpenAiChat(modelId, getOpenAiApiKey());
 }
-/** @deprecated env-only constructor; use resolveChatModelFor with a userId. */
-export function anthropicChat(modelId: string) {
+
+function anthropicChat(modelId: string) {
   return buildAnthropicChat(modelId, getAnthropicApiKey(), getAnthropicAuthToken());
 }
 
