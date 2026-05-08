@@ -1023,7 +1023,7 @@
       <input
         bind:this={inlineEditorRef}
         type="text"
-        class="max-w-[300px] min-w-[120px] rounded-lg border border-primary/50 bg-popover px-3 py-1.5 text-sm text-foreground shadow-xl ring-2 ring-primary/20 outline-none focus:ring-primary/40"
+        class="max-w-[300px] min-w-[120px] rounded-lg border border-primary/50 bg-popover px-3 py-2 text-[13px] text-foreground shadow-xl ring-2 ring-primary/20 outline-none focus:ring-primary/40"
         value={inlineEditorValue}
         oninput={(e) => {
           inlineEditorValue = (e.target as HTMLInputElement).value;

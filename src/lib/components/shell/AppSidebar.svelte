@@ -84,11 +84,11 @@
     <Sidebar.Group class="group-data-[collapsible=icon]:hidden">
       <Sidebar.GroupContent>
         {#if conversationsStore.isLoading}
-          <p class="px-2 py-1.5 text-[12px] text-muted-foreground">Loading</p>
+          <p class="px-2 py-2 text-[13px] text-muted-foreground">Loading</p>
         {:else if !authStore.isLoggedIn}
-          <p class="px-2 py-1.5 text-[12px] text-muted-foreground">Sign in to save chats</p>
+          <p class="px-2 py-2 text-[13px] text-muted-foreground">Sign in to save chats</p>
         {:else if conversationsStore.list.length === 0}
-          <p class="px-2 py-1.5 text-[12px] text-muted-foreground">No chats yet</p>
+          <p class="px-2 py-2 text-[13px] text-muted-foreground">No chats yet</p>
         {:else}
           <Sidebar.Menu>
             {#each conversationsStore.list as conv (conv.id)}
@@ -118,7 +118,7 @@
 
   <Sidebar.Footer class="gap-0 border-t border-sidebar-border p-0">
     <div
-      class="flex gap-1 p-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-0.5">
+      class="flex gap-1 p-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
       {#each panelButtons as btn (btn.id)}
         {@const Icon = btn.icon}
         {@const isActive = panels.panels[btn.id].visible}
@@ -128,7 +128,7 @@
           aria-pressed={isActive}
           use:tooltip={{ text: btn.label, side: 'top' }}
           onclick={() => onTogglePanel(btn.id)}
-          class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-pressed:bg-sidebar-accent aria-pressed:text-sidebar-accent-foreground aria-pressed:font-medium group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none">
+          class="flex h-8 flex-1 items-center justify-center gap-2 rounded-md text-[13px] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-pressed:bg-sidebar-accent aria-pressed:text-sidebar-accent-foreground aria-pressed:font-medium group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none">
           <Icon class="size-4 shrink-0" />
           <span class="group-data-[collapsible=icon]:hidden">{btn.label}</span>
         </button>
@@ -142,7 +142,7 @@
               {#snippet child({ props })}
                 <Sidebar.MenuButton tooltipContent="Account" {...props}>
                   <Avatar class="size-5 rounded-sm">
-                    <AvatarFallback class="rounded-sm bg-muted text-[9px]">
+                    <AvatarFallback class="rounded-sm bg-muted text-[13px]">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
@@ -164,7 +164,7 @@
               sideOffset={6}
               class="w-44 p-1">
               <DropdownMenu.Label
-                class="truncate px-2 py-1 text-[12px] font-normal text-muted-foreground">
+                class="truncate px-2 py-1 text-[13px] font-normal text-muted-foreground">
                 {authStore.user?.display_name || authStore.user?.email || 'User'}
               </DropdownMenu.Label>
               <DropdownMenu.Separator class="my-1" />
@@ -176,7 +176,7 @@
               </DropdownMenu.Item>
               <DropdownMenu.Item
                 onclick={() => authStore.logout()}
-                class="cursor-pointer rounded-md px-2 py-1 text-[13px] text-red-500 focus:text-red-500">
+                class="cursor-pointer rounded-md px-2 py-1 text-[13px] text-destructive focus:text-destructive">
                 <LogOut class="size-3.5" />
                 <span>Sign out</span>
               </DropdownMenu.Item>

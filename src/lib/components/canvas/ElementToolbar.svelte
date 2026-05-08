@@ -748,9 +748,9 @@
 {#snippet colorGrid(type: 'border' | 'fill' | 'text' | 'edge' | 'subgraph' | 'edgeText' | 'sgText')}
   {#if activeColorPicker === type}
     <div
-      class="absolute bottom-full left-1/2 z-50 mb-2.5 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
-      <div class="mb-1.5 flex items-center justify-between">
-        <span class="text-[10px] font-medium text-muted-foreground">
+      class="absolute bottom-full left-1/2 z-50 mb-3 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
+      <div class="mb-2 flex items-center justify-between">
+        <span class="text-[13px] font-medium text-muted-foreground">
           {type === 'border'
             ? 'Border'
             : type === 'fill'
@@ -767,7 +767,7 @@
         </span>
         <button
           type="button"
-          class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           onclick={() => (activeColorPicker = null)}>
           <X class="size-3" />
         </button>
@@ -800,12 +800,12 @@
 {#snippet iconColorGrid()}
   {#if activeColorPicker === 'iconColor' && elementType === 'icon'}
     <div
-      class="absolute bottom-full left-1/2 z-50 mb-2.5 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
-      <div class="mb-1.5 flex items-center justify-between">
-        <span class="text-[10px] font-medium text-muted-foreground"> Icon Color </span>
+      class="absolute bottom-full left-1/2 z-50 mb-3 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
+      <div class="mb-2 flex items-center justify-between">
+        <span class="text-[13px] font-medium text-muted-foreground"> Icon Color </span>
         <button
           type="button"
-          class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           onclick={() => (activeColorPicker = null)}>
           <X class="size-3" />
         </button>
@@ -832,12 +832,12 @@
 {#snippet fontDropdown(target: 'node' | 'edge' | 'subgraph')}
   {#if showFontPicker === target}
     <div
-      class="absolute bottom-full left-1/2 z-50 mb-2.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
+      class="absolute bottom-full left-1/2 z-50 mb-3 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
       <div class="mb-1 flex items-center justify-between px-1">
-        <span class="text-[10px] font-medium text-muted-foreground">Font</span>
+        <span class="text-[13px] font-medium text-muted-foreground">Font</span>
         <button
           type="button"
-          class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           onclick={() => (showFontPicker = null)}>
           <X class="size-3" />
         </button>
@@ -848,7 +848,7 @@
         <button
           type="button"
           class={cn(
-            'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
+            'flex w-full items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors',
             currentFont === font.id
               ? 'bg-accent font-medium text-foreground'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -888,17 +888,17 @@
     <!-- Main toolbar -->
     <div
       class={cn(
-        'relative z-40 flex flex-wrap items-center gap-1.5 text-popover-foreground',
+        'relative z-40 flex flex-wrap items-center gap-2 text-popover-foreground',
         mode === 'floating'
           ? 'rounded-xl border border-border bg-popover px-3 py-2 shadow-[0_4px_16px_var(--dash-card-shadow)]'
           : 'w-full px-1'
       )}>
       <!-- Type badge -->
       <span
-        class="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase">
+        class="rounded-md bg-muted px-2 py-1 text-[13px] font-semibold text-muted-foreground uppercase">
         {elementType}
       </span>
-      <span class="max-w-[120px] truncate text-[11px] font-medium text-foreground/70"
+      <span class="max-w-[120px] truncate text-[13px] font-medium text-foreground/70"
         >{elementLabel}</span>
       <div class="mx-1 h-5 w-px bg-border"></div>
 
@@ -908,7 +908,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Change node shape"}
             use:tooltip={"Change node shape"}
             onclick={() => {
@@ -920,18 +920,18 @@
               {@const ShapeIcon = shapeIconMap[nodeShape].icon}
               <ShapeIcon class="size-3.5" />
             {:else}
-              <span class="font-mono text-[9px]">{shapeIconMap[nodeShape]?.text || '[]'}</span>
+              <span class="font-mono text-[12px]">{shapeIconMap[nodeShape]?.text || '[]'}</span>
             {/if}
             <ChevronDown class="size-3" />
           </button>
           {#if showShapePicker}
             <div
-              class="absolute bottom-full left-1/2 z-50 mb-2.5 w-72 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
-              <div class="mb-1.5 flex items-center justify-between">
-                <span class="text-[10px] font-medium text-muted-foreground">Shape</span>
+              class="absolute bottom-full left-1/2 z-50 mb-3 w-72 -translate-x-1/2 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
+              <div class="mb-2 flex items-center justify-between">
+                <span class="text-[13px] font-medium text-muted-foreground">Shape</span>
                 <button
                   type="button"
-                  class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   onclick={() => (showShapePicker = false)}><X class="size-3" /></button>
               </div>
               <div class="grid grid-cols-5 gap-1">
@@ -939,7 +939,7 @@
                   <button
                     type="button"
                     class={cn(
-                      'flex flex-col items-center gap-1 rounded-md p-1.5 transition-colors',
+                      'flex flex-col items-center gap-1 rounded-md p-2 transition-colors',
                       nodeShape === shape.id
                         ? 'bg-accent text-foreground'
                         : 'text-muted-foreground hover:bg-accent'
@@ -954,10 +954,10 @@
                       {@const SIcon = shapeIconMap[shape.id].icon}
                       <SIcon class="size-4" />
                     {:else}
-                      <span class="font-mono text-[8px] leading-none"
+                      <span class="font-mono text-[12px] leading-none"
                         >{shapeIconMap[shape.id]?.text || shape.syntax[0] + shape.syntax[1]}</span>
                     {/if}
-                    <span class="text-[7px] leading-none font-medium">{shape.label}</span>
+                    <span class="text-[13px] leading-none font-medium">{shape.label}</span>
                   </button>
                 {/each}
               </div>
@@ -971,7 +971,7 @@
         <input
           type="text"
           name="node-label"
-          class="h-7 w-28 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+          class="h-7 w-28 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           placeholder="Label..."
           value={nodeLabel}
           oninput={(e) => {
@@ -992,7 +992,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Fill color"}
             use:tooltip={"Fill color"}
             onclick={() => {
@@ -1012,7 +1012,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Border color"}
             use:tooltip={"Border color"}
             onclick={() => {
@@ -1032,7 +1032,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Text color"}
             use:tooltip={"Text color"}
             onclick={() => {
@@ -1046,12 +1046,12 @@
         </div>
 
         <!-- Text size S/M/L -->
-        <div class="flex items-center gap-0.5">
+        <div class="flex items-center gap-1">
           {#each ['sm', 'md', 'lg'] as const as size (size)}
             <button
               type="button"
               class={cn(
-                'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
+                'rounded-md px-2 py-1 text-[13px] font-medium transition-colors',
                 nodeTextSize === size
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
@@ -1068,7 +1068,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Font family"}
             use:tooltip={"Font family"}
             onclick={() => {
@@ -1082,7 +1082,7 @@
                 : nodeFont === 'serif'
                   ? 'Georgia, serif'
                   : 'Fira Code, monospace'}"
-              class="text-[10px]">Aa</span>
+              class="text-[13px]">Aa</span>
             <ChevronDown class="size-2.5" />
           </button>
           {@render fontDropdown('node')}
@@ -1094,7 +1094,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-lg px-2 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Attach icon"}
             use:tooltip={"Attach icon"}
             onclick={() => {
@@ -1107,10 +1107,10 @@
           </button>
           {#if showIconDropdown}
             <div
-              class="absolute right-0 bottom-full z-50 mb-2.5 w-48 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
+              class="absolute right-0 bottom-full z-50 mb-3 w-48 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
               <button
                 type="button"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
                 onclick={() => {
                   showIconDropdown = false;
                   window.dispatchEvent(
@@ -1124,7 +1124,7 @@
               </button>
               <button
                 type="button"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium text-destructive/80 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-destructive/80 transition-colors hover:bg-destructive/10 hover:text-destructive"
                 onclick={() => {
                   showIconDropdown = false;
                   const nodeName = getCleanNodeName();
@@ -1150,7 +1150,7 @@
         <input
           type="text"
           name="edge-label"
-          class="h-7 w-28 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+          class="h-7 w-28 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           value={edgeLabel}
           oninput={(e) => {
             const target = e.target as HTMLInputElement;
@@ -1167,12 +1167,12 @@
         <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Edge thickness (3 sizes) -->
-        <div class="flex items-center gap-0.5">
+        <div class="flex items-center gap-1">
           {#each ['thin', 'normal', 'thick'] as const as t (t)}
             <button
               type="button"
               class={cn(
-                'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
+                'rounded-md px-2 py-1 text-[13px] font-medium transition-colors',
                 edgeThickness === t
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
@@ -1196,7 +1196,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Arrow direction"}
             use:tooltip={"Arrow direction"}
             onclick={() => {
@@ -1211,25 +1211,25 @@
             {:else if edgeArrowType === '---'}
               <Minus class="size-3.5" />
             {:else}
-              <span class="font-mono text-[9px]">{edgeArrowType}</span>
+              <span class="font-mono text-[12px]">{edgeArrowType}</span>
             {/if}
             <ChevronDown class="size-2.5" />
           </button>
           {#if showArrowPicker}
             <div
-              class="absolute bottom-full left-1/2 z-50 mb-2.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
+              class="absolute bottom-full left-1/2 z-50 mb-3 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
               <div class="mb-1 flex items-center justify-between px-1">
-                <span class="text-[10px] font-medium text-muted-foreground">Arrow</span>
+                <span class="text-[13px] font-medium text-muted-foreground">Arrow</span>
                 <button
                   type="button"
-                  class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   onclick={() => (showArrowPicker = false)}><X class="size-3" /></button>
               </div>
               {#each arrowTypes as arrow (arrow.id)}
                 <button
                   type="button"
                   class={cn(
-                    'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[10px] transition-colors',
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors',
                     edgeArrowType === arrow.id
                       ? 'bg-accent font-medium text-foreground'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -1242,7 +1242,7 @@
                     {@const AIcon = arrow.icon}
                     <AIcon class="size-3.5" />
                   {:else}
-                    <span class="font-mono text-[9px]">{arrow.id}</span>
+                    <span class="font-mono text-[12px]">{arrow.id}</span>
                   {/if}
                   {arrow.label}
                 </button>
@@ -1255,7 +1255,7 @@
         <button
           type="button"
           class={cn(
-            'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
+            'flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors',
             edgeIsDashed ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'
           )}
           aria-label={edgeIsDashed ? 'Make solid' : 'Make dashed'}
@@ -1270,7 +1270,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Edge color"}
             use:tooltip={"Edge color"}
             onclick={() => {
@@ -1290,7 +1290,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex cursor-not-allowed items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground/40"
+            class="flex cursor-not-allowed items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground/40"
             aria-label={"Label text color (not supported by Mermaid linkStyle)"}
             use:tooltip={"Label text color (not supported by Mermaid linkStyle)"}
             disabled>
@@ -1303,7 +1303,7 @@
         <!-- Icon preview + Change -->
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-accent"
+          class="flex items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-accent"
           aria-label={"Change icon"}
           use:tooltip={"Change icon"}
           onclick={() => {
@@ -1322,7 +1322,7 @@
               <ImageIcon class="size-4 text-muted-foreground" />
             </div>
           {/if}
-          <span class="text-[10px] font-medium text-muted-foreground">Change</span>
+          <span class="text-[13px] font-medium text-muted-foreground">Change</span>
         </button>
 
         <div class="mx-1 h-5 w-px bg-border"></div>
@@ -1331,7 +1331,7 @@
         <input
           type="text"
           name="icon-label"
-          class="h-7 w-36 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+          class="h-7 w-36 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           placeholder="Label..."
           value={iconNodeLabel}
           oninput={(e) => {
@@ -1353,7 +1353,7 @@
           <button
             type="button"
             class={cn(
-              'rounded-l-lg px-2.5 py-1 text-[10px] font-medium transition-colors',
+              'rounded-l-lg px-3 py-1 text-[13px] font-medium transition-colors',
               iconColorMode === 'original'
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
@@ -1364,7 +1364,7 @@
           <button
             type="button"
             class={cn(
-              'rounded-r-lg px-2.5 py-1 text-[10px] font-medium transition-colors',
+              'rounded-r-lg px-3 py-1 text-[13px] font-medium transition-colors',
               iconColorMode === 'simple'
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
@@ -1382,7 +1382,7 @@
           <div class="relative">
             <button
               type="button"
-              class="flex items-center gap-1 rounded-lg px-1.5 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              class="flex items-center gap-1 rounded-lg px-2 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               aria-label={"Icon color"}
               use:tooltip={"Icon color"}
               onclick={() => {
@@ -1404,7 +1404,7 @@
         <!-- Delete icon (at end) -->
         <button
           type="button"
-          class="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
+          class="flex items-center gap-1 rounded-lg px-2 py-1 text-[13px] font-medium text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
           aria-label={"Remove icon"}
           use:tooltip={"Remove icon"}
           onclick={() => {
@@ -1427,7 +1427,7 @@
         <input
           type="text"
           name="subgraph-title"
-          class="h-6 w-28 rounded-md border border-border bg-background px-2 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+          class="h-6 w-28 rounded-md border border-border bg-background px-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           placeholder="Title..."
           value={subgraphTitle}
           oninput={(e) => {
@@ -1448,7 +1448,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Fill color (border auto)"}
             use:tooltip={"Fill color (border auto)"}
             onclick={() => {
@@ -1468,7 +1468,7 @@
         <button
           type="button"
           class={cn(
-            'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
+            'flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors',
             subgraphFilled ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'
           )}
           aria-label={subgraphFilled ? 'Switch to outline' : 'Switch to filled'}
@@ -1483,7 +1483,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Text color"}
             use:tooltip={"Text color"}
             onclick={() => {
@@ -1497,12 +1497,12 @@
         </div>
 
         <!-- Text size S/M/L -->
-        <div class="flex items-center gap-0.5">
+        <div class="flex items-center gap-1">
           {#each ['sm', 'md', 'lg'] as const as size (size)}
             <button
               type="button"
               class={cn(
-                'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
+                'rounded-md px-2 py-1 text-[13px] font-medium transition-colors',
                 subgraphTextSize === size
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
@@ -1519,7 +1519,7 @@
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"Font family"}
             use:tooltip={"Font family"}
             onclick={() => {
@@ -1533,7 +1533,7 @@
                 : subgraphFont === 'serif'
                   ? 'Georgia, serif'
                   : 'Fira Code, monospace'}"
-              class="text-[10px]">Aa</span>
+              class="text-[13px]">Aa</span>
             <ChevronDown class="size-2.5" />
           </button>
           {@render fontDropdown('subgraph')}
@@ -1542,11 +1542,11 @@
         <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Direction toggle -->
-        <div class="flex items-center gap-0.5">
+        <div class="flex items-center gap-1">
           <button
             type="button"
             class={cn(
-              'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
+              'flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors',
               subgraphDirection === 'LR'
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:bg-accent'
@@ -1559,7 +1559,7 @@
           <button
             type="button"
             class={cn(
-              'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
+              'flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors',
               subgraphDirection === 'TB'
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:bg-accent'

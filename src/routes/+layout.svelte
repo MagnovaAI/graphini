@@ -80,7 +80,7 @@
 {#if $loadingStateStore.loading}
   <div
     class="absolute top-0 left-0 z-50 flex h-screen w-screen justify-center bg-background/60 align-middle backdrop-blur-sm">
-    <div class="my-auto text-2xl font-semibold text-foreground">
+    <div class="my-auto text-[22px] font-semibold text-foreground">
       <div class="loader mx-auto"></div>
       <div>{$loadingStateStore.message}</div>
     </div>

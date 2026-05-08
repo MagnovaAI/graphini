@@ -508,8 +508,8 @@
               alt="Graphini"
               class="size-8 rounded-md border border-border/60" />
             <div class="min-w-0">
-              <Dialog.Title class="truncate text-sm font-semibold">Settings</Dialog.Title>
-              <Dialog.Description class="text-[11px] text-muted-foreground">
+              <Dialog.Title class="truncate text-[13px] font-semibold">Settings</Dialog.Title>
+              <Dialog.Description class="text-[13px] text-muted-foreground">
                 Graphini preferences
               </Dialog.Description>
             </div>
@@ -527,10 +527,10 @@
                 : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}"
               aria-current={activeTab === tab.id ? 'page' : undefined}
               onclick={() => (activeTab = tab.id)}>
-              <Icon class="mt-0.5 size-4 shrink-0" />
+              <Icon class="mt-1 size-4 shrink-0" />
               <span class="min-w-0">
-                <span class="block text-xs font-medium">{tab.label}</span>
-                <span class="block truncate text-[10px] text-muted-foreground"
+                <span class="block text-[13px] font-medium">{tab.label}</span>
+                <span class="block truncate text-[13px] text-muted-foreground"
                   >{tab.description}</span>
               </span>
             </button>
@@ -541,7 +541,7 @@
           <Button
             size="sm"
             variant="outline"
-            class="h-8 w-full justify-start gap-2 text-xs"
+            class="h-8 w-full justify-start gap-2 text-[13px]"
             onclick={downloadAppState}
             title="Export all app state as JSON">
             <Download class="size-3.5" />
@@ -553,27 +553,27 @@
       <section class="flex min-h-0 flex-col">
         <div class="flex h-14 items-center justify-between border-b border-border/60 px-5">
           <div>
-            <h2 class="text-sm font-semibold">
+            <h2 class="text-[13px] font-semibold">
               {settingsTabs.find((tab) => tab.id === activeTab)?.label}
             </h2>
-            <p class="text-[11px] text-muted-foreground">
+            <p class="text-[13px] text-muted-foreground">
               {settingsTabs.find((tab) => tab.id === activeTab)?.description}
             </p>
           </div>
-          <Button class="h-8 text-xs" onclick={() => onOpenChange(false)}>Done</Button>
+          <Button class="h-8 text-[13px]" onclick={() => onOpenChange(false)}>Done</Button>
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-5">
           {#if activeTab === 'theme'}
             <div class="max-w-2xl space-y-5">
               <div class="space-y-2">
-                <div class="text-xs font-medium">Theme</div>
+                <div class="text-[13px] font-medium">Theme</div>
                 <div class="grid grid-cols-3 gap-2">
                   {#each themeOptions as option (option.value)}
                     {@const Icon = option.icon}
                     <button
                       type="button"
-                      class="flex h-20 flex-col items-center justify-center gap-2 rounded-md border text-xs transition-colors {uiSettings
+                      class="flex h-20 flex-col items-center justify-center gap-2 rounded-md border text-[13px] transition-colors {uiSettings
                         .value.theme === option.value
                         ? 'border-foreground bg-foreground text-background'
                         : 'border-border bg-background hover:bg-muted/60'}"
@@ -589,8 +589,8 @@
               <div class="divide-y divide-border rounded-md border border-border">
                 <label class="flex items-center justify-between gap-4 p-3">
                   <span>
-                    <span class="block text-xs font-medium">Show reasoning</span>
-                    <span class="text-[11px] text-muted-foreground"
+                    <span class="block text-[13px] font-medium">Show reasoning</span>
+                    <span class="text-[13px] text-muted-foreground"
                       >Display visible reasoning summaries in chat.</span>
                   </span>
                   <input
@@ -604,8 +604,8 @@
                 </label>
                 <label class="flex items-center justify-between gap-4 p-3">
                   <span>
-                    <span class="block text-xs font-medium">Auto-scroll chat</span>
-                    <span class="text-[11px] text-muted-foreground"
+                    <span class="block text-[13px] font-medium">Auto-scroll chat</span>
+                    <span class="text-[13px] text-muted-foreground"
                       >Keep the newest assistant response in view.</span>
                   </span>
                   <input
@@ -619,8 +619,8 @@
                 </label>
                 <label class="flex items-center justify-between gap-4 p-3">
                   <span>
-                    <span class="block text-xs font-medium">Compact mode</span>
-                    <span class="text-[11px] text-muted-foreground"
+                    <span class="block text-[13px] font-medium">Compact mode</span>
+                    <span class="text-[13px] text-muted-foreground"
                       >Use tighter spacing in dense work areas.</span>
                   </span>
                   <input
@@ -639,13 +639,13 @@
               <div class="grid gap-3 lg:grid-cols-3">
                 <div class="rounded-md border border-border p-3">
                   <div class="mb-3 flex items-center justify-between">
-                    <span class="text-xs font-medium">OpenRouter</span>
-                    <Badge variant="outline" class="text-[10px]"
+                    <span class="text-[13px] font-medium">OpenRouter</span>
+                    <Badge variant="outline" class="text-[13px]"
                       >{aiSettings.value.openrouterApiKey ? 'Saved' : 'Not set'}</Badge>
                   </div>
                   <div class="flex gap-2">
                     <Input
-                      class="h-8 font-mono text-[11px]"
+                      class="h-8 font-mono text-[12px]"
                       type="password"
                       autocomplete="off"
                       placeholder="sk-or-v1-..."
@@ -662,13 +662,13 @@
                 </div>
                 <div class="rounded-md border border-border p-3">
                   <div class="mb-3 flex items-center justify-between">
-                    <span class="text-xs font-medium">OpenAI</span>
-                    <Badge variant="outline" class="text-[10px]"
+                    <span class="text-[13px] font-medium">OpenAI</span>
+                    <Badge variant="outline" class="text-[13px]"
                       >{aiSettings.value.openaiApiKey ? 'Saved' : 'Not set'}</Badge>
                   </div>
                   <div class="flex gap-2">
                     <Input
-                      class="h-8 font-mono text-[11px]"
+                      class="h-8 font-mono text-[12px]"
                       type="password"
                       autocomplete="off"
                       placeholder="sk-proj-..."
@@ -685,8 +685,8 @@
                 </div>
                 <div class="rounded-md border border-border p-3">
                   <div class="mb-3 flex items-center justify-between">
-                    <span class="text-xs font-medium">Anthropic</span>
-                    <Badge variant="outline" class="text-[10px]"
+                    <span class="text-[13px] font-medium">Anthropic</span>
+                    <Badge variant="outline" class="text-[13px]"
                       >{aiSettings.value.anthropicApiKey || aiSettings.value.anthropicAuthToken
                         ? 'Saved'
                         : 'Not set'}</Badge>
@@ -694,7 +694,7 @@
                   <div class="space-y-2">
                     <div class="flex gap-2">
                       <Input
-                        class="h-8 font-mono text-[11px]"
+                        class="h-8 font-mono text-[12px]"
                         type="password"
                         autocomplete="off"
                         placeholder="sk-ant-..."
@@ -710,7 +710,7 @@
                     </div>
                     <div class="flex gap-2">
                       <Input
-                        class="h-8 font-mono text-[11px]"
+                        class="h-8 font-mono text-[12px]"
                         type="password"
                         autocomplete="off"
                         placeholder="OAuth/OAT token"
@@ -732,13 +732,13 @@
 
               {#if modelAdminError}
                 <div
-                  class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  class="rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-[13px] text-warning dark:text-warning">
                   {modelAdminError}
                 </div>
               {/if}
               {#if modelAdminNotice}
                 <div
-                  class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                  class="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-[13px] text-success dark:text-success">
                   {modelAdminNotice}
                 </div>
               {/if}
@@ -746,8 +746,8 @@
               <div class="rounded-md border border-border p-3">
                 <div class="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <div class="text-xs font-medium">Chat Summarizer Model</div>
-                    <div class="mt-1 text-[11px] text-muted-foreground">
+                    <div class="text-[13px] font-medium">Chat Summarizer Model</div>
+                    <div class="mt-1 text-[13px] text-muted-foreground">
                       Used to compact older chat history only after the active model context budget
                       is near full.
                     </div>
@@ -755,7 +755,7 @@
                   <Button
                     size="sm"
                     variant="ghost"
-                    class="h-7 gap-1 text-[11px]"
+                    class="h-7 gap-1 text-[13px]"
                     disabled={chatCompactionSettingsLoading}
                     onclick={loadChatCompactionSettings}>
                     <RefreshCw
@@ -765,7 +765,7 @@
                 <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <div class="space-y-2">
                     <Input
-                      class="h-8 font-mono text-[11px]"
+                      class="h-8 font-mono text-[12px]"
                       list="chat-compaction-model-options"
                       placeholder="Leave unset to use the active chat model"
                       bind:value={chatCompactionModelInput}
@@ -776,14 +776,14 @@
                         <option value={model.model_id}>{model.model_name}</option>
                       {/each}
                     </datalist>
-                    <div class="text-[10px] text-muted-foreground">
+                    <div class="text-[13px] text-muted-foreground">
                       Pick a cheap, high-context text model. If unset, Graphini falls back to the
                       current chat model.
                     </div>
                   </div>
                   <Button
                     size="sm"
-                    class="h-8 gap-1 text-xs"
+                    class="h-8 gap-1 text-[13px]"
                     disabled={chatCompactionSettingsSaving || !chatCompactionModelInput.trim()}
                     onclick={saveChatCompactionSettings}>
                     <Save class="size-3.5" /> Save
@@ -794,20 +794,20 @@
               <div class="grid min-h-[420px] gap-4 lg:grid-cols-[1.15fr_0.85fr]">
                 <div class="overflow-hidden rounded-md border border-border">
                   <div class="flex h-10 items-center justify-between border-b border-border px-3">
-                    <span class="text-xs font-medium">Enabled Models</span>
+                    <span class="text-[13px] font-medium">Enabled Models</span>
                     <div class="flex items-center gap-2">
-                      <Badge variant="outline" class="text-[10px]">{enabledModels.length}</Badge>
+                      <Badge variant="outline" class="text-[13px]">{enabledModels.length}</Badge>
                       <Button
                         size="sm"
                         variant="ghost"
-                        class="h-7 gap-1 text-[11px]"
+                        class="h-7 gap-1 text-[13px]"
                         onclick={loadEnabledModels}>
                         <RefreshCw class="size-3 {enabledModelsLoading ? 'animate-spin' : ''}" /> Refresh
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        class="h-7 gap-1 text-[11px]"
+                        class="h-7 gap-1 text-[13px]"
                         onclick={async () => {
                           for (const model of enabledModels.filter((item) => item.is_enabled)) {
                             await toggleEnabledModel(model.model_id, false);
@@ -823,31 +823,31 @@
                         <RefreshCw class="size-5 animate-spin text-muted-foreground" />
                       </div>
                     {:else if enabledModels.length === 0}
-                      <div class="p-8 text-center text-xs text-muted-foreground">
+                      <div class="p-8 text-center text-[13px] text-muted-foreground">
                         No enabled models yet.
                       </div>
                     {:else}
                       <div class="divide-y divide-border">
                         {#each enabledModels as model (model.model_id)}
-                          <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                          <div class="flex items-center justify-between gap-3 px-3 py-3">
                             <div class="min-w-0 flex-1">
-                              <div class="truncate text-xs font-medium">{model.model_name}</div>
-                              <div class="truncate font-mono text-[10px] text-muted-foreground">
+                              <div class="truncate text-[13px] font-medium">{model.model_name}</div>
+                              <div class="truncate font-mono text-[12px] text-muted-foreground">
                                 {model.model_id}
                               </div>
                               <div class="mt-1 flex flex-wrap gap-1">
-                                <Badge variant="secondary" class="text-[9px]"
+                                <Badge variant="secondary" class="text-[13px]"
                                   >{model.provider || 'openrouter'}</Badge>
-                                {#if model.tool_support}<Badge variant="outline" class="text-[9px]"
+                                {#if model.tool_support}<Badge variant="outline" class="text-[13px]"
                                     >Tools</Badge
                                   >{/if}
-                                {#if model.is_free}<Badge variant="default" class="text-[9px]"
+                                {#if model.is_free}<Badge variant="default" class="text-[13px]"
                                     >Free</Badge
                                   >{/if}
                               </div>
                             </div>
                             <div class="flex shrink-0 items-center gap-1">
-                              <span class="text-[10px] text-muted-foreground"
+                              <span class="text-[13px] text-muted-foreground"
                                 >{model.gems_per_message ?? 2} gems</span>
                               <Button
                                 size="sm"
@@ -858,13 +858,13 @@
                                   toggleEnabledModel(model.model_id, !model.is_enabled)}>
                                 <Power
                                   class="size-3.5 {model.is_enabled
-                                    ? 'text-emerald-500'
+                                    ? 'text-success'
                                     : 'text-muted-foreground'}" />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                class="size-7 p-0 text-red-500"
+                                class="size-7 p-0 text-destructive"
                                 title="Delete"
                                 onclick={() => deleteEnabledModel(model.model_id)}>
                                 <Trash2 class="size-3.5" />
@@ -880,11 +880,11 @@
                 <div class="overflow-hidden rounded-md border border-border">
                   <div class="space-y-3 border-b border-border p-3">
                     <div class="flex items-center justify-between">
-                      <span class="text-xs font-medium">Model Search</span>
+                      <span class="text-[13px] font-medium">Model Search</span>
                       <Button
                         size="sm"
                         variant="outline"
-                        class="h-7 gap-1 text-[11px]"
+                        class="h-7 gap-1 text-[13px]"
                         disabled={providerModelsLoading}
                         onclick={loadProviderModels}>
                         <Search class="size-3" /> Search
@@ -894,7 +894,7 @@
                       {#each modelSearchProviders as provider (provider.value)}
                         <button
                           type="button"
-                          class="rounded-md border px-2 py-1.5 text-[11px] transition-colors {modelSearchProvider ===
+                          class="rounded-md border px-2 py-2 text-[13px] transition-colors {modelSearchProvider ===
                           provider.value
                             ? 'border-foreground bg-foreground text-background'
                             : 'border-border hover:bg-muted'}"
@@ -908,7 +908,7 @@
                       {/each}
                     </div>
                     <Input
-                      class="h-8 text-xs"
+                      class="h-8 text-[13px]"
                       placeholder="Search by model name, ID, or capability..."
                       bind:value={providerModelSearch}
                       onkeydown={(event) => event.key === 'Enter' && loadProviderModels()} />
@@ -919,35 +919,35 @@
                         <RefreshCw class="size-5 animate-spin text-muted-foreground" />
                       </div>
                     {:else if providerModels.length === 0}
-                      <div class="p-8 text-center text-xs text-muted-foreground">
+                      <div class="p-8 text-center text-[13px] text-muted-foreground">
                         Search models from the selected provider.
                       </div>
                     {:else}
                       <div class="divide-y divide-border">
                         {#each filteredProviderModels as model (model.id)}
                           {@const imported = isProviderModelImported(model.id)}
-                          <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                          <div class="flex items-center justify-between gap-3 px-3 py-3">
                             <div class="min-w-0 flex-1">
-                              <div class="truncate text-xs font-medium">
+                              <div class="truncate text-[13px] font-medium">
                                 {model.name || model.id}
                               </div>
-                              <div class="truncate font-mono text-[10px] text-muted-foreground">
+                              <div class="truncate font-mono text-[12px] text-muted-foreground">
                                 {model.id}
                               </div>
-                              <div class="mt-1 text-[10px] text-muted-foreground">
+                              <div class="mt-1 text-[13px] text-muted-foreground">
                                 {model.contextWindow || model.context_length
                                   ? `${((model.contextWindow || model.context_length) / 1000).toFixed(0)}k context`
                                   : 'Context unknown'}
                               </div>
                             </div>
                             {#if imported}
-                              <Badge variant="secondary" class="shrink-0 text-[9px]"
+                              <Badge variant="secondary" class="shrink-0 text-[13px]"
                                 ><Check class="mr-1 size-3" /> Imported</Badge>
                             {:else}
                               <Button
                                 size="sm"
                                 variant="outline"
-                                class="h-7 shrink-0 gap-1 text-[11px]"
+                                class="h-7 shrink-0 gap-1 text-[13px]"
                                 onclick={() => importProviderModel(model)}>
                                 <Download class="size-3" /> Import
                               </Button>
@@ -964,13 +964,13 @@
             <div class="space-y-5">
               {#if modelAdminError}
                 <div
-                  class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  class="rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-[13px] text-warning dark:text-warning">
                   {modelAdminError}
                 </div>
               {/if}
               {#if modelAdminNotice}
                 <div
-                  class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                  class="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-[13px] text-success dark:text-success">
                   {modelAdminNotice}
                 </div>
               {/if}
@@ -978,15 +978,15 @@
               <div class="rounded-md border border-border p-4">
                 <div class="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <div class="text-xs font-medium">Voice Transcription Model</div>
-                    <div class="mt-1 text-[11px] text-muted-foreground">
+                    <div class="text-[13px] font-medium">Voice Transcription Model</div>
+                    <div class="mt-1 text-[13px] text-muted-foreground">
                       Used by the voice input API when converting microphone audio to text.
                     </div>
                   </div>
                   <Button
                     size="sm"
                     variant="ghost"
-                    class="h-7 gap-1 text-[11px]"
+                    class="h-7 gap-1 text-[13px]"
                     disabled={voiceSettingsLoading}
                     onclick={loadVoiceSettings}>
                     <RefreshCw class="size-3 {voiceSettingsLoading ? 'animate-spin' : ''}" /> Refresh
@@ -996,7 +996,7 @@
                 <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <div class="space-y-2">
                     <Input
-                      class="h-8 font-mono text-[11px]"
+                      class="h-8 font-mono text-[12px]"
                       list="voice-model-options"
                       placeholder="google/gemini-2.0-flash-001"
                       bind:value={voiceModelInput}
@@ -1008,14 +1008,14 @@
                         <option value={model.model_id}>{model.model_name}</option>
                       {/each}
                     </datalist>
-                    <div class="text-[10px] text-muted-foreground">
+                    <div class="text-[13px] text-muted-foreground">
                       OpenRouter model IDs like google/gemini-2.0-flash-001 use the OpenRouter key.
                       Gemini IDs like gemini-2.0-flash-lite use GEMINI_API_KEY.
                     </div>
                   </div>
                   <Button
                     size="sm"
-                    class="h-8 gap-1 text-xs"
+                    class="h-8 gap-1 text-[13px]"
                     disabled={voiceSettingsSaving || !voiceModelInput.trim()}
                     onclick={saveVoiceSettings}>
                     <Save class="size-3.5" /> Save
@@ -1026,19 +1026,19 @@
           {:else if activeTab === 'tools'}
             <div class="space-y-4">
               <div class="flex items-center justify-between">
-                <div class="text-xs text-muted-foreground">
+                <div class="text-[13px] text-muted-foreground">
                   {toolsConfig.filter((t) => t.enabled).length} of {toolsConfig.length} tools enabled
                 </div>
                 <div class="flex gap-2">
                   <Button
                     size="sm"
                     variant="outline"
-                    class="h-8 text-xs"
+                    class="h-8 text-[13px]"
                     onclick={() => toolsStore.enableAll()}>Enable all</Button>
                   <Button
                     size="sm"
                     variant="ghost"
-                    class="h-8 gap-1 text-xs"
+                    class="h-8 gap-1 text-[13px]"
                     onclick={() => toolsStore.reset()}><RotateCcw class="size-3" /> Reset</Button>
                 </div>
               </div>
@@ -1047,21 +1047,21 @@
                 {@const catTools = toolsConfig.filter((t) => t.category === cat.id)}
                 {#if catTools.length > 0}
                   <div class="overflow-hidden rounded-md border border-border">
-                    <div class="border-b border-border bg-muted/20 px-3 py-2 text-xs font-medium">
+                    <div class="border-b border-border bg-muted/20 px-3 py-2 text-[13px] font-medium">
                       {cat.label}
                     </div>
                     <div class="divide-y divide-border">
                       {#each catTools as t}
                         <button
                           type="button"
-                          class="flex w-full items-center justify-between gap-4 px-3 py-2.5 text-left hover:bg-muted/40"
+                          class="flex w-full items-center justify-between gap-4 px-3 py-3 text-left hover:bg-muted/40"
                           onclick={() => toolsStore.toggle(t.id)}>
                           <span class="min-w-0">
-                            <span class="block text-xs font-medium">{t.label}</span>
-                            <span class="block text-[11px] text-muted-foreground"
+                            <span class="block text-[13px] font-medium">{t.label}</span>
+                            <span class="block text-[13px] text-muted-foreground"
                               >{t.description}</span>
                           </span>
-                          <span class={t.enabled ? 'text-emerald-500' : 'text-muted-foreground'}>
+                          <span class={t.enabled ? 'text-success' : 'text-muted-foreground'}>
                             {#if t.enabled}<ToggleRight class="size-5" />{:else}<ToggleLeft
                                 class="size-5" />{/if}
                           </span>
@@ -1076,12 +1076,12 @@
             <div class="grid gap-4 lg:grid-cols-2">
               <div class="overflow-hidden rounded-md border border-border">
                 <div class="flex h-10 items-center justify-between border-b border-border px-3">
-                  <span class="flex items-center gap-2 text-xs font-medium"
+                  <span class="flex items-center gap-2 text-[13px] font-medium"
                     ><ShieldCheck class="size-3.5" /> Rules</span>
                   <div class="flex gap-2">
-                    <Button size="sm" variant="outline" class="h-7 gap-1 text-[11px]"
+                    <Button size="sm" variant="outline" class="h-7 gap-1 text-[13px]"
                       ><Download class="size-3" /> Import</Button>
-                    <Button size="sm" class="h-7 gap-1 text-[11px]"
+                    <Button size="sm" class="h-7 gap-1 text-[13px]"
                       ><Plus class="size-3" /> Create</Button>
                   </div>
                 </div>
@@ -1092,31 +1092,31 @@
                       class="flex w-full items-start justify-between gap-4 px-3 py-3 text-left hover:bg-muted/40"
                       onclick={() => toggleRule(rule.id)}>
                       <span class="min-w-0">
-                        <span class="block text-xs font-medium">{rule.name}</span>
-                        <span class="mt-1 block text-[11px] leading-5 text-muted-foreground"
+                        <span class="block text-[13px] font-medium">{rule.name}</span>
+                        <span class="mt-1 block text-[13px] leading-5 text-muted-foreground"
                           >{rule.body}</span>
-                        <span class="mt-2 block text-[10px] text-muted-foreground"
+                        <span class="mt-2 block text-[13px] text-muted-foreground"
                           >Source: {rule.source}</span>
                       </span>
-                      <span class={rule.enabled ? 'text-emerald-500' : 'text-muted-foreground'}>
+                      <span class={rule.enabled ? 'text-success' : 'text-muted-foreground'}>
                         {#if rule.enabled}<ToggleRight class="size-5" />{:else}<ToggleLeft
                             class="size-5" />{/if}
                       </span>
                     </button>
                   {:else}
-                    <div class="p-8 text-center text-xs text-muted-foreground">No rules yet.</div>
+                    <div class="p-8 text-center text-[13px] text-muted-foreground">No rules yet.</div>
                   {/each}
                 </div>
               </div>
 
               <div class="overflow-hidden rounded-md border border-border">
                 <div class="flex h-10 items-center justify-between border-b border-border px-3">
-                  <span class="flex items-center gap-2 text-xs font-medium"
+                  <span class="flex items-center gap-2 text-[13px] font-medium"
                     ><FileText class="size-3.5" /> Skills</span>
                   <div class="flex gap-2">
-                    <Button size="sm" variant="outline" class="h-7 gap-1 text-[11px]"
+                    <Button size="sm" variant="outline" class="h-7 gap-1 text-[13px]"
                       ><Download class="size-3" /> Import</Button>
-                    <Button size="sm" class="h-7 gap-1 text-[11px]"
+                    <Button size="sm" class="h-7 gap-1 text-[13px]"
                       ><Plus class="size-3" /> Create</Button>
                   </div>
                 </div>
@@ -1127,19 +1127,19 @@
                       class="flex w-full items-start justify-between gap-4 px-3 py-3 text-left hover:bg-muted/40"
                       onclick={() => toggleSkill(skill.id)}>
                       <span class="min-w-0">
-                        <span class="block text-xs font-medium">{skill.name}</span>
-                        <span class="mt-1 block text-[11px] leading-5 text-muted-foreground"
+                        <span class="block text-[13px] font-medium">{skill.name}</span>
+                        <span class="mt-1 block text-[13px] leading-5 text-muted-foreground"
                           >{skill.description}</span>
-                        <span class="mt-2 block text-[10px] text-muted-foreground"
+                        <span class="mt-2 block text-[13px] text-muted-foreground"
                           >Source: {skill.source}</span>
                       </span>
-                      <span class={skill.enabled ? 'text-emerald-500' : 'text-muted-foreground'}>
+                      <span class={skill.enabled ? 'text-success' : 'text-muted-foreground'}>
                         {#if skill.enabled}<ToggleRight class="size-5" />{:else}<ToggleLeft
                             class="size-5" />{/if}
                       </span>
                     </button>
                   {:else}
-                    <div class="p-8 text-center text-xs text-muted-foreground">
+                    <div class="p-8 text-center text-[13px] text-muted-foreground">
                       No skills imported yet.
                     </div>
                   {/each}
@@ -1152,8 +1152,8 @@
                 <div class="divide-y divide-border rounded-md border border-border">
                   <label class="flex items-center justify-between gap-4 p-3">
                     <span>
-                      <span class="block text-xs font-medium">Auto-save memory</span>
-                      <span class="text-[11px] text-muted-foreground"
+                      <span class="block text-[13px] font-medium">Auto-save memory</span>
+                      <span class="text-[13px] text-muted-foreground"
                         >Allow the model to save useful user preferences.</span>
                     </span>
                     <input
@@ -1164,8 +1164,8 @@
                   </label>
                   <label class="flex items-center justify-between gap-4 p-3">
                     <span>
-                      <span class="block text-xs font-medium">Review before save</span>
-                      <span class="text-[11px] text-muted-foreground"
+                      <span class="block text-[13px] font-medium">Review before save</span>
+                      <span class="text-[13px] text-muted-foreground"
                         >Ask before writing new long-term memory.</span>
                     </span>
                     <input
@@ -1179,12 +1179,12 @@
                 </div>
 
                 <div class="rounded-md border border-border p-3">
-                  <div class="mb-2 text-xs font-medium">Save behavior</div>
+                  <div class="mb-2 text-[13px] font-medium">Save behavior</div>
                   <div class="grid gap-2">
                     {#each ['conservative', 'balanced', 'aggressive'] as mode}
                       <button
                         type="button"
-                        class="rounded-md border px-3 py-2 text-left text-xs capitalize transition-colors {personalization.memorySaveMode ===
+                        class="rounded-md border px-3 py-2 text-left text-[13px] capitalize transition-colors {personalization.memorySaveMode ===
                         mode
                           ? 'border-foreground bg-foreground text-background'
                           : 'border-border hover:bg-muted'}"
@@ -1201,7 +1201,7 @@
 
               <div class="overflow-hidden rounded-md border border-border">
                 <div class="flex h-10 items-center justify-between border-b border-border px-3">
-                  <span class="flex items-center gap-2 text-xs font-medium"
+                  <span class="flex items-center gap-2 text-[13px] font-medium"
                     ><BookOpen class="size-3.5" /> Saved Memories</span>
                   <button
                     type="button"
@@ -1213,11 +1213,11 @@
                 </div>
 
                 {#if memoryLoading}
-                  <div class="p-8 text-center text-xs text-muted-foreground">
+                  <div class="p-8 text-center text-[13px] text-muted-foreground">
                     Loading memories...
                   </div>
                 {:else if memories.length === 0}
-                  <div class="p-8 text-center text-xs text-muted-foreground">
+                  <div class="p-8 text-center text-[13px] text-muted-foreground">
                     No memories saved yet.
                   </div>
                 {:else}
@@ -1226,20 +1226,20 @@
                       <div class="group flex items-start gap-3 px-3 py-3">
                         {#if editingKey === mem.key}
                           <div class="flex-1 space-y-2">
-                            <div class="text-xs font-medium">{mem.key}</div>
+                            <div class="text-[13px] font-medium">{mem.key}</div>
                             <textarea
-                              class="min-h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-2 text-xs outline-none focus:border-foreground"
+                              class="min-h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-2 text-[13px] outline-none focus:border-foreground"
                               bind:value={editingValue}></textarea>
                             <div class="flex gap-2">
                               <Button
                                 size="sm"
-                                class="h-7 gap-1 text-[11px]"
+                                class="h-7 gap-1 text-[13px]"
                                 onclick={() => saveMemory(mem.key, editingValue)}
                                 ><Save class="size-3" /> Save</Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                class="h-7 text-[11px]"
+                                class="h-7 text-[13px]"
                                 onclick={() => {
                                   editingKey = null;
                                   editingValue = '';
@@ -1248,11 +1248,11 @@
                           </div>
                         {:else}
                           <div class="min-w-0 flex-1">
-                            <div class="text-xs font-medium">{mem.key}</div>
-                            <div class="mt-1 text-[11px] leading-5 text-muted-foreground">
+                            <div class="text-[13px] font-medium">{mem.key}</div>
+                            <div class="mt-1 text-[13px] leading-5 text-muted-foreground">
                               {mem.value}
                             </div>
-                            {#if mem.savedAt}<div class="mt-2 text-[10px] text-muted-foreground">
+                            {#if mem.savedAt}<div class="mt-2 text-[13px] text-muted-foreground">
                                 {new Date(mem.savedAt).toLocaleDateString()}
                               </div>{/if}
                           </div>
@@ -1270,7 +1270,7 @@
                             <Button
                               size="sm"
                               variant="ghost"
-                              class="size-7 p-0 text-red-500"
+                              class="size-7 p-0 text-destructive"
                               title="Delete"
                               onclick={() => deleteMemory(mem.key)}
                               ><Trash2 class="size-3.5" /></Button>
@@ -1282,15 +1282,15 @@
                 {/if}
 
                 <div class="border-t border-border p-3">
-                  <div class="mb-2 text-xs font-medium">Add memory</div>
+                  <div class="mb-2 text-[13px] font-medium">Add memory</div>
                   <div class="flex gap-2">
-                    <Input class="h-8 text-xs" placeholder="Key" bind:value={newMemoryKey} />
+                    <Input class="h-8 text-[13px]" placeholder="Key" bind:value={newMemoryKey} />
                     <Input
-                      class="h-8 flex-[2] text-xs"
+                      class="h-8 flex-[2] text-[13px]"
                       placeholder="Value"
                       bind:value={newMemoryValue} />
                     <Button
-                      class="h-8 gap-1 text-xs"
+                      class="h-8 gap-1 text-[13px]"
                       disabled={!newMemoryKey.trim() || !newMemoryValue.trim()}
                       onclick={() => saveMemory(newMemoryKey.trim(), newMemoryValue.trim())}>
                       <Save class="size-3.5" /> Add

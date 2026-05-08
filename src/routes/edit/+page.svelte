@@ -10,5 +10,5 @@
 </script>
 
 <div class="flex h-screen items-center justify-center bg-background">
-  <span class="text-sm text-muted-foreground">Redirecting to app...</span>
+  <span class="text-[13px] text-muted-foreground">Redirecting to app...</span>
 </div>

@@ -246,11 +246,11 @@
   }
 
   .object-card {
-    @apply relative z-10 h-full overflow-visible rounded-md border border-border bg-card text-sm shadow-sm;
+    @apply relative z-10 h-full overflow-visible rounded-md border border-border bg-card text-[13px] shadow-sm;
   }
 
   .card-header {
-    @apply flex h-9 items-center justify-between gap-2 border-b border-border px-3 font-mono text-sm font-semibold;
+    @apply flex h-9 items-center justify-between gap-2 border-b border-border px-3 font-mono text-[12px] font-semibold;
   }
 
   .card-header-purple {
@@ -297,7 +297,7 @@
   }
 
   .property-row {
-    @apply relative flex h-8 items-center gap-1.5 border-b border-border/70 px-3 last:border-b-0;
+    @apply relative flex h-8 items-center gap-2 border-b border-border/70 px-3 last:border-b-0;
   }
 
   .property-key {

@@ -79,12 +79,12 @@
   <!-- History Panel (slides in from top) -->
   {#if showHistory}
     <div class="border-b border-border bg-muted/10">
-      <div class="flex items-center justify-between px-3 py-1.5">
-        <span class="text-[10px] font-medium text-muted-foreground">History</span>
+      <div class="flex items-center justify-between px-3 py-2">
+        <span class="text-[13px] font-medium text-muted-foreground">History</span>
         <div class="flex items-center gap-1">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
             aria-label="New chat"
             onclick={handleNewChatFromHistory}>
             <Plus class="size-3" />
@@ -109,17 +109,17 @@
           </div>
         {:else if !authStore.isLoggedIn}
           <div class="px-3 py-3 text-center">
-            <p class="text-[10px] text-muted-foreground">Sign in to save conversations</p>
+            <p class="text-[13px] text-muted-foreground">Sign in to save conversations</p>
           </div>
         {:else if conversationsStore.list.length === 0}
           <div class="px-3 py-3 text-center">
-            <p class="text-[10px] text-muted-foreground">No conversations yet</p>
+            <p class="text-[13px] text-muted-foreground">No conversations yet</p>
           </div>
         {:else}
           {#each conversationsStore.list as conv (conv.id)}
             <div
               class={cn(
-                'group flex w-full items-center gap-1 px-3 py-1.5 transition-colors hover:bg-muted/40',
+                'group flex w-full items-center gap-1 px-3 py-2 transition-colors hover:bg-muted/40',
                 conv.id === conversationsStore.activeId && 'bg-accent'
               )}>
               <button
@@ -129,13 +129,13 @@
                 <MessageSquare class="size-3 flex-shrink-0 text-muted-foreground" />
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1">
-                    <span class="truncate text-[11px] font-medium text-foreground"
+                    <span class="truncate text-[13px] font-medium text-foreground"
                       >{conv.title || 'Untitled'}</span>
                     {#if conv.is_pinned}<Pin class="size-2.5 flex-shrink-0 text-primary" />{/if}
                     {#if conv.is_archived}<Archive
                         class="size-2.5 flex-shrink-0 text-muted-foreground" />{/if}
                   </div>
-                  <span class="text-[9px] text-muted-foreground"
+                  <span class="text-[13px] text-muted-foreground"
                     >{formatConvTime(conv.updated_at)}</span>
                 </div>
               </button>
@@ -165,7 +165,7 @@
         </div>
         <div>
           <p class="font-medium text-foreground">Graphini AI Assistant</p>
-          <p class="text-sm text-muted-foreground">
+          <p class="text-[13px] text-muted-foreground">
             Create and edit diagrams with natural language.
           </p>
         </div>

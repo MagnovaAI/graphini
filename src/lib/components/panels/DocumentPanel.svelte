@@ -206,11 +206,11 @@
   // ── Markdown Renderer (using marked library) ──
   function renderMarkdown(md: string): string {
     if (!md.trim())
-      return '<p class="text-sm text-muted-foreground italic">No content yet. Switch to Source to start writing.</p>';
+      return '<p class="text-[13px] text-muted-foreground italic">No content yet. Switch to Source to start writing.</p>';
     try {
       return marked.parse(md) as string;
     } catch {
-      return `<p class="text-xs text-foreground/75">${md}</p>`;
+      return `<p class="text-[13px] text-foreground/75">${md}</p>`;
     }
   }
 
@@ -222,15 +222,15 @@
   <div class="flex h-10 items-center justify-between border-b border-border/30 px-3">
     <div class="flex items-center gap-2">
       <FileText class="size-4 text-muted-foreground" />
-      <span class="text-xs font-semibold text-foreground">Document</span>
-      <span class="rounded bg-muted/50 px-1.5 py-0.5 text-[9px] text-muted-foreground">.md</span>
+      <span class="text-[13px] font-semibold text-foreground">Document</span>
+      <span class="rounded bg-muted/50 px-2 py-1 text-[13px] text-muted-foreground">.md</span>
     </div>
     <!-- View mode toggle -->
-    <div class="flex items-center rounded-md border border-border/30 bg-muted/20 p-0.5">
+    <div class="flex items-center rounded-md border border-border/30 bg-muted/20 p-1">
       <button
         type="button"
         class={cn(
-          'flex items-center gap-1 rounded-sm px-2 py-1 text-[10px] font-medium transition-all',
+          'flex items-center gap-1 rounded-sm px-2 py-1 text-[13px] font-medium transition-all',
           viewMode === 'rendered'
             ? 'bg-background text-foreground shadow-sm'
             : 'text-muted-foreground hover:text-foreground'
@@ -242,7 +242,7 @@
       <button
         type="button"
         class={cn(
-          'flex items-center gap-1 rounded-sm px-2 py-1 text-[10px] font-medium transition-all',
+          'flex items-center gap-1 rounded-sm px-2 py-1 text-[13px] font-medium transition-all',
           viewMode === 'source'
             ? 'bg-background text-foreground shadow-sm'
             : 'text-muted-foreground hover:text-foreground'

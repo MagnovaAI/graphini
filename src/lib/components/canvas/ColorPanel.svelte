@@ -189,18 +189,18 @@
   <div
     class="absolute top-16 right-4 z-50 w-56 animate-in rounded-xl border border-border bg-card/95 shadow-xl backdrop-blur-sm duration-200 slide-in-from-right-2">
     <!-- Header -->
-    <div class="flex items-center justify-between border-b border-border/50 px-3 py-1.5">
+    <div class="flex items-center justify-between border-b border-border/50 px-3 py-2">
       <div class="flex items-center gap-2">
         {#if isApplying}
           <Loader2 class="size-3.5 animate-spin text-primary" />
         {:else}
           <Pipette class="size-3.5 text-primary" />
         {/if}
-        <span class="text-xs font-semibold">
+        <span class="text-[13px] font-semibold">
           {selectionType === 'node' ? 'Node' : 'Edge'} Colors
         </span>
       </div>
-      <div class="flex items-center gap-0.5">
+      <div class="flex items-center gap-1">
         {#if selectionType === 'node'}
           <Button
             variant="ghost"
@@ -217,13 +217,13 @@
       </div>
     </div>
 
-    <div class="space-y-2.5 p-2.5">
+    <div class="space-y-3 p-3">
       {#if selectionType === 'node'}
         <!-- Fill Color -->
         <div class="space-y-1">
-          <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
+          <span class="text-[13px] font-medium tracking-wider text-muted-foreground uppercase"
             >Fill</span>
-          <div class="flex flex-wrap gap-0.5">
+          <div class="flex flex-wrap gap-1">
             {#each $fillColors as color (color)}
               <button
                 type="button"
@@ -240,14 +240,14 @@
             type="color"
             bind:value={selectedBgColor}
             onchange={() => applyColorToCode()}
-            class="mt-0.5 h-5 w-7 cursor-pointer rounded border-0" />
+            class="mt-1 h-5 w-7 cursor-pointer rounded border-0" />
         </div>
 
         <!-- Border Color -->
         <div class="space-y-1">
-          <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
+          <span class="text-[13px] font-medium tracking-wider text-muted-foreground uppercase"
             >Border</span>
-          <div class="flex flex-wrap gap-0.5">
+          <div class="flex flex-wrap gap-1">
             {#each strokeColors as color (color)}
               <button
                 type="button"
@@ -264,14 +264,14 @@
             type="color"
             bind:value={selectedBorderColor}
             onchange={() => applyColorToCode()}
-            class="mt-0.5 h-5 w-7 cursor-pointer rounded border-0" />
+            class="mt-1 h-5 w-7 cursor-pointer rounded border-0" />
         </div>
 
         <!-- Text Color -->
         <div class="space-y-1">
-          <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
+          <span class="text-[13px] font-medium tracking-wider text-muted-foreground uppercase"
             >Text</span>
-          <div class="flex flex-wrap gap-0.5">
+          <div class="flex flex-wrap gap-1">
             {#each strokeColors as color (color)}
               <button
                 type="button"
@@ -288,14 +288,14 @@
             type="color"
             bind:value={selectedColor}
             onchange={() => applyColorToCode()}
-            class="mt-0.5 h-5 w-7 cursor-pointer rounded border-0" />
+            class="mt-1 h-5 w-7 cursor-pointer rounded border-0" />
         </div>
       {:else}
         <!-- Edge/Stroke Color -->
         <div class="space-y-1">
-          <span class="text-[10px] font-medium tracking-wider text-muted-foreground uppercase"
+          <span class="text-[13px] font-medium tracking-wider text-muted-foreground uppercase"
             >Stroke</span>
-          <div class="flex flex-wrap gap-0.5">
+          <div class="flex flex-wrap gap-1">
             {#each strokeColors as color (color)}
               <button
                 type="button"
@@ -312,7 +312,7 @@
             type="color"
             bind:value={selectedColor}
             onchange={() => applyColorToCode()}
-            class="mt-0.5 h-5 w-7 cursor-pointer rounded border-0" />
+            class="mt-1 h-5 w-7 cursor-pointer rounded border-0" />
         </div>
       {/if}
     </div>

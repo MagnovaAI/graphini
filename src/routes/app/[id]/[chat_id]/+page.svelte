@@ -779,14 +779,13 @@
   <div class="flex h-screen items-center justify-center bg-background">
     <div class="text-center">
       <div
-        class="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl"
-        style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15);">
-        <AlertCircle class="size-6 text-red-400" />
+        class="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/10">
+        <AlertCircle class="size-6 text-destructive" />
       </div>
-      <h2 class="text-base font-semibold text-foreground">Couldn't load workspace</h2>
+      <h2 class="text-[16px] font-semibold text-foreground">Couldn't load workspace</h2>
       <p class="mt-2 max-w-xs text-[13px] text-muted-foreground/70">{wsError}</p>
       <button
-        class="mt-6 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground transition-all hover:bg-primary/90"
+        class="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground transition-all hover:bg-primary/90"
         onclick={() => goto(resolve('/app'))}>
         <ArrowLeft class="size-3.5" />
         Back to App
@@ -816,14 +815,14 @@
                 )}>
                 {#if !isMarkdownDocument}
                   <div class="flex shrink-0 flex-col border-b border-border bg-background">
-                    <div class="flex h-9 shrink-0 items-center gap-1.5 px-3">
+                    <div class="flex h-9 shrink-0 items-center gap-2 px-3">
                       {#if leftmostVisiblePanel === 'canvas'}
                         <SidebarTrigger class="-ml-1" />
                       {/if}
                       <EngineIcon class="size-4 text-muted-foreground" />
                       <span class="text-[13px] font-semibold text-foreground">Canvas</span>
-                      <span class="text-[12px] text-muted-foreground/60">|</span>
-                      <span class="text-[12px] text-muted-foreground">{engineShort}</span>
+                      <span class="text-[13px] text-muted-foreground/60">|</span>
+                      <span class="text-[13px] text-muted-foreground">{engineShort}</span>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -904,31 +903,31 @@
                         {#if isMermaidDiagram && viewRenderError}
                           <button
                             type="button"
-                            class="flex max-w-[260px] cursor-pointer items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/5 px-2 py-0.5 transition-colors hover:bg-red-500/10"
+                            class="flex max-w-[260px] cursor-pointer items-center gap-2 rounded-full border border-destructive/20 bg-destructive/10 px-2 py-1 transition-colors hover:bg-destructive/10"
                             title="Click to auto-fix: {viewRenderError}"
                             onclick={async () => {
                               const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
                               await handleSendChatMessage(msg, { isRepair: true });
                             }}>
-                            <span class="size-1.5 shrink-0 rounded-full bg-red-500/70"></span>
-                            <span class="truncate text-[10px] font-medium text-red-400/90"
+                            <span class="size-1.5 shrink-0 rounded-full bg-destructive/10"></span>
+                            <span class="truncate text-[13px] font-medium text-destructive"
                               >{viewRenderError}</span>
                           </button>
                         {:else if isViewRendering}
-                          <div class="rounded-full bg-amber-500/10 p-1.5" title="Rendering…">
-                            <span class="block size-1.5 animate-pulse rounded-full bg-amber-500/70"
+                          <div class="rounded-full bg-warning/10 p-2" title="Rendering…">
+                            <span class="block size-1.5 animate-pulse rounded-full bg-warning/10"
                             ></span>
                           </div>
                         {:else}
-                          <div class="rounded-full bg-emerald-500/10 p-1.5" title="Ready">
-                            <span class="block size-1.5 rounded-full bg-emerald-500/70"></span>
+                          <div class="rounded-full bg-success/10 p-2" title="Ready">
+                            <span class="block size-1.5 rounded-full bg-success/10"></span>
                           </div>
                         {/if}
                       </div>
                     </div>
                     {#if selectedElementType !== null}
                       <div
-                        class="flex min-h-12 items-center gap-1 border-t border-border px-3 py-1.5">
+                        class="flex min-h-12 items-center gap-1 border-t border-border px-3 py-2">
                         <ElementToolbar mode="inline" />
                       </div>
                     {/if}
@@ -949,14 +948,14 @@
                         class="mx-auto min-h-full max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-sm">
                         <div class="mb-5 flex items-center gap-2 border-b border-border pb-3">
                           <FileText class="size-4 text-muted-foreground" />
-                          <span class="text-sm font-semibold text-foreground"
+                          <span class="text-[13px] font-semibold text-foreground"
                             >{activeDiagramTitle}</span>
                           <span
-                            class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                            class="rounded-full bg-muted px-2 py-1 text-[13px] text-muted-foreground"
                             >Markdown</span>
                         </div>
                         <pre
-                          class="font-sans text-sm leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
+                          class="font-sans text-[13px] leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
                             'Start writing in the Code panel.'}</pre>
                       </article>
                     </div>
@@ -1012,14 +1011,14 @@
                 <div class="flex h-full flex-col bg-background">
                   <div
                     class="box-content flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
-                    <div class="flex items-center gap-1.5">
+                    <div class="flex items-center gap-2">
                       {#if leftmostVisiblePanel === 'code'}
                         <SidebarTrigger class="-ml-1" />
                       {/if}
                       <EngineIcon class="size-4 text-muted-foreground" />
                       <span class="text-[13px] font-semibold text-foreground">Code</span>
-                      <span class="text-[12px] text-muted-foreground/60">|</span>
-                      <span class="text-[12px] text-muted-foreground">
+                      <span class="text-[13px] text-muted-foreground/60">|</span>
+                      <span class="text-[13px] text-muted-foreground">
                         {#if isMermaidDiagram && $stateStore.editorMode === 'config'}
                           config
                         {:else}
@@ -1031,7 +1030,7 @@
                       <div class="flex items-center gap-1">
                         <button
                           type="button"
-                          class="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
+                          class="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[13px] font-medium transition-colors hover:bg-muted/50"
                           onclick={() => {
                             const currentMode = $stateStore.editorMode;
                             const newMode = currentMode === 'code' ? 'config' : 'code';
@@ -1043,7 +1042,7 @@
                       </div>
                     {/if}
                   </div>
-                  <div class="flex-1 overflow-hidden text-[12px]">
+                  <div class="flex-1 overflow-hidden text-[13px]">
                     <Editor
                       onUpdate={(code) => {
                         updateCodeStore({ code });
@@ -1075,7 +1074,7 @@
                   style="background-color: var(--chat-background);">
                   <SidebarTrigger class="-ml-1" />
                   <p
-                    class="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-foreground"
+                    class="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight text-foreground"
                     translate="no">
                     {activeChatTitle}
                   </p>
@@ -1113,7 +1112,7 @@
         tabindex="-1"
         class="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
-          <h2 id="shortcuts-modal-title" class="text-sm font-semibold text-foreground">
+          <h2 id="shortcuts-modal-title" class="text-[13px] font-semibold text-foreground">
             Keyboard Shortcuts
           </h2>
           <button
@@ -1132,16 +1131,16 @@
         <div class="space-y-3">
           <div>
             <h3
-              class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              class="mb-2 text-[13px] font-semibold tracking-wider text-muted-foreground uppercase">
               Tools
             </h3>
             <div class="space-y-1">
               {#each [['V', 'Select tool'], ['P', 'Pan tool'], ['D', 'Draw tool'], ['G', 'Toggle grid'], ['R', 'Rough mode']] as [key, label] (key)}
                 <div
                   class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
-                  <span class="text-xs text-foreground/80">{label}</span>
+                  <span class="text-[13px] text-foreground/80">{label}</span>
                   <kbd
-                    class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    class="rounded border border-border bg-muted px-2 py-1 font-mono text-[12px] text-muted-foreground"
                     >{key}</kbd>
                 </div>
               {/each}
@@ -1149,16 +1148,16 @@
           </div>
           <div>
             <h3
-              class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              class="mb-2 text-[13px] font-semibold tracking-wider text-muted-foreground uppercase">
               Edit
             </h3>
             <div class="space-y-1">
               {#each [['⌘S', 'Export'], ['⌘O', 'Import'], ['Del', 'Delete selected']] as [key, label] (key)}
                 <div
                   class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
-                  <span class="text-xs text-foreground/80">{label}</span>
+                  <span class="text-[13px] text-foreground/80">{label}</span>
                   <kbd
-                    class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    class="rounded border border-border bg-muted px-2 py-1 font-mono text-[12px] text-muted-foreground"
                     >{key}</kbd>
                 </div>
               {/each}
@@ -1166,16 +1165,16 @@
           </div>
           <div>
             <h3
-              class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              class="mb-2 text-[13px] font-semibold tracking-wider text-muted-foreground uppercase">
               View
             </h3>
             <div class="space-y-1">
               {#each [['⌘+', 'Zoom in'], ['⌘-', 'Zoom out'], ['⌘0', 'Reset zoom'], ['?', 'This dialog']] as [key, label] (key)}
                 <div
                   class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
-                  <span class="text-xs text-foreground/80">{label}</span>
+                  <span class="text-[13px] text-foreground/80">{label}</span>
                   <kbd
-                    class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    class="rounded border border-border bg-muted px-2 py-1 font-mono text-[12px] text-muted-foreground"
                     >{key}</kbd>
                 </div>
               {/each}
@@ -1203,15 +1202,15 @@
   }
 
   .toolbar-zoom-label {
-    @apply flex h-7 min-w-10 items-center justify-center rounded-[5px] px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums;
+    @apply flex h-7 min-w-10 items-center justify-center rounded-[5px] px-2 text-[13px] font-medium text-muted-foreground tabular-nums;
   }
 
   .layout-menu {
-    @apply absolute top-full right-0 z-50 mt-1 w-28 overflow-hidden rounded-md border border-border bg-popover p-0.5 text-popover-foreground shadow-md;
+    @apply absolute top-full right-0 z-50 mt-1 w-28 overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md;
   }
 
   .layout-menu-item {
-    @apply flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-[5px] px-1.5 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground;
+    @apply flex h-6 w-full cursor-pointer items-center gap-2 rounded-[5px] px-2 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground;
   }
 
   .layout-menu-item.active {

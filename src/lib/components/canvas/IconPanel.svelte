@@ -313,24 +313,24 @@
       ? 'bottom-24 left-1/2 h-[55vh] -translate-x-1/2 slide-in-from-bottom-2'
       : 'top-16 right-4 h-[70vh] slide-in-from-right-2'}">
     <!-- Header -->
-    <div class="flex items-center justify-between border-b border-border/50 px-3 py-1.5">
+    <div class="flex items-center justify-between border-b border-border/50 px-3 py-2">
       <div class="flex items-center gap-2">
         {#if isApplying}
           <Loader2 class="size-3.5 animate-spin text-primary" />
         {:else}
           <Search class="size-3.5 text-primary" />
         {/if}
-        <span class="text-xs font-semibold">Icons</span>
-        <span class="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground"
+        <span class="text-[13px] font-semibold">Icons</span>
+        <span class="rounded bg-muted px-2 py-1 text-[13px] text-muted-foreground"
           >{allIcons.length}</span>
         {#if selectedNodeId}
           <span
-            class="rounded bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-medium text-indigo-500">
+            class="rounded bg-indigo-500/10 px-2 py-1 text-[13px] font-medium text-indigo-500">
             {svgIdToNodeName(selectedNodeId)}
           </span>
         {/if}
       </div>
-      <div class="flex items-center gap-0.5">
+      <div class="flex items-center gap-1">
         <Button
           variant="ghost"
           size="icon"
@@ -358,25 +358,25 @@
     <div class="flex border-b border-border/30">
       <button
         type="button"
-        class="flex flex-1 items-center justify-center gap-1.5 py-1.5 text-[10px] font-medium transition-colors {activeTab ===
+        class="flex flex-1 items-center justify-center gap-2 py-2 text-[13px] font-medium transition-colors {activeTab ===
         'local'
           ? 'border-b-2 border-primary text-primary'
           : 'text-muted-foreground hover:text-foreground'}"
         onclick={() => (activeTab = 'local')}>
         <HardDrive class="size-3" />
         Local
-        <span class="rounded bg-muted px-1 py-0.5 text-[8px]">{allIcons.length}</span>
+        <span class="rounded bg-muted px-1 py-1 text-[13px]">{allIcons.length}</span>
       </button>
       <button
         type="button"
-        class="flex flex-1 items-center justify-center gap-1.5 py-1.5 text-[10px] font-medium transition-colors {activeTab ===
+        class="flex flex-1 items-center justify-center gap-2 py-2 text-[13px] font-medium transition-colors {activeTab ===
         'web'
           ? 'border-b-2 border-primary text-primary'
           : 'text-muted-foreground hover:text-foreground'}"
         onclick={() => (activeTab = 'web')}>
         <Globe class="size-3" />
         Web
-        <span class="rounded bg-muted px-1 py-0.5 text-[8px]">200k+</span>
+        <span class="rounded bg-muted px-1 py-1 text-[13px]">200k+</span>
       </button>
     </div>
 
@@ -388,7 +388,7 @@
           <Input
             bind:value={searchQuery}
             placeholder="Search {allIcons.length}+ local icons..."
-            class="h-7 pl-7 text-xs" />
+            class="h-7 pl-7 text-[13px]" />
         </div>
       </div>
 
@@ -397,7 +397,7 @@
         class="scrollbar-thin flex items-center gap-1 overflow-x-auto border-b border-border/30 px-2 py-1">
         <button
           type="button"
-          class="shrink-0 rounded-md px-2 py-0.5 text-[9px] font-medium transition-all {activeCategory ===
+          class="shrink-0 rounded-md px-2 py-1 text-[13px] font-medium transition-all {activeCategory ===
           null
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
@@ -407,14 +407,14 @@
         {#each categoryList as cat (cat.id)}
           <button
             type="button"
-            class="shrink-0 rounded-md px-2 py-0.5 text-[9px] font-medium transition-all {activeCategory ===
+            class="shrink-0 rounded-md px-2 py-1 text-[13px] font-medium transition-all {activeCategory ===
             cat.id
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
             onclick={() => (activeCategory = activeCategory === cat.id ? null : cat.id)}
             title="{cat.label} ({cat.count})">
             {cat.label.length > 12 ? cat.id.toUpperCase() : cat.label}
-            <span class="ml-0.5 text-[8px] opacity-60">{cat.count}</span>
+            <span class="ml-1 text-[13px] opacity-60">{cat.count}</span>
           </button>
         {/each}
       </div>
@@ -428,7 +428,7 @@
         {:else if filteredIcons.length === 0}
           <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
             <Search class="size-6 text-muted-foreground/40" />
-            <p class="text-[11px] text-muted-foreground">No icons found for "{searchQuery}"</p>
+            <p class="text-[13px] text-muted-foreground">No icons found for "{searchQuery}"</p>
           </div>
         {:else}
           {#each CATEGORY_ORDER as catId (catId)}
@@ -436,7 +436,7 @@
               <div class="mb-1">
                 <button
                   type="button"
-                  class="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                  class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
                   onclick={() => toggleCategory(catId)}>
                   {#if expandedCategories.has(catId)}
                     <ChevronDown class="size-3" />
@@ -444,7 +444,7 @@
                     <ChevronRight class="size-3" />
                   {/if}
                   <span>{CATEGORY_LABELS[catId] || catId}</span>
-                  <span class="ml-auto text-[9px] text-muted-foreground/60"
+                  <span class="ml-auto text-[13px] text-muted-foreground/60"
                     >{groupedIcons[catId].length}</span>
                 </button>
 
@@ -453,7 +453,7 @@
                     {#each groupedIcons[catId] as icon (icon.id)}
                       <button
                         type="button"
-                        class="group flex flex-col items-center gap-0.5 rounded-lg border border-transparent p-1 transition-all hover:border-border hover:bg-accent/50 {selectedIcon ===
+                        class="group flex flex-col items-center gap-1 rounded-lg border border-transparent p-1 transition-all hover:border-border hover:bg-accent/50 {selectedIcon ===
                         icon.path
                           ? 'border-indigo-500 bg-indigo-500/10'
                           : ''}"
@@ -468,7 +468,7 @@
                             (e.target as HTMLImageElement).style.display = 'none';
                           }} />
                         <span
-                          class="max-w-full truncate text-[7px] leading-tight text-muted-foreground group-hover:text-foreground">
+                          class="max-w-full truncate text-[13px] leading-tight text-muted-foreground group-hover:text-foreground">
                           {formatIconName(icon.id).slice(0, 10)}
                         </span>
                       </button>
@@ -489,9 +489,9 @@
             value={webSearchQuery}
             oninput={(e) => handleWebSearchInput((e.target as HTMLInputElement).value)}
             placeholder="Search Iconify (200k+ icons)..."
-            class="h-7 pl-7 text-xs" />
+            class="h-7 pl-7 text-[13px]" />
         </div>
-        <p class="mt-1 text-[8px] text-muted-foreground">
+        <p class="mt-1 text-[13px] text-muted-foreground">
           Powered by <a href="https://iconify.design" target="_blank" class="underline">Iconify</a> —
           logos, devicon, simple-icons, mdi, heroicons & more
         </p>
@@ -506,15 +506,15 @@
         {:else if webResults.length === 0 && webSearchQuery.trim()}
           <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
             <Globe class="size-6 text-muted-foreground/40" />
-            <p class="text-[11px] text-muted-foreground">
+            <p class="text-[13px] text-muted-foreground">
               No web icons found for "{webSearchQuery}"
             </p>
           </div>
         {:else if webResults.length === 0}
           <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
             <Globe class="size-6 text-muted-foreground/40" />
-            <p class="text-[11px] text-muted-foreground">Type to search 200,000+ icons</p>
-            <p class="text-[9px] text-muted-foreground/60">
+            <p class="text-[13px] text-muted-foreground">Type to search 200,000+ icons</p>
+            <p class="text-[13px] text-muted-foreground/60">
               logos, devicon, simple-icons, mdi, heroicons, phosphor, tabler...
             </p>
           </div>
@@ -523,7 +523,7 @@
             {#each webResults as icon (icon.id)}
               <button
                 type="button"
-                class="group flex flex-col items-center gap-0.5 rounded-lg border border-transparent p-1 transition-all hover:border-border hover:bg-accent/50 {selectedIcon ===
+                class="group flex flex-col items-center gap-1 rounded-lg border border-transparent p-1 transition-all hover:border-border hover:bg-accent/50 {selectedIcon ===
                 icon.url
                   ? 'border-indigo-500 bg-indigo-500/10'
                   : ''}"
@@ -538,7 +538,7 @@
                     (e.target as HTMLImageElement).style.display = 'none';
                   }} />
                 <span
-                  class="max-w-full truncate text-[7px] leading-tight text-muted-foreground group-hover:text-foreground">
+                  class="max-w-full truncate text-[13px] leading-tight text-muted-foreground group-hover:text-foreground">
                   {formatWebIconName(icon.name).slice(0, 10)}
                 </span>
               </button>
@@ -554,8 +554,8 @@
         <div class="flex items-center gap-2 rounded-md bg-muted/50 p-2">
           <img src={selectedIcon} alt="Selected" class="size-6 object-contain" />
           <div class="min-w-0 flex-1">
-            <p class="truncate text-[10px] font-medium">{selectedIcon.split('/').pop()}</p>
-            <p class="text-[9px] text-muted-foreground">
+            <p class="truncate text-[13px] font-medium">{selectedIcon.split('/').pop()}</p>
+            <p class="text-[13px] text-muted-foreground">
               {selectedNodeId
                 ? `Applied to ${svgIdToNodeName(selectedNodeId)}`
                 : 'Copied to clipboard'}

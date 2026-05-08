@@ -113,10 +113,10 @@
       class="flex-shrink-0 border-t border-border bg-background"
       data-testid={TID.errorContainer}>
       <div class="flex items-center gap-2 px-3 py-2">
-        <div class="flex size-5 items-center justify-center rounded bg-red-500/10">
-          <ExclamationCircleIcon class="size-3.5 text-red-500" aria-hidden="true" />
+        <div class="flex size-5 items-center justify-center rounded bg-destructive/10">
+          <ExclamationCircleIcon class="size-3.5 text-destructive" aria-hidden="true" />
         </div>
-        <span class="flex-1 truncate text-xs font-medium text-red-600 dark:text-red-400"
+        <span class="flex-1 truncate text-[13px] font-medium text-destructive dark:text-destructive"
           >{errorMsg.length > 80 ? errorMsg.slice(0, 80) + '…' : errorMsg}</span>
 
         {#if $stateStore.editorMode === 'code'}
@@ -125,7 +125,7 @@
             size="sm"
             data-testid={TID.aiRepairButton}
             onclick={handleFixValidationError}
-            class="h-7 shrink-0 gap-1.5 border-red-200/50 bg-red-50/80 px-3 text-[11px] font-medium text-red-600 transition-all hover:bg-red-100/80 dark:border-red-700/50 dark:bg-red-900/50 dark:text-red-400 dark:hover:bg-red-800/50">
+            class="h-7 shrink-0 gap-2 border-destructive/20 bg-destructive/5 px-3 text-[13px] font-medium text-destructive transition-all hover:bg-destructive/10 dark:border-destructive/20 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/10">
             <Wrench class="size-3" />
             Repair
           </Button>
@@ -135,16 +135,16 @@
       <!-- Collapsible error details -->
       <details class="border-t border-border/30">
         <summary
-          class="cursor-pointer px-3 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+          class="cursor-pointer px-3 py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
           >Show details</summary>
         <div class="max-h-32 overflow-y-auto px-3 pb-2">
           <pre
-            class="font-mono text-[10px] leading-relaxed whitespace-pre-wrap text-red-600/80 dark:text-red-400/80">{$stateStore.error?.toString() ||
+            class="font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-destructive dark:text-destructive">{$stateStore.error?.toString() ||
               $stateStore.validationError}</pre>
           {#if $stateStore.validationSuggestions && $stateStore.validationSuggestions.length > 0}
-            <div class="mt-1.5 space-y-0.5">
+            <div class="mt-2 space-y-1">
               {#each $stateStore.validationSuggestions as suggestion (suggestion)}
-                <p class="text-[10px] text-muted-foreground">• {suggestion}</p>
+                <p class="text-[13px] text-muted-foreground">• {suggestion}</p>
               {/each}
             </div>
           {/if}

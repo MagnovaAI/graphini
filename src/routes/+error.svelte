@@ -13,8 +13,8 @@
 
 {#if $page.status !== 404}
   <div class="container mx-auto p-8">
-    <h1 class="mb-4 text-2xl font-bold">Error {$page.status}</h1>
+    <h1 class="mb-4 text-[22px] font-bold">Error {$page.status}</h1>
     <p class="mb-4">{$page.error?.message || 'An unexpected error occurred'}</p>
-    <a href="/" class="text-blue-500 hover:underline">Return to Home</a>
+    <a href="/" class="text-primary hover:underline">Return to Home</a>
   </div>
 {/if}

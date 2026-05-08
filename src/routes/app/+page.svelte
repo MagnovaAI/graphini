@@ -60,7 +60,7 @@
       <span class="text-[13px] text-destructive">{error}</span>
       <button
         type="button"
-        class="rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-muted"
+        class="rounded-md border border-border px-3 py-2 text-[13px] font-medium text-foreground hover:bg-muted"
         onclick={() => goto(resolve('/app'), { replaceState: true })}>
         Try again
       </button>

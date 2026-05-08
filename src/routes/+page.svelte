@@ -111,17 +111,17 @@
       <span>Graphini</span>
     </a>
 
-    <nav class="hidden items-center gap-1 text-[12px] text-muted-foreground md:flex">
+    <nav class="hidden items-center gap-1 text-[13px] text-muted-foreground md:flex">
       <a
         href={resolve('/app')}
-        class="rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent hover:text-foreground">
+        class="rounded-md px-3 py-2 transition-colors hover:bg-accent hover:text-foreground">
         Workspace
       </a>
       <a
         href="https://github.com/omkarbhad/graphini"
         target="_blank"
         rel="noopener noreferrer"
-        class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent hover:text-foreground">
+        class="flex items-center gap-2 rounded-md px-3 py-2 transition-colors hover:bg-accent hover:text-foreground">
         <Github class="size-3.5" />
         GitHub
       </a>
@@ -131,13 +131,13 @@
       {#if authStore.isLoggedIn}
         <a
           href={resolve('/app')}
-          class="flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground transition-colors hover:bg-accent">
+          class="flex h-7 items-center gap-2 rounded-md border border-border bg-background px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-accent">
           App
         </a>
       {:else}
         <button
           type="button"
-          class="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          class="flex h-7 items-center gap-2 rounded-md px-3 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           onclick={() => authStore.login()}>
           <LogIn class="size-3.5" />
           Sign in
@@ -145,7 +145,7 @@
       {/if}
       <a
         href={resolve('/app')}
-        class="flex h-7 items-center gap-1.5 rounded-md bg-foreground px-2.5 text-[12px] font-medium text-background transition-opacity hover:opacity-90">
+        class="flex h-7 items-center gap-2 rounded-md bg-foreground px-3 text-[13px] font-medium text-background transition-opacity hover:opacity-90">
         Open app
         <ArrowRight class="size-3.5" />
       </a>
@@ -157,15 +157,15 @@
     <section class="border-b border-border">
       <div class="mx-auto flex max-w-5xl flex-col items-center gap-8 px-6 py-20 text-center">
         <span
-          class="rounded-full border border-border bg-muted/40 px-3 py-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+          class="rounded-full border border-border bg-muted/40 px-3 py-1 font-mono text-[12px] tracking-widest text-muted-foreground uppercase">
           AI diagram workspace
         </span>
         <h1
-          class="max-w-3xl text-4xl font-semibold tracking-tight text-balance text-foreground md:text-5xl lg:text-6xl">
+          class="max-w-3xl text-[40px] font-semibold tracking-tight text-balance text-foreground md:text-[56px] lg:text-[80px]">
           Diagram the system before it goes stale.
         </h1>
         <p
-          class="max-w-2xl text-[14px] leading-relaxed text-pretty text-muted-foreground md:text-[15px]">
+          class="max-w-2xl text-[13px] leading-relaxed text-pretty text-muted-foreground md:text-[13px]">
           Graphini turns rough architecture notes, process descriptions, schemas, and product
           handoffs into Mermaid diagrams you can edit, save, repair, and export.
         </p>
@@ -176,11 +176,11 @@
             onSubmit={(message) => gotoEdit(message)} />
         </div>
 
-        <div class="flex flex-wrap items-center justify-center gap-1.5">
+        <div class="flex flex-wrap items-center justify-center gap-2">
           {#each prompts as prompt (prompt)}
             <button
               type="button"
-              class="rounded-full border border-border bg-background px-3 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              class="rounded-full border border-border bg-background px-3 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               onclick={() => gotoEdit(prompt)}>
               {prompt}
             </button>
@@ -211,7 +211,7 @@
       <div class="mx-auto max-w-6xl px-6 py-16">
         <div class="mb-6 flex items-baseline justify-between gap-4">
           <h2 class="text-[18px] font-semibold tracking-tight">Workspace</h2>
-          <span class="font-mono text-[10px] tracking-widest text-muted-foreground/60 uppercase"
+          <span class="font-mono text-[12px] tracking-widest text-muted-foreground/60 uppercase"
             >Preview</span>
         </div>
         <a
@@ -233,7 +233,7 @@
               <h3 class="text-[13px] font-semibold tracking-tight text-foreground">
                 {point.title}
               </h3>
-              <p class="text-[12px] leading-relaxed text-muted-foreground">{point.text}</p>
+              <p class="text-[13px] leading-relaxed text-muted-foreground">{point.text}</p>
             </article>
           {/each}
         </div>
@@ -245,7 +245,7 @@
       <div class="mx-auto max-w-6xl px-6 py-16">
         <div class="mb-8 flex items-baseline justify-between gap-4">
           <h2 class="text-[18px] font-semibold tracking-tight">System</h2>
-          <span class="font-mono text-[10px] tracking-widest text-muted-foreground/60 uppercase"
+          <span class="font-mono text-[12px] tracking-widest text-muted-foreground/60 uppercase"
             >Prompt → Mermaid → Handoff</span>
         </div>
 
@@ -253,12 +253,12 @@
           class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
           {#each systemCards as card (card.index)}
             <article class="flex flex-col gap-2 bg-background p-5">
-              <span class="font-mono text-[10px] tracking-widest text-muted-foreground/60 uppercase"
+              <span class="font-mono text-[12px] tracking-widest text-muted-foreground/60 uppercase"
                 >{card.index}</span>
-              <h3 class="text-[14px] font-semibold tracking-tight text-foreground">
+              <h3 class="text-[13px] font-semibold tracking-tight text-foreground">
                 {card.title}
               </h3>
-              <p class="text-[12px] leading-relaxed text-muted-foreground">
+              <p class="text-[13px] leading-relaxed text-muted-foreground">
                 {card.description}
               </p>
             </article>
@@ -272,20 +272,20 @@
       <div class="mx-auto max-w-6xl px-6 py-16">
         <div class="mb-8 flex items-baseline justify-between gap-4">
           <h2 class="text-[18px] font-semibold tracking-tight">Why different</h2>
-          <span class="font-mono text-[10px] tracking-widest text-muted-foreground/60 uppercase"
+          <span class="font-mono text-[12px] tracking-widest text-muted-foreground/60 uppercase"
             >004</span>
         </div>
 
         <div class="divide-y divide-border overflow-hidden rounded-lg border border-border">
           {#each differenceItems as item (item.index)}
             <article class="flex items-start gap-4 bg-background p-4 md:p-5">
-              <span class="shrink-0 font-mono text-[11px] tracking-widest text-muted-foreground/60"
+              <span class="shrink-0 font-mono text-[12px] tracking-widest text-muted-foreground/60"
                 >{item.index}</span>
               <div class="min-w-0 flex-1">
                 <h3 class="text-[13px] font-semibold tracking-tight text-foreground">
                   {item.title}
                 </h3>
-                <p class="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+                <p class="mt-1 text-[13px] leading-relaxed text-muted-foreground">
                   {item.description}
                 </p>
               </div>
@@ -300,8 +300,8 @@
       <div
         class="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-16 md:flex-row md:items-center">
         <div class="max-w-xl">
-          <h2 class="text-2xl font-semibold tracking-tight md:text-3xl">Start exploring.</h2>
-          <p class="mt-2 text-[13px] leading-relaxed text-muted-foreground md:text-[14px]">
+          <h2 class="text-[22px] font-semibold tracking-tight md:text-[28px]">Start exploring.</h2>
+          <p class="mt-2 text-[13px] leading-relaxed text-muted-foreground md:text-[13px]">
             Open the workspace, describe the system, and keep shaping the diagram until it is ready
             for the place your team actually works.
           </p>
@@ -318,7 +318,7 @@
 
   <footer class="border-t border-border">
     <div
-      class="mx-auto flex max-w-6xl flex-col items-start justify-between gap-3 px-6 py-6 text-[11px] text-muted-foreground md:flex-row md:items-center">
+      class="mx-auto flex max-w-6xl flex-col items-start justify-between gap-3 px-6 py-6 text-[13px] text-muted-foreground md:flex-row md:items-center">
       <div class="flex items-center gap-3">
         <span class="font-mono tracking-widest uppercase">Graphini</span>
         <span>&copy; {new Date().getFullYear()} Magnova</span>
