@@ -14,6 +14,13 @@
     Wrench
   } from 'lucide-svelte';
 
+  interface SearchResult {
+    title: string;
+    snippet?: string;
+    url?: string;
+    source?: string;
+  }
+
   interface Props {
     toolName: string;
     titlePending: string;
@@ -21,13 +28,23 @@
     subtitle?: string;
     status: 'running' | 'done';
     details?: string[];
+    searchResults?: SearchResult[];
   }
 
-  let { toolName, titlePending, titleDone, subtitle, status, details }: Props = $props();
+  let {
+    toolName,
+    titlePending,
+    titleDone,
+    subtitle,
+    status,
+    details,
+    searchResults
+  }: Props = $props();
 
   let isExpanded = $state(false);
 
-  const hasDetails = $derived((details?.length ?? 0) > 0);
+  const hasSearchResults = $derived((searchResults?.length ?? 0) > 0);
+  const hasDetails = $derived(hasSearchResults || (details?.length ?? 0) > 0);
   const isPending = $derived(status === 'running');
 
   function toggle() {
@@ -100,14 +117,45 @@
 {#if hasDetails && isExpanded}
   <div
     class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
-    style="max-height: 250px; background-color: var(--tool-box-bg);">
-    <div class="space-y-1">
-      {#each details ?? [] as detail, dIdx (`${detail}:${dIdx}`)}
-        <div class="flex items-start gap-2 text-[13px] leading-relaxed text-muted-foreground/75">
-          <span class="mt-1 shrink-0 text-muted-foreground/40">·</span>
-          <span class="min-w-0">{detail}</span>
-        </div>
-      {/each}
-    </div>
+    style="max-height: 280px; background-color: var(--tool-box-bg);">
+    {#if hasSearchResults}
+      <ul class="space-y-2">
+        {#each searchResults ?? [] as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
+          <li class="flex flex-col gap-0.5">
+            {#if result.url}
+              <a
+                href={result.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-[13px] font-medium text-foreground/90 hover:text-foreground hover:underline">
+                {result.title}
+              </a>
+            {:else}
+              <span class="text-[13px] font-medium text-foreground/90">{result.title}</span>
+            {/if}
+            {#if result.source || result.url}
+              <span class="text-[11px] text-muted-foreground/60">
+                {result.source ?? new URL(result.url ?? 'http://x').hostname.replace(/^www\./, '')}
+              </span>
+            {/if}
+            {#if result.snippet}
+              <span class="text-[12px] leading-relaxed text-muted-foreground/75">
+                {result.snippet}
+              </span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <div class="space-y-1">
+        {#each details ?? [] as detail, dIdx (`${detail}:${dIdx}`)}
+          <div
+            class="flex items-start gap-2 text-[13px] leading-relaxed text-muted-foreground/75">
+            <span class="mt-1 shrink-0 text-muted-foreground/40">·</span>
+            <span class="min-w-0">{detail}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}

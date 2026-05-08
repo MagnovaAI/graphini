@@ -1,5 +1,30 @@
 type ToolOutput = Record<string, unknown>;
 
+export interface SearchResult {
+  title: string;
+  snippet?: string;
+  url?: string;
+  source?: string;
+}
+
+/**
+ * Pull structured web-search results out of a tool output, if any. Returns []
+ * when the tool wasn't a web search or returned no results.
+ */
+export function deriveSearchResults(toolName: string, output: ToolOutput): SearchResult[] {
+  if (toolName !== 'webSearch') return [];
+  const results = output.results as
+    | { title?: string; snippet?: string; url?: string; source?: string }[]
+    | undefined;
+  if (!results?.length) return [];
+  return results.slice(0, 8).map((r) => ({
+    title: String(r.title ?? r.url ?? '').slice(0, 200),
+    snippet: r.snippet ? String(r.snippet).slice(0, 280) : undefined,
+    url: r.url ? String(r.url) : undefined,
+    source: r.source ? String(r.source) : undefined
+  }));
+}
+
 export interface ErrorCheckerResult {
   valid: boolean;
   errors: { line: number; message: string }[];
@@ -75,16 +100,9 @@ export function deriveToolDetails(toolName: string, output: ToolOutput): string[
       );
   }
   if (toolName === 'webSearch') {
-    const results = output.results as
-      | { title?: string; snippet?: string; url?: string }[]
-      | undefined;
-    if (!results?.length) return [];
-    return results
-      .slice(0, 8)
-      .map(
-        (r) =>
-          `${r.title || r.url || ''}${r.snippet ? ` — ${String(r.snippet).slice(0, 100)}` : ''}`
-      );
+    // webSearch results are rendered as structured cards via
+    // deriveSearchResults; only fall back to flat details if there are none.
+    return [];
   }
   if (toolName === 'thinking') {
     const out: string[] = [];

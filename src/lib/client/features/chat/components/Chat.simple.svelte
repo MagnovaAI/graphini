@@ -35,6 +35,7 @@
   } from '$lib/client/features/chat/stream/tool-input-summary';
   import {
     deriveErrorCheckerSubtitle,
+    deriveSearchResults,
     deriveToolDetails,
     deriveToolSubtitle
   } from '$lib/client/features/chat/stream/tool-output-summary';
@@ -2406,6 +2407,7 @@
                                 e.line > 0 ? `Line ${e.line}: ${e.message}` : e.message
                               )
                           : deriveToolDetails(toolName, output);
+                      const searchResults = deriveSearchResults(toolName, output);
 
                       // Upsert tool-simple part
                       const simpleId = `tool-simple-${data.toolCallId || currentToolCallId}`;
@@ -2418,12 +2420,14 @@
                           ...parts[idx],
                           status: 'done',
                           subtitle: subtitle || (parts[idx] as { subtitle?: string }).subtitle,
-                          details: toolDetails.length > 0 ? toolDetails : undefined
+                          details: toolDetails.length > 0 ? toolDetails : undefined,
+                          searchResults: searchResults.length > 0 ? searchResults : undefined
                         };
                       } else {
                         const verbs = toolVerbs(toolName);
                         parts.push({
                           details: toolDetails.length > 0 ? toolDetails : undefined,
+                          searchResults: searchResults.length > 0 ? searchResults : undefined,
                           id: simpleId,
                           status: 'done',
                           subtitle,
@@ -2863,15 +2867,18 @@
                         titleDone={part.titleDone}
                         subtitle={part.subtitle}
                         status={part.status}
-                        details={part.details} />
+                        details={part.details}
+                        searchResults={part.searchResults} />
                     {:else if part.type === 'thought-chain'}
                       <ChainOfThought defaultOpen={part.status === 'running'}>
                         <ChainOfThoughtHeader>
-                          {#if part.status === 'running'}
-                            <span class="thinking-shimmer">Chain of Tools</span>
-                          {:else}
-                            Chain of Tools · {part.parts.length} steps
-                          {/if}
+                          <span
+                            class={part.status === 'running'
+                              ? 'thinking-shimmer'
+                              : ''}>Chain of Tools</span>
+                          <span class="ml-1.5 text-muted-foreground/60">
+                            · {part.parts.length} step{part.parts.length === 1 ? '' : 's'}
+                          </span>
                         </ChainOfThoughtHeader>
                         <ChainOfThoughtContent>
                           {#each part.parts as step (step.id)}
@@ -2882,14 +2889,40 @@
                                 : step.titleDone}
                               description={step.subtitle}
                               status={step.status === 'running' ? 'active' : 'complete'}>
-                              {#if step.toolName === 'webSearch' && step.details && step.details.length > 0}
-                                <div class="flex flex-wrap gap-1.5">
-                                  {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
-                                    <ChainOfThoughtSearchResult>
-                                      {detail}
-                                    </ChainOfThoughtSearchResult>
+                              {#if step.searchResults && step.searchResults.length > 0}
+                                <ul class="space-y-2">
+                                  {#each step.searchResults as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
+                                    <li class="flex flex-col gap-0.5">
+                                      {#if result.url}
+                                        <a
+                                          href={result.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          class="text-[13px] font-medium text-foreground/90 hover:text-foreground hover:underline">
+                                          {result.title}
+                                        </a>
+                                      {:else}
+                                        <span class="text-[13px] font-medium text-foreground/90"
+                                          >{result.title}</span>
+                                      {/if}
+                                      {#if result.source || result.url}
+                                        <span class="text-[11px] text-muted-foreground/60">
+                                          {result.source ??
+                                            new URL(result.url ?? 'http://x').hostname.replace(
+                                              /^www\./,
+                                              ''
+                                            )}
+                                        </span>
+                                      {/if}
+                                      {#if result.snippet}
+                                        <span
+                                          class="text-[12px] leading-relaxed text-muted-foreground/75">
+                                          {result.snippet}
+                                        </span>
+                                      {/if}
+                                    </li>
                                   {/each}
-                                </div>
+                                </ul>
                               {:else if step.details && step.details.length > 0}
                                 <ul class="space-y-0.5 text-xs text-muted-foreground/75">
                                   {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}

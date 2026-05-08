@@ -56,6 +56,16 @@ export type ContentPart =
       subtitle?: string;
       status: 'running' | 'done';
       details?: string[];
+      /**
+       * Structured search results, when the tool produced them (webSearch).
+       * Renderers should prefer this over `details` when present.
+       */
+      searchResults?: {
+        title: string;
+        snippet?: string;
+        url?: string;
+        source?: string;
+      }[];
     };
 
 export type PatchChainPart = Extract<ContentPart, { type: 'artifact' }>;
