@@ -169,7 +169,7 @@ export function applyDiagramLinePatch({
 export function createDiagramPatchTool({ modelId, sessionId, target }: ToolContext) {
   return tool({
     description:
-      'Apply a focused patch to the active Mermaid tab by replacing only the lines from startLine to endLine. The content field must contain only the replacement lines, not the whole Mermaid document. ONLY Mermaid diagram syntax is allowed. Requires targetTabName to match the active Mermaid tab. Do NOT write markdown, JSON, YAML, documentation, or prose here.',
+      'Apply a focused patch to the active Mermaid tab by replacing only the lines from startLine to endLine (1-based, inclusive). The content field must contain only the replacement lines, not the whole Mermaid document. ONLY Mermaid diagram syntax is allowed. Requires targetTabName to match the active Mermaid tab. Do NOT write markdown, JSON, YAML, documentation, or prose here. Use for SMALL LOCAL edits (≤ ~5 nodes changing, adding icons to specific nodes, restyling individual lines, fixing a typo). Requires exact line numbers from a recent diagramRead — if you are not sure of the line range, use diagramWrite with the full corrected document instead.',
     inputSchema: z.object({
       startLine: z.number().int().min(1).describe('1-based starting line number'),
       endLine: z.number().int().min(1).describe('1-based ending line number'),

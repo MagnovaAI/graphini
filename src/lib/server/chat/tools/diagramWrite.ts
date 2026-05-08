@@ -38,7 +38,7 @@ function normalizeMermaidToolContent(content: string): string {
 export function createDiagramWriteTool({ modelId, sessionId, target }: ToolContext) {
   return tool({
     description:
-      'Replace the active Mermaid tab with new content. ONLY Mermaid diagram syntax is allowed. Requires targetTabName to match the active Mermaid tab. Do NOT write markdown, JSON, YAML, documentation, or prose here.',
+      'Replace the active Mermaid tab with a complete new document. ONLY Mermaid diagram syntax is allowed. Requires targetTabName to match the active Mermaid tab. Do NOT write markdown, JSON, YAML, documentation, or prose here. Use this for: brand-new diagrams, structural rewrites where most nodes change, switching diagram types, or any edit large enough that you cannot confidently identify exact line ranges for diagramPatch. Atomic and safe — never corrupts line numbers. For small local edits (a few lines), use diagramPatch instead.',
     inputSchema: z.object({
       content: z
         .string()

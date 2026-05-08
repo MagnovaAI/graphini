@@ -34,7 +34,7 @@ const execFileAsync = promisify(execFile);
 export function createDiagramDeleteTool({ modelId, sessionId, target }: ToolContext) {
   return tool({
     description:
-      'Clear the active Mermaid tab. Requires targetTabName to match the active Mermaid tab.',
+      'Clear the active Mermaid tab and leave it empty. Requires targetTabName to match the active Mermaid tab. Only call this when the user explicitly asks to clear, reset, or empty the diagram. Never call this as a precursor to a rewrite — diagramWrite already replaces the document atomically.',
     inputSchema: z.object({
       targetTabName: targetTabNameSchema
     }),
