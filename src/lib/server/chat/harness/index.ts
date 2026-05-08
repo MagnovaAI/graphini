@@ -168,6 +168,7 @@ export async function runChatTurn(request: Request): Promise<Response> {
 
   const resolvedModel = await resolveChatModelFor(userId, model, providerHint);
   const result = runChatStream({
+    abortSignal: request.signal,
     messages: chatContext.messages,
     model: resolvedModel,
     modelId: model,

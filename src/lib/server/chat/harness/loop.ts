@@ -16,6 +16,12 @@ interface RunOptions {
   providerHint?: string;
   system: string;
   tools: ToolSet;
+  /**
+   * Aborts model generation when the client disconnects (Stop button or
+   * navigation). Threaded through from the endpoint's `request.signal` so
+   * cancelling on the client also stops upstream token usage.
+   */
+  abortSignal?: AbortSignal;
 }
 
 export function runChatStream({
@@ -24,21 +30,25 @@ export function runChatStream({
   modelId,
   providerHint,
   system,
-  tools
+  tools,
+  abortSignal
 }: RunOptions) {
   const allTools = tools;
 
   return streamText<typeof allTools>({
+    abortSignal,
     messages: messages as never,
     model,
     prepareStep: ({ steps }) => {
       const lastStep = steps.at(-1);
 
-      // After errorChecker passes, gently nudge the model to wrap up — but
-      // don't force tools off; a follow-up patch or final text is its call.
+      // After errorChecker reports clean, gently nudge the model to wrap up.
+      // The server-side check covers structural issues only; the client re-runs
+      // the real Mermaid parse against the canvas pipeline and surfaces any
+      // remaining render error back to the user, so don't overclaim here.
       if (lastStep && 'errorChecker' in allTools && stepReturnedValidErrorCheck(lastStep)) {
         return {
-          system: `${system}\n\nVALIDATION PASSED: errorChecker found no Mermaid errors. The diagram is good. Give a concise final answer unless the user asked for more.`
+          system: `${system}\n\nVALIDATION: errorChecker found no structural issues. If the user reports the canvas still shows an error, trust their report — the canvas renderer is the source of truth — and repair via diagramPatch or diagramWrite. Otherwise give a concise final answer.`
         } as never;
       }
       if (lastStep && 'errorChecker' in allTools && stepReturnedInvalidErrorCheck(lastStep)) {
