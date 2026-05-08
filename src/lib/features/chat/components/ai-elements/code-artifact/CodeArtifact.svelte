@@ -1,14 +1,9 @@
 <script lang="ts">
-  import {
-    Check,
-    ChevronDown,
-    ChevronUp,
-    ExternalLink,
-    Eye,
-    FileCode,
-    Sparkles
-  } from 'lucide-svelte';
+  import { ChevronRight, Eye, FileCode, FilePen } from 'lucide-svelte';
   import { tick } from 'svelte';
+  import { mode } from 'mode-watcher';
+  import type { ThemedToken } from 'shiki';
+  import { getSharedHighlighter } from '$lib/util/editor/shikiSetup';
 
   interface Props {
     code: string;
@@ -20,8 +15,6 @@
     defaultCollapsed?: boolean;
     hasErrors?: boolean;
     errors?: string[];
-    onApply?: (code: string) => void;
-    onOpenEditor?: () => void;
     readFrom?: number;
     readTo?: number;
     totalLines?: number;
@@ -37,8 +30,6 @@
     defaultCollapsed,
     hasErrors = false,
     errors = [],
-    onApply,
-    onOpenEditor,
     readFrom,
     readTo,
     totalLines
@@ -46,17 +37,19 @@
 
   let isCollapsed = $state(false);
   let codeContainer: HTMLDivElement | undefined = $state();
-  let applied = $state(false);
   let wasStreaming = $state(false);
   let collapseInitialized = false;
 
   // Initialize once from props, then preserve user toggles except for streaming completion.
+  // Write/Edit stay expanded so the code/diff is visible; Read auto-collapses.
   $effect(() => {
+    const keepExpanded =
+      operation === 'patch' || operation === 'update' || operation === 'create';
     if (!collapseInitialized) {
-      isCollapsed = defaultCollapsed ?? operation === 'read';
+      isCollapsed = defaultCollapsed ?? (keepExpanded ? false : operation === 'read');
       collapseInitialized = true;
     } else if (wasStreaming && !isStreaming) {
-      isCollapsed = true;
+      isCollapsed = !keepExpanded;
     }
     wasStreaming = isStreaming;
   });
@@ -161,143 +154,176 @@
     }
   });
 
-  // Operation labels
-  const operationLabel: Record<string, string> = {
-    create: 'Writing',
-    delete: 'Clearing',
-    patch: 'Patching',
-    read: 'Checking',
-    update: 'Updating'
+  // 1code-style verbs
+  const verbsByOp: Record<string, { pending: string; done: string }> = {
+    create: { pending: 'Creating', done: 'Created' },
+    delete: { pending: 'Clearing', done: 'Cleared' },
+    patch: { pending: 'Editing', done: 'Edited' },
+    read: { pending: 'Reading', done: 'Read' },
+    update: { pending: 'Updating', done: 'Updated' }
   };
-  let artifactIconColor = $derived(
-    isError
-      ? 'bg-red-500/10 text-red-500'
-      : isRead
-        ? 'bg-blue-500/10 text-blue-500'
-        : 'bg-emerald-500/10 text-emerald-500'
-  );
-  let artifactSummary = $derived.by(() => {
-    if (isStreaming) return operationLabel[operation] || 'Running';
-    if (isError) return `${errors.length} error${errors.length !== 1 ? 's' : ''} found`;
-    return `${language.toUpperCase()} · ${lineCount}L`;
+  let titlePending = $derived(verbsByOp[operation]?.pending || 'Running');
+  let titleDone = $derived(verbsByOp[operation]?.done || 'Done');
+  let artifactSubtitle = $derived.by(() => {
+    if (isError) return `${errors.length} error${errors.length !== 1 ? 's' : ''}`;
+    if (isRead && readFrom && readTo) {
+      return totalLines
+        ? `lines ${readFrom}-${readTo} of ${totalLines}`
+        : `lines ${readFrom}-${readTo}`;
+    }
+    if (operation === 'patch' && previousCode && (addedCount > 0 || removedCount > 0)) {
+      return ''; // diff stats rendered separately with color
+    }
+    return `${lineCount} line${lineCount !== 1 ? 's' : ''}`;
   });
 
-  // Syntax highlighting for mermaid — uses placeholder tokens to avoid regex cascading
-  function highlightLine(text: string): string {
-    const tokens: { match: string; cls: string }[] = [];
-    let uid = 0;
-    const ph = (m: string, cls: string) => {
-      const id = `\x00${uid++}\x00`;
-      tokens.push({ match: m, cls });
-      return id;
-    };
-
-    // 1. Collect tokens (order matters: longer/more-specific first)
-    let s = text;
-    s = s.replace(/%%(.*)$/gm, (m) => ph(m, 'artifact-comment'));
-    s = s.replace(
-      /\b(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|gitGraph|C4Context|C4Container|C4Deployment|C4Dynamic|block-beta|sankey-beta|xychart-beta|packet-beta|kanban|architecture-beta|zenuml)\b/g,
-      (m) => ph(m, 'artifact-kw')
-    );
-    s = s.replace(
-      /\b(subgraph|end|participant|actor|Note|loop|alt|else|opt|par|critical|break|rect|activate|deactivate|class|style|classDef|click|linkStyle|section|title|dateFormat|axisFormat)\b/g,
-      (m) => ph(m, 'artifact-builtin')
-    );
-    s = s.replace(/\b(TB|BT|LR|RL|TD)\b/g, (m) => ph(m, 'artifact-dir'));
-    s = s.replace(/(--|-->|---|-\.->|==>|--x|--o|<-->|~~>|\.\.->>)/g, (m) =>
-      ph(m, 'artifact-arrow')
-    );
-    s = s.replace(/(\[{1,2}|\({1,2}|\{{1,2})/g, (m) => ph(m, 'artifact-bracket'));
-    s = s.replace(/(\]{1,2}|\){1,2}|\}{1,2})/g, (m) => ph(m, 'artifact-bracket'));
-
-    // 2. HTML-escape the remaining plain text
-    s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    // 3. Replace placeholders with styled spans (token content is also escaped)
-    for (let i = 0; i < tokens.length; i++) {
-      const escaped = tokens[i].match
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-      s = s.replace(`\x00${i}\x00`, `<span class="${tokens[i].cls}">${escaped}</span>`);
+  // Resolve dark/light via DOM class to avoid mode-watcher race conditions.
+  let isDark = $state(
+    typeof document !== 'undefined'
+      ? document.documentElement.classList.contains('dark')
+      : false
+  );
+  $effect(() => {
+    void mode.current;
+    if (typeof document !== 'undefined') {
+      isDark = document.documentElement.classList.contains('dark');
     }
-    return s;
+  });
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    const obs = new MutationObserver(() => {
+      isDark = document.documentElement.classList.contains('dark');
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  });
+  let activeThemeName = $derived(isDark ? 'dark-plus' : 'light-plus');
+
+  // Tokenize current+previous code with shiki so spans can pull per-line tokens.
+  let codeTokenLines = $state<ThemedToken[][] | null>(null);
+  let prevCodeTokenLines = $state<ThemedToken[][] | null>(null);
+
+  $effect(() => {
+    const lang = (language || 'mermaid').toLowerCase();
+    const themeName = activeThemeName;
+    const text = code;
+    const prev = previousCode;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const hl = await getSharedHighlighter();
+        if (!hl.getLoadedLanguages().includes(lang)) {
+          try {
+            await hl.loadLanguage(lang as never);
+          } catch {
+            // unknown lang — fall back to plain rendering
+            if (!cancelled) {
+              codeTokenLines = null;
+              prevCodeTokenLines = null;
+            }
+            return;
+          }
+        }
+        const main = hl.codeToTokens(text, {
+          lang: lang as never,
+          theme: themeName as never
+        });
+        const previous = prev
+          ? hl.codeToTokens(prev, { lang: lang as never, theme: themeName as never })
+          : null;
+        if (!cancelled) {
+          codeTokenLines = main.tokens;
+          prevCodeTokenLines = previous?.tokens ?? null;
+        }
+      } catch (err) {
+        console.warn('[CodeArtifact] shiki tokenize failed', err);
+        if (!cancelled) {
+          codeTokenLines = null;
+          prevCodeTokenLines = null;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  function tokensForLine(text: string, lineNum: number | undefined, side: 'main' | 'prev'): ThemedToken[] | null {
+    const src = side === 'main' ? codeTokenLines : prevCodeTokenLines;
+    if (!src || !lineNum) return null;
+    return src[lineNum - 1] ?? null;
   }
 </script>
 
-<div
-  class={[
-    'artifact-container group my-1.5 overflow-hidden rounded-lg border transition-all duration-200',
-    isError
-      ? 'border-border bg-muted/20'
-      : isStreaming
-        ? 'border-border bg-muted/30'
-        : 'border-border bg-muted/20 hover:border-foreground/10'
-  ]}>
-  <!-- Header -->
-  <button
-    type="button"
-    onclick={() => (isCollapsed = !isCollapsed)}
+<div class="artifact-container group overflow-hidden">
+  <!-- Compact header (1code style) -->
+  <div
+    role="button"
+    tabindex="0"
     aria-expanded={!isCollapsed}
-    class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30">
-    <!-- Icon -->
-    <div class="flex size-5 shrink-0 items-center justify-center rounded-md {artifactIconColor}">
-      {#if isError}
-        <Eye class="size-3" />
-      {:else if isRead}
-        <Eye class="size-3 {isStreaming ? 'animate-pulse' : ''}" />
-      {:else if isStreaming}
-        <Sparkles class="size-3 animate-pulse" />
-      {:else}
-        <FileCode class="size-3" />
-      {/if}
-    </div>
-
-    <!-- Title -->
-    <span
-      class="flex-1 text-xs font-medium {isStreaming
-        ? 'text-foreground'
-        : 'text-muted-foreground'}">
-      <span>{title}</span>
-      <span class="ml-1 text-muted-foreground/70">· {artifactSummary}</span>
-      {#if isRead && readFrom && readTo}
-        <span
-          class="ml-1 rounded bg-muted/60 px-1 py-0.5 text-[9px] font-normal text-muted-foreground/60">
-          L{readFrom}{readTo !== readFrom ? `–${readTo}` : ''}{totalLines
-            ? ` of ${totalLines}`
-            : ''}
-        </span>
-      {/if}
-    </span>
-
-    <!-- Streaming dots -->
-    {#if isStreaming}
-      <div class="flex items-center gap-0.5" aria-live="polite">
-        <span
-          class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:0ms]"
-        ></span>
-        <span
-          class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]"
-        ></span>
-        <span
-          class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]"
-        ></span>
-      </div>
+    onclick={() => (isCollapsed = !isCollapsed)}
+    onkeydown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        isCollapsed = !isCollapsed;
+      }
+    }}
+    class="group/hdr flex cursor-pointer items-center gap-1.5 px-2 py-0.5">
+    <!-- Icon (no chip) -->
+    {#if isError || isRead}
+      <Eye
+        class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isStreaming
+          ? 'animate-pulse'
+          : ''}" />
+    {:else if operation === 'patch' || operation === 'update'}
+      <FilePen
+        class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isStreaming
+          ? 'animate-pulse'
+          : ''}" />
+    {:else}
+      <FileCode
+        class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isStreaming
+          ? 'animate-pulse'
+          : ''}" />
     {/if}
 
-    <!-- Chevron -->
-    <div class="text-muted-foreground/40 transition-transform">
-      {#if isCollapsed}
-        <ChevronDown class="size-3.5" />
-      {:else}
-        <ChevronUp class="size-3.5" />
+    <div class="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+      <!-- Verb -->
+      <span class="flex-shrink-0 font-medium whitespace-nowrap">
+        {#if isStreaming}
+          <span class="thinking-shimmer inline-flex h-4 items-center text-xs leading-none"
+            >{titlePending}</span>
+        {:else}
+          {titleDone}
+        {/if}
+      </span>
+
+      <!-- Diff stats for patch/update -->
+      {#if !isStreaming && (operation === 'patch' || operation === 'update') && previousCode && (addedCount > 0 || removedCount > 0)}
+        <span class="flex-shrink-0 font-mono text-[11px]">
+          {#if addedCount > 0}<span class="text-emerald-600 dark:text-emerald-400"
+              >+{addedCount}</span
+            >{/if}
+          {#if addedCount > 0 && removedCount > 0}{' '}{/if}
+          {#if removedCount > 0}<span class="text-red-600 dark:text-red-400">-{removedCount}</span
+            >{/if}
+        </span>
+      {:else if artifactSubtitle}
+        <span class="min-w-0 truncate font-normal text-muted-foreground/60">
+          {artifactSubtitle}
+        </span>
       {/if}
+
+      <ChevronRight
+        class="size-3.5 flex-shrink-0 text-muted-foreground/60 transition-transform duration-200 ease-out {!isCollapsed
+          ? 'rotate-90'
+          : 'opacity-0 group-hover/hdr:opacity-100'}" />
     </div>
-  </button>
+  </div>
 
   <!-- Error banner -->
   {#if isError && !isCollapsed && errors.length > 0}
-    <div class="border-t border-red-500/20 bg-red-500/[0.05] px-3 py-1.5 dark:bg-red-500/[0.08]">
+    <div class="mt-1 px-2">
       {#each errors as err (err)}
         <p class="text-[11px] leading-relaxed text-red-600 dark:text-red-400">{err}</p>
       {/each}
@@ -308,13 +334,20 @@
   {#if !isCollapsed}
     <div
       bind:this={codeContainer}
-      class="artifact-code-body relative overflow-auto transition-[max-height] duration-150"
-      style="max-height: {isStreaming ? '300px' : '250px'};">
+      class="artifact-code-body relative mt-1 overflow-auto rounded-md border border-border/40 transition-[max-height] duration-150"
+      style="max-height: {isStreaming
+        ? '300px'
+        : '250px'}; background-color: var(--tool-box-bg);">
       {#if showDiffView}
         <!-- Diff-only view: show only changed regions -->
         <table class="w-full border-collapse font-mono text-[11.5px] leading-[1.65]">
           <tbody>
             {#each diffLines as dl, i (`${dl.type}:${dl.lineNum ?? 'gap'}:${dl.text}:${i}`)}
+              {@const lineTokens = tokensForLine(
+                dl.text,
+                dl.lineNum,
+                dl.type === 'removed' ? 'prev' : 'main'
+              )}
               {#if dl.type === 'separator'}
                 <tr>
                   <td
@@ -347,8 +380,11 @@
                     {dl.type === 'removed'
                       ? 'text-red-700/80 line-through dark:text-red-400/80'
                       : 'text-foreground/90'}">
-                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                    {@html highlightLine(dl.text)}
+                    {#if lineTokens}
+                      {#each lineTokens as t}<span style:color={t.color}>{t.content}</span>{/each}
+                    {:else}
+                      {dl.text}
+                    {/if}
                   </td>
                 </tr>
               {/if}
@@ -360,6 +396,7 @@
         <table class="w-full border-collapse font-mono text-[11.5px] leading-[1.65]">
           <tbody>
             {#each lines as line, i (`${i}:${line}`)}
+              {@const lineTokens = codeTokenLines ? codeTokenLines[i] : null}
               <tr
                 class={[
                   'artifact-line group transition-colors duration-75 hover:bg-muted/30',
@@ -373,10 +410,12 @@
                   {i + 1}
                 </td>
                 <td class="artifact-code px-4 align-top whitespace-pre text-foreground/90">
-                  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                  {@html highlightLine(line)}{#if isStreaming && i === lineCount - 1}<span
-                      class="artifact-cursor"></span
-                    >{/if}
+                  {#if lineTokens}
+                    {#each lineTokens as t}<span style:color={t.color}>{t.content}</span>{/each}
+                  {:else}
+                    {line}
+                  {/if}
+                  {#if isStreaming && i === lineCount - 1}<span class="artifact-cursor"></span>{/if}
                 </td>
               </tr>
             {/each}
@@ -385,51 +424,46 @@
       {/if}
     </div>
 
-    <!-- Footer -->
-    {#if !isStreaming && (onApply || onOpenEditor)}
-      <div class="flex items-center justify-end gap-1.5 border-t border-border/30 px-3 py-1">
-        {#if onOpenEditor}
-          <button
-            type="button"
-            class="flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            onclick={() => onOpenEditor?.()}>
-            <ExternalLink class="size-2.5" />
-            Show Editor
-          </button>
-        {/if}
-        {#if onApply}
-          <button
-            type="button"
-            disabled={applied}
-            class="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors {applied
-              ? 'cursor-default bg-emerald-500/15 text-emerald-500 opacity-70'
-              : 'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400'}"
-            onclick={() => {
-              onApply?.(code);
-              applied = true;
-            }}>
-            {#if applied}
-              <Check class="size-2.5" />
-              Applied
-            {:else}
-              Apply
-            {/if}
-          </button>
-        {/if}
-      </div>
-    {/if}
-  {:else if !isError}
-    <!-- Collapsed preview -->
-    <div
-      class="border-t border-border/30 px-3 py-1.5 font-mono text-[10px] text-muted-foreground/70">
-      {code.split('\n').slice(0, 1).join(' ').substring(0, 60)}{code.split('\n').length > 1
-        ? '…'
-        : ''}
-    </div>
   {/if}
 </div>
 
 <style>
+  /* 1code-style shimmering verb */
+  .thinking-shimmer {
+    --base-color: #a1a1aa;
+    --base-gradient-color: #000;
+    --spread: 16px;
+    --bg: linear-gradient(
+      90deg,
+      transparent calc(50% - var(--spread)),
+      var(--base-gradient-color),
+      transparent calc(50% + var(--spread))
+    );
+    position: relative;
+    display: inline-block;
+    background-image: var(--bg), linear-gradient(var(--base-color), var(--base-color));
+    background-size: 250% 100%, auto;
+    background-repeat: no-repeat, padding-box;
+    background-position: 100% center;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: artifact-shimmer-slide 1.2s linear infinite;
+  }
+  :global(.dark) .thinking-shimmer {
+    --base-color: #71717a;
+    --base-gradient-color: #ffffff;
+  }
+  @keyframes artifact-shimmer-slide {
+    0% {
+      background-position: 100% center;
+    }
+    100% {
+      background-position: 0% center;
+    }
+  }
+
   /* Cursor blink animation */
   .artifact-cursor {
     display: inline-block;
@@ -460,15 +494,6 @@
     40% {
       transform: translateY(-3px);
     }
-  }
-
-  /* Streaming glow border */
-  .artifact-streaming {
-    border-color: hsl(var(--primary) / 0.3);
-  }
-
-  .artifact-complete {
-    border-color: hsl(142 76% 36% / 0.2);
   }
 
   /* New line highlight during streaming */
