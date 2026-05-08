@@ -208,10 +208,24 @@ function buildLeanSystemPrompt(
         '- Use styleSearch/iconSearch as read-only discovery tools, then apply chosen suggestions with diagramPatch. iconSearch supports colorMode: "color" for multicolor logos/cloud icons, "noncolor" for themeable monochrome icons, or "any".',
         '- After diagramWrite or diagramPatch, call errorChecker when available.',
         '- If errorChecker returns valid:false or success:false, the diagram is still broken. Do not say it is fixed; either repair it with another diagramPatch or tell the user the exact remaining error.',
-        '- Do not invent Mermaid icon annotations; copy annotation lines only from iconSearch suggestions. Web suggestions from iconSearch have already been checked for a live SVG response.'
+        '- Do not invent Mermaid icon annotations; copy annotation lines only from iconSearch suggestions. Web suggestions from iconSearch have already been checked for a live SVG response.',
+        '- When applying icons to existing nodes, prefer the iconifier tool. If you must use diagramPatch, append ONLY the new icon annotation line `NodeId@{ img: "...", pos: "b", w: 60, h: 60, constraint: "on" }` — never re-declare the node label `NodeId[Label]` or any existing edges. Re-declaring nodes drops edges and creates duplicate orphans.',
+        '- Mindmap diagrams MUST NOT use ::icon(...) syntax. The runtime does not have Font Awesome registered for mindmap icons; using ::icon() throws "Cannot read properties of null (reading \'re\')". Express the same intent with descriptive text or markdown emojis instead.'
       ]
         .filter(Boolean)
         .join('\n')
+    );
+  }
+
+  if (tools.includes('askQuestions')) {
+    sections.push(
+      [
+        'askQuestions rules:',
+        '- Use this tool whenever you need clarification from the user, or whenever the user asks you to "ask questions", "ask me", "use the question tool", or similar.',
+        '- NEVER write the questions as plain prose, a list in chat, or as nodes in a diagram. The user CANNOT answer those — they can only answer through the askQuestions tool.',
+        '- Each question must have at least 2 multiple-choice options. Provide an "Other" option only if free-form input is essential.',
+        '- After the user submits, the next user message will arrive as `Q: ... \\nA: ...` pairs. Use those answers to drive the next concrete action.'
+      ].join('\n')
     );
   }
 
@@ -534,7 +548,8 @@ export const POST: RequestHandler = async ({ request }) => {
     const toolInventoryRequest = isToolInventoryRequest(message, { recentMessages });
     const selectedToolNames = selectToolNamesForRequest(message, {
       activeEngine,
-      recentMessages
+      recentMessages,
+      workspaceIsEmpty: !activeSource.trim()
     });
 
     // Create tools and filter using persisted settings when available.
