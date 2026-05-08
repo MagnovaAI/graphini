@@ -43,19 +43,19 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  class="group absolute top-0 z-20 h-full w-2 cursor-ew-resize transition-colors hover:bg-primary/20 {isResizing
-    ? 'bg-primary/30'
-    : 'bg-transparent'} {position === 'right' ? '-right-1' : '-left-1'}"
+  class="group/resize absolute top-0 z-50 h-full w-2 cursor-ew-resize {position === 'right'
+    ? 'right-0'
+    : 'left-0'}"
   role="separator"
   aria-orientation="vertical"
   aria-label="Resize panel"
   onmousedown={handleMouseDown}>
-  <!-- Visible drag indicator on hover -->
+  <!-- Hover/drag highlight on the inner edge; static line is provided by panel's border-l -->
   <div
-    class="absolute top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 {position ===
+    class="pointer-events-none absolute top-0 h-full opacity-0 transition-opacity duration-150 {position ===
     'right'
       ? 'right-0'
-      : 'left-0'}">
-    <div class="flex h-8 w-1 items-center justify-center rounded-full bg-primary/60"></div>
+      : 'left-0'} group-hover/resize:opacity-100 {isResizing ? 'opacity-100' : ''}"
+    style="width: 1px; background-color: var(--foreground);">
   </div>
 </div>
