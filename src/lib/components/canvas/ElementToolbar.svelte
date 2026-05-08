@@ -18,6 +18,7 @@
     TEXT_SIZE_MAP
   } from '$lib/util/diagram/diagramMapper';
   import { inputStateStore, updateCodeStore } from '$lib/util/state/state';
+  import { tooltip } from '$lib/components/ui/tooltip/tooltipAction';
   import {
     ArrowDown,
     ArrowLeftRight,
@@ -777,7 +778,8 @@
             type="button"
             class="size-5 rounded-full border border-border transition-all hover:scale-110 hover:ring-2 hover:ring-foreground/20"
             style="background-color: {color}"
-            title={color}
+            aria-label={color}
+            use:tooltip={color}
             onclick={() => {
               if (type === 'border') applyNodeBorder(color);
               else if (type === 'fill') applyNodeFill(color);
@@ -814,7 +816,8 @@
             type="button"
             class="size-5 rounded-full border border-border transition-all hover:scale-110 hover:ring-2 hover:ring-foreground/20"
             style="background-color: {color}"
-            title={color}
+            aria-label={color}
+            use:tooltip={color}
             onclick={() => {
               applyIconColor(color);
               activeColorPicker = null;
@@ -906,7 +909,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Change node shape"
+            aria-label={"Change node shape"}
+            use:tooltip={"Change node shape"}
             onclick={() => {
               const was = showShapePicker;
               closeAllDropdowns();
@@ -940,7 +944,8 @@
                         ? 'bg-accent text-foreground'
                         : 'text-muted-foreground hover:bg-accent'
                     )}
-                    title={shape.label}
+                    aria-label={shape.label}
+                    use:tooltip={shape.label}
                     onclick={() => {
                       applyNodeShape(shape);
                       showShapePicker = false;
@@ -988,7 +993,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Fill color"
+            aria-label={"Fill color"}
+            use:tooltip={"Fill color"}
             onclick={() => {
               const was = activeColorPicker === 'fill';
               closeAllDropdowns();
@@ -1007,7 +1013,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Border color"
+            aria-label={"Border color"}
+            use:tooltip={"Border color"}
             onclick={() => {
               const was = activeColorPicker === 'border';
               closeAllDropdowns();
@@ -1026,7 +1033,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Text color"
+            aria-label={"Text color"}
+            use:tooltip={"Text color"}
             onclick={() => {
               const was = activeColorPicker === 'text';
               closeAllDropdowns();
@@ -1048,7 +1056,8 @@
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
               )}
-              title={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
+              aria-label={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
+              use:tooltip={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
               onclick={() => applyNodeTextSize(size)}>
               {size === 'sm' ? 'S' : size === 'md' ? 'M' : 'L'}
             </button>
@@ -1060,7 +1069,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Font family"
+            aria-label={"Font family"}
+            use:tooltip={"Font family"}
             onclick={() => {
               const was = showFontPicker === 'node';
               closeAllDropdowns();
@@ -1085,7 +1095,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Attach icon"
+            aria-label={"Attach icon"}
+            use:tooltip={"Attach icon"}
             onclick={() => {
               const was = showIconDropdown;
               closeAllDropdowns();
@@ -1166,7 +1177,8 @@
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
               )}
-              title={t === 'thin' ? 'Thin line' : t === 'normal' ? 'Normal line' : 'Thick line'}
+              aria-label={t === 'thin' ? 'Thin line' : t === 'normal' ? 'Normal line' : 'Thick line'}
+              use:tooltip={t === 'thin' ? 'Thin line' : t === 'normal' ? 'Normal line' : 'Thick line'}
               onclick={() => applyEdgeThickness(t)}>
               <div class="flex items-center justify-center" style="width: 16px; height: 12px;">
                 <div
@@ -1185,7 +1197,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Arrow direction"
+            aria-label={"Arrow direction"}
+            use:tooltip={"Arrow direction"}
             onclick={() => {
               const was = showArrowPicker;
               closeAllDropdowns();
@@ -1245,7 +1258,8 @@
             'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
             edgeIsDashed ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'
           )}
-          title={edgeIsDashed ? 'Make solid' : 'Make dashed'}
+          aria-label={edgeIsDashed ? 'Make solid' : 'Make dashed'}
+          use:tooltip={edgeIsDashed ? 'Make solid' : 'Make dashed'}
           onclick={toggleEdgeDash}>
           <Minus class="size-3.5" />
         </button>
@@ -1257,7 +1271,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Edge color"
+            aria-label={"Edge color"}
+            use:tooltip={"Edge color"}
             onclick={() => {
               const was = activeColorPicker === 'edge';
               closeAllDropdowns();
@@ -1276,7 +1291,8 @@
           <button
             type="button"
             class="flex cursor-not-allowed items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground/40"
-            title="Label text color (not supported by Mermaid linkStyle)"
+            aria-label={"Label text color (not supported by Mermaid linkStyle)"}
+            use:tooltip={"Label text color (not supported by Mermaid linkStyle)"}
             disabled>
             <Type class="size-3.5" style="color: {edgeTextColor}" />
           </button>
@@ -1288,7 +1304,8 @@
         <button
           type="button"
           class="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-accent"
-          title="Change icon"
+          aria-label={"Change icon"}
+          use:tooltip={"Change icon"}
           onclick={() => {
             window.dispatchEvent(
               new CustomEvent('open-icon-panel', {
@@ -1341,7 +1358,8 @@
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             )}
-            title="Original colors"
+            aria-label={"Original colors"}
+            use:tooltip={"Original colors"}
             onclick={() => applyIconOriginal()}>Original</button>
           <button
             type="button"
@@ -1351,7 +1369,8 @@
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             )}
-            title="Colorize icon"
+            aria-label={"Colorize icon"}
+            use:tooltip={"Colorize icon"}
             onclick={() => {
               iconColorMode = 'simple';
               applyIconColor(iconColor);
@@ -1364,7 +1383,8 @@
             <button
               type="button"
               class="flex items-center gap-1 rounded-lg px-1.5 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              title="Icon color"
+              aria-label={"Icon color"}
+              use:tooltip={"Icon color"}
               onclick={() => {
                 const was = activeColorPicker === 'iconColor';
                 closeAllDropdowns();
@@ -1385,7 +1405,8 @@
         <button
           type="button"
           class="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
-          title="Remove icon"
+          aria-label={"Remove icon"}
+          use:tooltip={"Remove icon"}
           onclick={() => {
             const nodeName = getCleanNodeName();
             if (!nodeName) return;
@@ -1428,7 +1449,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Fill color (border auto)"
+            aria-label={"Fill color (border auto)"}
+            use:tooltip={"Fill color (border auto)"}
             onclick={() => {
               const was = activeColorPicker === 'subgraph';
               closeAllDropdowns();
@@ -1449,7 +1471,8 @@
             'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
             subgraphFilled ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'
           )}
-          title={subgraphFilled ? 'Switch to outline' : 'Switch to filled'}
+          aria-label={subgraphFilled ? 'Switch to outline' : 'Switch to filled'}
+          use:tooltip={subgraphFilled ? 'Switch to outline' : 'Switch to filled'}
           onclick={toggleSubgraphFilled}>
           {subgraphFilled ? 'Filled' : 'Outline'}
         </button>
@@ -1461,7 +1484,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Text color"
+            aria-label={"Text color"}
+            use:tooltip={"Text color"}
             onclick={() => {
               const was = activeColorPicker === 'sgText';
               closeAllDropdowns();
@@ -1483,7 +1507,8 @@
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
               )}
-              title={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
+              aria-label={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
+              use:tooltip={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
               onclick={() => applySubgraphTextSize(size)}>
               {size === 'sm' ? 'S' : size === 'md' ? 'M' : 'L'}
             </button>
@@ -1495,7 +1520,8 @@
           <button
             type="button"
             class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Font family"
+            aria-label={"Font family"}
+            use:tooltip={"Font family"}
             onclick={() => {
               const was = showFontPicker === 'subgraph';
               closeAllDropdowns();
@@ -1525,7 +1551,8 @@
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:bg-accent'
             )}
-            title="Left to Right"
+            aria-label={"Left to Right"}
+            use:tooltip={"Left to Right"}
             onclick={() => applySubgraphDirection('LR')}>
             <ArrowRight class="size-3.5" />
           </button>
@@ -1537,7 +1564,8 @@
                 ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:bg-accent'
             )}
-            title="Top to Bottom"
+            aria-label={"Top to Bottom"}
+            use:tooltip={"Top to Bottom"}
             onclick={() => applySubgraphDirection('TB')}>
             <ArrowDown class="size-3.5" />
           </button>
