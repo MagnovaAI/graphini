@@ -4,13 +4,143 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Self-hosted variable fonts. Inter for UI (optical-size axis), Geist Mono for
+   code. One woff2 per family covers all weights via `font-weight: 100 900`. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --radius: 0.625rem;
+
+  /* ===== Design System tokens (theme-agnostic) ===== */
+
+  /* Spacing scale — 4px base unit */
+  --ds-space-xxs: 4px;
+  --ds-space-xs: 8px;
+  --ds-space-sm: 12px;
+  --ds-space-md: 16px;
+  --ds-space-lg: 24px;
+  --ds-space-xl: 32px;
+  --ds-space-xxl: 48px;
+  --ds-space-section: 96px;
+
+  /* Component sizing — control heights and constrained dimensions on the
+     4px grid. Heights step from compact (28px = h-7) up to xl (56px = h-14). */
+  --ds-control-sm: 24px;   /* h-6  — chip / badge */
+  --ds-control-md: 28px;   /* h-7  — icon button, model trigger */
+  --ds-control-lg: 32px;   /* h-8  — primary CTA, send button */
+  --ds-control-xl: 40px;   /* h-10 — multi-line input min-height */
+
+  /* Surface dimensions */
+  --ds-input-min-height: var(--ds-control-xl);
+  --ds-input-max-height: min(200px, 35vh);
+
+  /* Radius scale */
+  --ds-radius-xs: 4px;
+  --ds-radius-sm: 6px;
+  --ds-radius-md: 8px;
+  --ds-radius-lg: 12px;
+  --ds-radius-xl: 16px;
+  --ds-radius-xxl: 24px;
+  --ds-radius-pill: 9999px;
+  --ds-radius-full: 9999px;
+
+  /* Typography — Inter for UI (optical size variant), Geist Mono for code. */
+  --ds-font-sans:
+    'Inter', 'SF Pro Display', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --ds-font-text:
+    'Inter', 'SF Pro Text', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --ds-font-mono:
+    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Type scale (font-size / line-height / letter-spacing / weight) */
+  --ds-text-display-xl-size: 80px;
+  --ds-text-display-xl-leading: 1.05;
+  --ds-text-display-xl-tracking: -3px;
+  --ds-text-display-xl-weight: 600;
+
+  --ds-text-display-lg-size: 56px;
+  --ds-text-display-lg-leading: 1.1;
+  --ds-text-display-lg-tracking: -1.8px;
+  --ds-text-display-lg-weight: 600;
+
+  --ds-text-display-md-size: 40px;
+  --ds-text-display-md-leading: 1.15;
+  --ds-text-display-md-tracking: -1px;
+  --ds-text-display-md-weight: 600;
+
+  --ds-text-headline-size: 28px;
+  --ds-text-headline-leading: 1.2;
+  --ds-text-headline-tracking: -0.6px;
+  --ds-text-headline-weight: 600;
+
+  --ds-text-card-title-size: 22px;
+  --ds-text-card-title-leading: 1.25;
+  --ds-text-card-title-tracking: -0.4px;
+  --ds-text-card-title-weight: 500;
+
+  --ds-text-subhead-size: 20px;
+  --ds-text-subhead-leading: 1.4;
+  --ds-text-subhead-tracking: -0.2px;
+  --ds-text-subhead-weight: 400;
+
+  --ds-text-body-lg-size: 18px;
+  --ds-text-body-lg-leading: 1.5;
+  --ds-text-body-lg-tracking: -0.1px;
+  --ds-text-body-lg-weight: 400;
+
+  /* Body hard-lock: body, body-sm, caption, button, eyebrow, mono all at 14px.
+     Heading tiers (≥18px) keep their natural scale. */
+  --ds-text-body-size: 13px;
+  --ds-text-body-leading: 1.5;
+  --ds-text-body-tracking: 0;
+  --ds-text-body-weight: 400;
+
+  --ds-text-body-sm-size: 13px;
+  --ds-text-body-sm-leading: 1.5;
+  --ds-text-body-sm-tracking: 0;
+  --ds-text-body-sm-weight: 400;
+
+  --ds-text-caption-size: 13px;
+  --ds-text-caption-leading: 1.4;
+  --ds-text-caption-tracking: 0;
+  --ds-text-caption-weight: 400;
+
+  --ds-text-button-size: 13px;
+  --ds-text-button-leading: 1.2;
+  --ds-text-button-tracking: 0;
+  --ds-text-button-weight: 500;
+
+  --ds-text-eyebrow-size: 13px;
+  --ds-text-eyebrow-leading: 1.3;
+  --ds-text-eyebrow-tracking: 0.4px;
+  --ds-text-eyebrow-weight: 500;
+
+  --ds-text-mono-size: 12px;
+  --ds-text-mono-leading: 1.5;
+  --ds-text-mono-tracking: 0;
+  --ds-text-mono-weight: 400;
+
   /* Light Theme — adopted from 1code (zinc-tuned neutrals) */
   --background: hsl(0 0% 100%);
   --foreground: hsl(240 10% 3.9%);
   --chat-background: #fcfcfc;
+  --chat-input-bg: #f4f4f5;
   --tool-box-bg: #f4f4f5;
+  --code-bg: #f4f4f5;
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(240 10% 3.9%);
   --popover: hsl(0 0% 100%);
@@ -83,44 +213,79 @@
 }
 
 .dark {
-  /* Dark Theme — adopted from 1code (zinc-tuned neutrals) */
-  --background: #141414;
-  --foreground: hsl(240 4.8% 95.9%);
-  --chat-background: #0c0c0e;
-  --tool-box-bg: #161618;
-  --card: #141414;
-  --card-foreground: hsl(0 0% 98%);
-  --popover: #141414;
-  --popover-foreground: hsl(0 0% 98%);
-  --primary: hsl(0 0% 98%);
-  --primary-foreground: hsl(240 5.9% 10%);
-  --secondary: #1f1f22;
-  --secondary-foreground: hsl(0 0% 98%);
-  --muted: #1f1f22;
-  --muted-foreground: hsl(240 4.4% 58%);
-  --accent: #1f1f22;
-  --accent-foreground: hsl(0 0% 98%);
-  --destructive: #ef4444;
-  --destructive-foreground: hsl(0 0% 98%);
-  --border: hsl(240 3.7% 15.9%);
-  --input: hsl(240 3.7% 15.9%);
-  --ring: hsl(228 100% 50%);
-  --chart-1: #6366f1;
-  --chart-2: #22c55e;
-  --chart-3: #fbbf24;
-  --chart-4: #f87171;
-  --chart-5: #a78bfa;
-  --sidebar: #141414;
-  --sidebar-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-primary: hsl(0 0% 98%);
-  --sidebar-primary-foreground: hsl(240 5.9% 10%);
-  --sidebar-accent: #1c1c1c;
-  --sidebar-accent-foreground: hsl(0 0% 98%);
+  /* Design system — dark canvas, lavender-blue accent, four-step surface ladder.
+     Token names follow the spec; legacy shadcn names map to surfaces below. */
+
+  /* Surface ladder */
+  --ds-canvas: #010102;
+  --ds-surface-1: #0f1011;
+  --ds-surface-2: #141516;
+  --ds-surface-3: #18191a;
+  --ds-surface-4: #191a1b;
+
+  /* Hairlines */
+  --ds-hairline: #23252a;
+  --ds-hairline-strong: #34343a;
+  --ds-hairline-tertiary: #3e3e44;
+
+  /* Ink */
+  --ds-ink: #f7f8f8;
+  --ds-ink-muted: #d0d6e0;
+  --ds-ink-subtle: #8a8f98;
+  --ds-ink-tertiary: #62666d;
+
+  /* Accent — used scarcely: brand mark, primary CTA, focus ring, link emphasis */
+  --ds-primary: #5e6ad2;
+  --ds-on-primary: #ffffff;
+  --ds-primary-hover: #828fff;
+  --ds-primary-focus: #5e69d1;
+  --ds-brand-secure: #7a7fad;
+
+  /* Semantic */
+  --ds-success: #27a644;
+  --ds-overlay: #000000;
+
+  /* Cursor Noir palette — dark IDE theme ported to Graphini chrome.
+     Background #181818, sidebar #141414, frosty cyan accent #88C0D0. */
+  --background: #181818;
+  --foreground: #e4e4e4;
+  --chat-background: #141414;
+  --chat-input-bg: #1c1c1c;
+  --tool-box-bg: #181818;
+  --code-bg: #181818;
+  --card: #181818;
+  --card-foreground: #e4e4e4;
+  --popover: #1c1c1c;
+  --popover-foreground: #e4e4e4;
+  --primary: #88c0d0;
+  --primary-foreground: #181818;
+  --secondary: #1c1c1c;
+  --secondary-foreground: #e4e4e4;
+  --muted: #1c1c1c;
+  --muted-foreground: rgba(228, 228, 228, 0.55);
+  --accent: #1c1c1c;
+  --accent-foreground: #e4e4e4;
+  --destructive: #e34671;
+  --destructive-foreground: #ffffff;
+  --border: #262626;
+  --input: #262626;
+  --ring: #88c0d0;
+  --chart-1: #88c0d0;
+  --chart-2: #3fa266;
+  --chart-3: #f1b467;
+  --chart-4: #e34671;
+  --chart-5: #aaa0fa;
+  --sidebar: #181818;
+  --sidebar-foreground: #e4e4e4;
+  --sidebar-primary: #88c0d0;
+  --sidebar-primary-foreground: #181818;
+  --sidebar-accent: #1f1f1f;
+  --sidebar-accent-foreground: #e4e4e4;
   --sidebar-border: #262626;
-  --sidebar-ring: hsl(228 100% 50%);
-  --success: #22c55e;
-  --warning: #fbbf24;
-  --info: #6366f1;
+  --sidebar-ring: #88c0d0;
+  --success: #3fa266;
+  --warning: #f1b467;
+  --info: #88c0d0;
 
   /* Canvas / diagram accent */
   --canvas-accent: #818cf8;
@@ -179,6 +344,10 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -249,14 +418,9 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family:
-      'DM Sans',
-      -apple-system,
-      BlinkMacSystemFont,
-      'Segoe UI',
-      sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
+    font-family: var(--ds-font-text);
+    font-size: 13px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -266,19 +430,13 @@
   h4,
   h5,
   h6 {
-    font-family:
-      'Space Grotesk',
-      -apple-system,
-      BlinkMacSystemFont,
-      'Segoe UI',
-      sans-serif;
-    letter-spacing: -0.02em;
+    font-family: var(--ds-font-sans);
   }
   code,
   pre,
   .font-mono,
   [class*='mono'] {
-    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+    font-family: var(--ds-font-mono);
   }
 
   /* Respect reduced motion */
@@ -355,15 +513,24 @@
 }
 
 .prose :where(h1):not(:where([class~='not-prose'] *)) {
-  @apply mt-6 mb-4 text-2xl font-bold;
+  @apply mt-6 mb-4 font-semibold;
+  font-size: var(--ds-text-card-title-size);
+  line-height: var(--ds-text-card-title-leading);
+  letter-spacing: var(--ds-text-card-title-tracking);
 }
 
 .prose :where(h2):not(:where([class~='not-prose'] *)) {
-  @apply mt-5 mb-3 text-xl font-bold;
+  @apply mt-5 mb-3 font-semibold;
+  font-size: var(--ds-text-subhead-size);
+  line-height: var(--ds-text-subhead-leading);
+  letter-spacing: var(--ds-text-subhead-tracking);
 }
 
 .prose :where(h3):not(:where([class~='not-prose'] *)) {
-  @apply mt-4 mb-2 text-lg font-semibold;
+  @apply mt-4 mb-2 font-semibold;
+  font-size: var(--ds-text-body-lg-size);
+  line-height: var(--ds-text-body-lg-leading);
+  letter-spacing: var(--ds-text-body-lg-tracking);
 }
 
 .prose :where(p):not(:where([class~='not-prose'] *)) {
@@ -372,6 +539,144 @@
 
 /* Modern UI Enhancements */
 @layer utilities {
+  /* ===== Design system typography utilities =====
+     Apply exactly one of these to any text element. Color is set separately. */
+  .ds-display-xl {
+    font-family: var(--ds-font-sans);
+    font-size: var(--ds-text-display-xl-size);
+    line-height: var(--ds-text-display-xl-leading);
+    letter-spacing: var(--ds-text-display-xl-tracking);
+    font-weight: var(--ds-text-display-xl-weight);
+  }
+  .ds-display-lg {
+    font-family: var(--ds-font-sans);
+    font-size: var(--ds-text-display-lg-size);
+    line-height: var(--ds-text-display-lg-leading);
+    letter-spacing: var(--ds-text-display-lg-tracking);
+    font-weight: var(--ds-text-display-lg-weight);
+  }
+  .ds-display-md {
+    font-family: var(--ds-font-sans);
+    font-size: var(--ds-text-display-md-size);
+    line-height: var(--ds-text-display-md-leading);
+    letter-spacing: var(--ds-text-display-md-tracking);
+    font-weight: var(--ds-text-display-md-weight);
+  }
+  .ds-headline {
+    font-family: var(--ds-font-sans);
+    font-size: var(--ds-text-headline-size);
+    line-height: var(--ds-text-headline-leading);
+    letter-spacing: var(--ds-text-headline-tracking);
+    font-weight: var(--ds-text-headline-weight);
+  }
+  .ds-card-title {
+    font-family: var(--ds-font-sans);
+    font-size: var(--ds-text-card-title-size);
+    line-height: var(--ds-text-card-title-leading);
+    letter-spacing: var(--ds-text-card-title-tracking);
+    font-weight: var(--ds-text-card-title-weight);
+  }
+  .ds-subhead {
+    font-family: var(--ds-font-sans);
+    font-size: var(--ds-text-subhead-size);
+    line-height: var(--ds-text-subhead-leading);
+    letter-spacing: var(--ds-text-subhead-tracking);
+    font-weight: var(--ds-text-subhead-weight);
+  }
+  .ds-body-lg {
+    font-family: var(--ds-font-text);
+    font-size: var(--ds-text-body-lg-size);
+    line-height: var(--ds-text-body-lg-leading);
+    letter-spacing: var(--ds-text-body-lg-tracking);
+    font-weight: var(--ds-text-body-lg-weight);
+  }
+  .ds-body {
+    font-family: var(--ds-font-text);
+    font-size: var(--ds-text-body-size);
+    line-height: var(--ds-text-body-leading);
+    letter-spacing: var(--ds-text-body-tracking);
+    font-weight: var(--ds-text-body-weight);
+  }
+  .ds-body-sm {
+    font-family: var(--ds-font-text);
+    font-size: var(--ds-text-body-sm-size);
+    line-height: var(--ds-text-body-sm-leading);
+    letter-spacing: var(--ds-text-body-sm-tracking);
+    font-weight: var(--ds-text-body-sm-weight);
+  }
+  .ds-caption {
+    font-family: var(--ds-font-text);
+    font-size: var(--ds-text-caption-size);
+    line-height: var(--ds-text-caption-leading);
+    letter-spacing: var(--ds-text-caption-tracking);
+    font-weight: var(--ds-text-caption-weight);
+  }
+  .ds-button {
+    font-family: var(--ds-font-text);
+    font-size: var(--ds-text-button-size);
+    line-height: var(--ds-text-button-leading);
+    letter-spacing: var(--ds-text-button-tracking);
+    font-weight: var(--ds-text-button-weight);
+  }
+  .ds-eyebrow {
+    font-family: var(--ds-font-text);
+    font-size: var(--ds-text-eyebrow-size);
+    line-height: var(--ds-text-eyebrow-leading);
+    letter-spacing: var(--ds-text-eyebrow-tracking);
+    font-weight: var(--ds-text-eyebrow-weight);
+    text-transform: uppercase;
+  }
+  .ds-mono {
+    font-family: var(--ds-font-mono);
+    font-size: var(--ds-text-mono-size);
+    line-height: var(--ds-text-mono-leading);
+    letter-spacing: var(--ds-text-mono-tracking);
+    font-weight: var(--ds-text-mono-weight);
+  }
+
+  /* Surface ladder utilities */
+  .ds-bg-canvas {
+    background-color: var(--ds-canvas);
+  }
+  .ds-bg-surface-1 {
+    background-color: var(--ds-surface-1);
+  }
+  .ds-bg-surface-2 {
+    background-color: var(--ds-surface-2);
+  }
+  .ds-bg-surface-3 {
+    background-color: var(--ds-surface-3);
+  }
+  .ds-bg-surface-4 {
+    background-color: var(--ds-surface-4);
+  }
+  .ds-border-hairline {
+    border: 1px solid var(--ds-hairline);
+  }
+  .ds-border-hairline-strong {
+    border: 1px solid var(--ds-hairline-strong);
+  }
+
+  /* Ink utilities */
+  .ds-ink {
+    color: var(--ds-ink);
+  }
+  .ds-ink-muted {
+    color: var(--ds-ink-muted);
+  }
+  .ds-ink-subtle {
+    color: var(--ds-ink-subtle);
+  }
+  .ds-ink-tertiary {
+    color: var(--ds-ink-tertiary);
+  }
+
+  /* Focus ring — 2px primary at 50% */
+  .ds-focus-ring:focus-visible {
+    outline: 2px solid color-mix(in oklch, var(--ds-primary-focus) 50%, transparent);
+    outline-offset: 2px;
+  }
+
   /* Glass morphism effect */
   .glass {
     @apply border border-border bg-background/80 backdrop-blur-xl;
