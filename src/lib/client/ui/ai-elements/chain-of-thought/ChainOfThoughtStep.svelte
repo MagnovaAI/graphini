@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { cn } from "$lib/client/utils";
-	import { type Icon as IconType } from "@lucide/svelte";
 	import DotIcon from "@lucide/svelte/icons/dot";
 	import { getChainOfThoughtContext } from "./chain-of-thought-context.svelte.js";
-	import type { Snippet } from "svelte";
+	import type { Component, Snippet } from "svelte";
 	import type { HTMLAttributes } from "svelte/elements";
 
+	// Accept any Svelte component for the icon. Both lucide-svelte and
+	// @lucide/svelte ship icons as components; we want either to work.
+	type IconComponent = Component<{ class?: string }>;
+
 	interface ChainOfThoughtStepProps extends HTMLAttributes<HTMLDivElement> {
-		icon?: typeof IconType;
+		icon?: IconComponent;
 		label: string;
 		description?: string;
 		status?: "complete" | "active" | "pending";
@@ -73,7 +76,7 @@
 >
 	<div class="relative mt-0.5">
 		<Icon class="size-4" />
-		<div class="bg-border absolute top-7 bottom-0 left-1/2 -mx-px w-px"></div>
+		<div class="absolute top-7 bottom-0 left-1/2 -mx-px w-px bg-muted-foreground/30"></div>
 	</div>
 	<div class="flex-1 space-y-2">
 		<div>{label}</div>

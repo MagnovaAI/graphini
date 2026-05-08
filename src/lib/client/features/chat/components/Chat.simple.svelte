@@ -23,6 +23,7 @@
     ToolSimplePart
   } from '$lib/client/features/chat/content-parts/types';
   import { toolVerbs } from '$lib/client/features/chat/content-parts/tool-display';
+  import { toolIcon } from '$lib/client/features/chat/content-parts/tool-icons';
   import {
     buildDiagramPatchPreview,
     mermaidDeclarationPattern
@@ -60,7 +61,6 @@
     ChainOfThoughtContent,
     ChainOfThoughtHeader,
     ChainOfThoughtSearchResult,
-    ChainOfThoughtSearchResults,
     ChainOfThoughtStep
   } from '$lib/client/ui/ai-elements/chain-of-thought';
   import TooltipWrap from '$lib/client/ui/tooltip/TooltipWrap.svelte';
@@ -2868,34 +2868,45 @@
                       <ChainOfThought defaultOpen={part.status === 'running'}>
                         <ChainOfThoughtHeader>
                           {#if part.status === 'running'}
-                            <span class="thinking-shimmer">Working</span>
+                            <span class="thinking-shimmer">Chain of Tools</span>
                           {:else}
-                            Done · {part.parts.length} steps
+                            Chain of Tools · {part.parts.length} steps
                           {/if}
                         </ChainOfThoughtHeader>
                         <ChainOfThoughtContent>
                           {#each part.parts as step (step.id)}
                             <ChainOfThoughtStep
+                              icon={toolIcon(step.toolName)}
                               label={step.status === 'running'
                                 ? step.titlePending
                                 : step.titleDone}
                               description={step.subtitle}
                               status={step.status === 'running' ? 'active' : 'complete'}>
                               {#if step.toolName === 'webSearch' && step.details && step.details.length > 0}
-                                <ChainOfThoughtSearchResults>
+                                <div
+                                  class="mt-1 flex flex-wrap gap-1.5 rounded-md border border-border/40 px-3 py-2"
+                                  style="background-color: var(--tool-box-bg);">
                                   {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
                                     <ChainOfThoughtSearchResult>
                                       {detail}
                                     </ChainOfThoughtSearchResult>
                                   {/each}
-                                </ChainOfThoughtSearchResults>
+                                </div>
                               {:else if step.details && step.details.length > 0}
-                                <ul
-                                  class="mt-1 space-y-0.5 text-[12px] leading-relaxed text-muted-foreground/70">
-                                  {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
-                                    <li>· {detail}</li>
-                                  {/each}
-                                </ul>
+                                <div
+                                  class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
+                                  style="max-height: 220px; background-color: var(--tool-box-bg);">
+                                  <div class="space-y-1">
+                                    {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
+                                      <div
+                                        class="flex items-start gap-2 text-[13px] leading-relaxed text-muted-foreground/75">
+                                        <span class="mt-1 shrink-0 text-muted-foreground/40">·</span
+                                        >
+                                        <span class="min-w-0">{detail}</span>
+                                      </div>
+                                    {/each}
+                                  </div>
+                                </div>
                               {/if}
                             </ChainOfThoughtStep>
                           {/each}
