@@ -116,102 +116,11 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     label: 'autoStyler'
   },
   {
-    category: 'code',
-    description: 'Read generated JSON, YAML, config, or code artifacts',
-    enabled: true,
-    id: 'codeRead',
-    label: 'codeRead'
-  },
-  {
-    category: 'code',
-    description: 'Write generated JSON, YAML, config, or code artifacts',
-    enabled: true,
-    id: 'codeWrite',
-    label: 'codeWrite'
-  },
-  {
-    category: 'code',
-    description: 'Patch generated code artifacts by line range',
-    enabled: true,
-    id: 'codePatch',
-    label: 'codePatch'
-  },
-  {
-    category: 'intelligence',
-    description: 'Decompose complex tasks into step-by-step plans',
-    enabled: true,
-    id: 'planner',
-    label: 'planner'
-  },
-  {
     category: 'intelligence',
     description: 'Show a concise public thinking checkpoint before complex tool use',
     enabled: true,
     id: 'thinking',
     label: 'thinking'
-  },
-  {
-    category: 'intelligence',
-    description: 'Think through complex tasks step-by-step before acting',
-    enabled: true,
-    id: 'sequentialThinking',
-    label: 'sequentialThinking'
-  },
-  {
-    category: 'agents',
-    description: 'Plan bounded specialist agents for complex work',
-    enabled: true,
-    id: 'subagentFanout',
-    label: 'subagentFanout'
-  },
-  {
-    category: 'agents',
-    description: 'Assemble specialist agent outputs into one plan',
-    enabled: true,
-    id: 'subagentAssemble',
-    label: 'subagentAssemble'
-  },
-  {
-    category: 'safety',
-    description: 'Check git status and protected paths before repository work',
-    enabled: true,
-    id: 'gitGuard',
-    label: 'gitGuard'
-  },
-  {
-    category: 'intelligence',
-    description: 'Create and update visible checklist plans',
-    enabled: true,
-    id: 'planWithProgress',
-    label: 'planWithProgress'
-  },
-  {
-    category: 'intelligence',
-    description: 'Store and retrieve user or project memories',
-    enabled: true,
-    id: 'longTermMemory',
-    label: 'longTermMemory'
-  },
-  {
-    category: 'intelligence',
-    description: 'Extract action items, risks, KPIs, and entities from documents',
-    enabled: true,
-    id: 'actionItemExtractor',
-    label: 'actionItemExtractor'
-  },
-  {
-    category: 'intelligence',
-    description: 'Analyze CSV/tabular data with statistics and chart suggestions',
-    enabled: true,
-    id: 'tableAnalytics',
-    label: 'tableAnalytics'
-  },
-  {
-    category: 'intelligence',
-    description: 'Evaluate and improve diagrams/documents for quality',
-    enabled: true,
-    id: 'selfCritique',
-    label: 'selfCritique'
   },
   {
     category: 'files',

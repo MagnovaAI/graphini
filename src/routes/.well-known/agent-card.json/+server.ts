@@ -21,17 +21,6 @@ export const GET: RequestHandler = ({ url }) => {
     protocolVersion: A2A_PROTOCOL_VERSION,
     skills: [
       {
-        description: 'Plan complex architecture and diagram tasks before execution.',
-        examples: [
-          'Design a multi-tenant SaaS architecture diagram with risks and deployment flow.'
-        ],
-        id: 'planner',
-        inputModes: ['text/plain'],
-        name: 'Planner Agent',
-        outputModes: ['application/json', 'text/plain'],
-        tags: ['planning', 'architecture']
-      },
-      {
         description: 'Create, edit, patch, and validate Mermaid diagrams.',
         examples: ['Create a service architecture diagram for a GraphQL API with cache and queue.'],
         id: 'diagram-engineer',
@@ -57,19 +46,6 @@ export const GET: RequestHandler = ({ url }) => {
         name: 'Document Agent',
         outputModes: ['text/markdown', 'application/json'],
         tags: ['markdown', 'documentation']
-      },
-      {
-        description:
-          'Draft and patch non-Mermaid code artifacts such as JSON, YAML, TypeScript, Svelte, HTML, CSS, and config.',
-        examples: [
-          'Create a JSON schema for this workflow.',
-          'Write a YAML deployment config draft.'
-        ],
-        id: 'code-agent',
-        inputModes: ['text/plain', 'application/json', 'application/yaml', 'text/yaml'],
-        name: 'Code Agent',
-        outputModes: ['application/json', 'application/yaml', 'text/plain'],
-        tags: ['code', 'json', 'yaml', 'config']
       },
       {
         description: 'Analyze uploaded files and tabular data for diagram or chart generation.',

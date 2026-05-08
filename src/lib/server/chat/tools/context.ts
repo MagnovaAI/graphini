@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { CodeArtifactLanguage } from '$lib/server/chat/code-artifacts';
 
 export interface WorkspaceToolTab {
   engine: string;
@@ -61,34 +60,7 @@ export function validateMermaidTarget(
   if (target?.activeEngine && target.activeEngine !== 'mermaid') {
     return {
       error: `REJECTED: The active tab "${target.activeTabName ?? 'Untitled'}" is ${target.activeEngine}, not Mermaid.`,
-      hint:
-        target.activeEngine === 'json' || target.activeEngine === 'yaml'
-          ? `Use codeWrite/codePatch with language "${target.activeEngine}".`
-          : 'Use the tool category that matches the active tab engine.'
-    };
-  }
-  return null;
-}
-
-export function validateCodeTarget(
-  target: WorkspaceToolTarget | undefined,
-  language: CodeArtifactLanguage,
-  targetTabName?: string
-) {
-  const tabError = validateTargetTab(target, targetTabName);
-  if (tabError) return tabError;
-  const engine = target?.activeEngine;
-  if (!engine) return null;
-  if (engine === 'mermaid') {
-    return {
-      error: `REJECTED: The active tab "${target.activeTabName ?? 'Untitled'}" is Mermaid.`,
-      hint: 'Use diagramWrite/diagramPatch for Mermaid tabs.'
-    };
-  }
-  if ((engine === 'json' || engine === 'yaml' || engine === 'markdown') && language !== engine) {
-    return {
-      error: `REJECTED: The active tab "${target.activeTabName ?? 'Untitled'}" is ${engine}, but codeWrite/codePatch was called with language "${language}".`,
-      hint: `Use language "${engine}" and provide only ${engine.toUpperCase()} content for this tab.`
+      hint: 'Use the tool category that matches the active tab engine.'
     };
   }
   return null;

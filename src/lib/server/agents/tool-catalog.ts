@@ -8,32 +8,14 @@ const lineRangeInput = z.object({
 
 export type GraphiniAgentId =
   | 'orchestrator'
-  | 'planner'
   | 'diagram-engineer'
   | 'visual-polish'
   | 'research-agent'
   | 'document-agent'
   | 'data-agent'
-  | 'critic'
-  | 'code-agent';
+  | 'critic';
 
 export const graphiniMcpTools = [
-  {
-    annotations: { readOnlyHint: true, title: 'Action Item Extractor' },
-    description:
-      'Extract action items, risks, KPIs, entities, decisions, and deadlines from document text or provided text.',
-    inputSchema: objectSchema(
-      z.object({
-        extractTypes: z
-          .array(z.enum(['actions', 'risks', 'kpis', 'entities', 'decisions', 'deadlines']))
-          .optional(),
-        source: z.enum(['document', 'text']),
-        text: z.string().optional()
-      })
-    ),
-    name: 'actionItemExtractor',
-    title: 'Action Item Extractor'
-  },
   {
     annotations: { readOnlyHint: true, title: 'Ask Questions' },
     description:
@@ -68,65 +50,6 @@ export const graphiniMcpTools = [
     inputSchema: objectSchema(lineRangeInput),
     name: 'diagramRead',
     title: 'Diagram Read'
-  },
-  {
-    annotations: { readOnlyHint: true, title: 'Code Read' },
-    description:
-      'Read the current non-Mermaid code artifact, optionally limited to a line range. Use for JSON, YAML, config, TypeScript, JavaScript, Svelte, HTML, CSS, shell, and text code.',
-    inputSchema: objectSchema(lineRangeInput),
-    name: 'codeRead',
-    title: 'Code Read'
-  },
-  {
-    annotations: { destructiveHint: true, title: 'Code Write' },
-    description:
-      'Create or replace a non-Mermaid code artifact. This drafts an artifact only and does not write repository files.',
-    inputSchema: objectSchema(
-      z.object({
-        content: z.string().min(1),
-        language: z.enum([
-          'json',
-          'yaml',
-          'typescript',
-          'javascript',
-          'svelte',
-          'html',
-          'css',
-          'markdown',
-          'text'
-        ]),
-        purpose: z.string().optional()
-      })
-    ),
-    name: 'codeWrite',
-    title: 'Code Write'
-  },
-  {
-    annotations: { destructiveHint: true, title: 'Code Patch' },
-    description:
-      'Patch the current non-Mermaid code artifact by replacing a 1-based line range. This does not write repository files.',
-    inputSchema: objectSchema(
-      z.object({
-        content: z.string().min(1),
-        endLine: z.number().int().min(1),
-        language: z
-          .enum([
-            'json',
-            'yaml',
-            'typescript',
-            'javascript',
-            'svelte',
-            'html',
-            'css',
-            'markdown',
-            'text'
-          ])
-          .optional(),
-        startLine: z.number().int().min(1)
-      })
-    ),
-    name: 'codePatch',
-    title: 'Code Patch'
   },
   {
     annotations: { destructiveHint: true, title: 'Diagram Write' },
@@ -255,21 +178,6 @@ export const graphiniMcpTools = [
     title: 'Iconifier'
   },
   {
-    annotations: { title: 'Long Term Memory' },
-    description:
-      'Store, retrieve, list, delete, or search persistent user/project memories for the current workspace.',
-    inputSchema: objectSchema(
-      z.object({
-        key: z.string().optional(),
-        operation: z.enum(['save', 'get', 'list', 'delete', 'search']),
-        query: z.string().optional(),
-        value: z.string().optional()
-      })
-    ),
-    name: 'longTermMemory',
-    title: 'Long Term Memory'
-  },
-  {
     annotations: { readOnlyHint: true, title: 'Markdown Read' },
     description: 'Read the document panel markdown content.',
     inputSchema: emptyObjectSchema(),
@@ -302,43 +210,6 @@ export const graphiniMcpTools = [
     title: 'Web Search'
   },
   {
-    annotations: { title: 'Plan With Progress' },
-    description: 'Create and update a visible checklist-style execution plan for complex tasks.',
-    inputSchema: objectSchema(
-      z.object({
-        message: z.string().optional(),
-        operation: z.enum(['create', 'update', 'get']),
-        status: z.enum(['pending', 'in_progress', 'done', 'skipped']).optional(),
-        stepId: z.string().optional(),
-        steps: z
-          .array(
-            z.object({
-              description: z.string().optional(),
-              id: z.string().min(1),
-              title: z.string().min(1)
-            })
-          )
-          .optional(),
-        title: z.string().optional()
-      })
-    ),
-    name: 'planWithProgress',
-    title: 'Plan With Progress'
-  },
-  {
-    annotations: { readOnlyHint: true, title: 'Planner' },
-    description:
-      'Decompose a complex diagram or documentation request into ordered execution steps.',
-    inputSchema: objectSchema(
-      z.object({
-        context: z.string().optional(),
-        task: z.string().min(1)
-      })
-    ),
-    name: 'planner',
-    title: 'Planner'
-  },
-  {
     annotations: { readOnlyHint: true, title: 'Thinking' },
     description:
       'Record a concise public thinking checkpoint before complex, ambiguous, or tool-heavy work.',
@@ -355,19 +226,6 @@ export const graphiniMcpTools = [
     title: 'Thinking'
   },
   {
-    annotations: { readOnlyHint: true, title: 'Self Critique' },
-    description:
-      'Review a diagram or document for quality, completeness, and best-practice issues.',
-    inputSchema: objectSchema(
-      z.object({
-        criteria: z.array(z.string()).optional(),
-        target: z.enum(['diagram', 'document', 'both'])
-      })
-    ),
-    name: 'selfCritique',
-    title: 'Self Critique'
-  },
-  {
     annotations: { destructiveHint: true, readOnlyHint: false, title: 'File Manager' },
     description: 'List, read, search, summarize, or delete uploaded files available to the agent.',
     inputSchema: objectSchema(
@@ -381,110 +239,12 @@ export const graphiniMcpTools = [
     ),
     name: 'fileManager',
     title: 'File Manager'
-  },
-  {
-    annotations: { readOnlyHint: true, title: 'Sequential Thinking' },
-    description:
-      'Record step-by-step reasoning for complex architecture, debugging, or trade-off analysis.',
-    inputSchema: objectSchema(
-      z.object({
-        nextAction: z.string().optional(),
-        thought: z.string().min(1),
-        thoughtNumber: z.number().int().min(1),
-        totalThoughts: z.number().int().min(1)
-      })
-    ),
-    name: 'sequentialThinking',
-    title: 'Sequential Thinking'
-  },
-  {
-    annotations: { readOnlyHint: true, title: 'Git Guard' },
-    description:
-      'Check git safety before repository file/docs mutation planning. Reports dirty/protected paths and never modifies files.',
-    inputSchema: objectSchema(
-      z.object({
-        operation: z.enum(['status', 'protect-paths', 'preflight']),
-        paths: z.array(z.string()).optional(),
-        reason: z.string().optional()
-      })
-    ),
-    name: 'gitGuard',
-    title: 'Git Guard'
-  },
-  {
-    annotations: { readOnlyHint: true, title: 'Subagent Fanout' },
-    description:
-      'Plan bounded subagent assignments with ownership, allowed tools, expected outputs, and file/path guardrails.',
-    inputSchema: objectSchema(
-      z.object({
-        agents: z
-          .array(
-            z.object({
-              allowedTools: z.array(z.string()).optional(),
-              id: z.string().min(1),
-              objective: z.string().min(1),
-              ownedPaths: z.array(z.string()).optional(),
-              role: z.enum([
-                'planner',
-                'diagram-engineer',
-                'visual-polish',
-                'research-agent',
-                'document-agent',
-                'data-agent',
-                'critic',
-                'code-agent'
-              ])
-            })
-          )
-          .min(1),
-        task: z.string().min(1)
-      })
-    ),
-    name: 'subagentFanout',
-    title: 'Subagent Fanout'
-  },
-  {
-    annotations: { readOnlyHint: true, title: 'Subagent Assemble' },
-    description:
-      'Assemble planned subagent outputs into an integration plan with conflicts and verification steps.',
-    inputSchema: objectSchema(
-      z.object({
-        outputs: z.array(
-          z.object({
-            agentId: z.string().min(1),
-            changedPaths: z.array(z.string()).optional(),
-            summary: z.string().min(1)
-          })
-        ),
-        runId: z.string().min(1),
-        verification: z.array(z.string()).optional()
-      })
-    ),
-    name: 'subagentAssemble',
-    title: 'Subagent Assemble'
-  },
-  {
-    annotations: { readOnlyHint: true, title: 'Table Analytics' },
-    description:
-      'Analyze tabular data and suggest statistics, trends, outliers, or Mermaid charts.',
-    inputSchema: objectSchema(
-      z.object({
-        data: z.string().optional(),
-        operations: z
-          .array(z.enum(['summary', 'statistics', 'trends', 'outliers', 'chart-suggestion']))
-          .optional(),
-        source: z.enum(['document', 'text'])
-      })
-    ),
-    name: 'tableAnalytics',
-    title: 'Table Analytics'
   }
 ] satisfies McpToolDescriptor[];
 
 export const agentToolNames = {
-  'code-agent': ['codeRead', 'codeWrite', 'codePatch', 'gitGuard'],
-  critic: ['diagramRead', 'markdownRead', 'selfCritique', 'errorChecker'],
-  'data-agent': ['fileManager', 'tableAnalytics', 'dataAnalyzer'],
+  critic: ['diagramRead', 'markdownRead', 'errorChecker'],
+  'data-agent': ['fileManager', 'dataAnalyzer'],
   'diagram-engineer': [
     'diagramRead',
     'diagramWrite',
@@ -492,19 +252,8 @@ export const agentToolNames = {
     'diagramDelete',
     'errorChecker'
   ],
-  'document-agent': ['markdownRead', 'markdownWrite', 'fileManager', 'actionItemExtractor'],
-  orchestrator: [
-    'askQuestions',
-    'thinking',
-    'planner',
-    'planWithProgress',
-    'sequentialThinking',
-    'longTermMemory',
-    'gitGuard',
-    'subagentFanout',
-    'subagentAssemble'
-  ],
-  planner: ['thinking', 'planner', 'planWithProgress', 'sequentialThinking'],
+  'document-agent': ['markdownRead', 'markdownWrite', 'fileManager'],
+  orchestrator: ['askQuestions', 'thinking'],
   'research-agent': ['webSearch', 'fileManager'],
   'visual-polish': ['diagramRead', 'diagramPatch', 'styleSearch', 'iconSearch', 'errorChecker']
 } satisfies Record<GraphiniAgentId, string[]>;

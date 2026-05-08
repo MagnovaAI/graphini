@@ -149,9 +149,7 @@ function buildLeanSystemPrompt(
   const tools = [...exposedToolNames].sort();
   const hasAnyTool = tools.length > 0;
   const hasDiagramTools = tools.some((toolName) => toolName.startsWith('diagram'));
-  const hasCodeTools = tools.some((toolName) => toolName.startsWith('code'));
   const hasMarkdownTools = tools.some((toolName) => toolName.startsWith('markdown'));
-  const hasSubagentTools = tools.includes('subagentFanout') || tools.includes('subagentAssemble');
 
   const sections = [
     `You are Graphini's concise diagram and workspace assistant. Today is ${today}.`,
@@ -186,11 +184,9 @@ function buildLeanSystemPrompt(
     'Execution honesty: never claim you changed, enhanced, saved, deployed, or ran work unless a tool result in this turn succeeded. If a tool fails, say the failure plainly and continue with the next concrete step.'
   );
 
-  if (!hasSubagentTools) {
-    sections.push(
-      'Do not mention subagents, specialist agents, fanout, or parallel agents unless those tools are available and the user explicitly asked for them.'
-    );
-  }
+  sections.push(
+    'Do not mention subagents, specialist agents, fanout, or parallel agents.'
+  );
 
   if (hasDiagramTools) {
     sections.push(
@@ -231,12 +227,6 @@ function buildLeanSystemPrompt(
     );
   }
 
-  if (hasCodeTools) {
-    sections.push(
-      'Code artifact rules: use codeRead/codeWrite/codePatch only for non-Mermaid code such as JSON, YAML, Markdown file tabs, TypeScript, config, HTML, or CSS.'
-    );
-  }
-
   if (hasMarkdownTools) {
     sections.push(
       'Document rules: use markdownRead/markdownWrite only for prose documentation in the document panel, not Mermaid diagrams.'
@@ -254,19 +244,8 @@ function truncateMessageContent(content: unknown, maxChars: number): string {
   return `${text.slice(0, maxChars)}\n[truncated ${text.length - maxChars} chars]`;
 }
 
-function scrubAssistantTranscript(content: unknown, preserveSubagentHistory: boolean): string {
-  const text = typeof content === 'string' ? content : String(content ?? '');
-  if (preserveSubagentHistory) return text;
-
-  if (
-    /\b(subagentFanout|subagentAssemble|Ran \d+ subagents?|specialist agents?|specialist outputs?|fan\s*out|multi[-\s]?agent)\b/i.test(
-      text
-    )
-  ) {
-    return '[previous subagent transcript omitted]';
-  }
-
-  return text;
+function scrubAssistantTranscript(content: unknown): string {
+  return typeof content === 'string' ? content : String(content ?? '');
 }
 
 async function buildChatContext(
@@ -275,7 +254,6 @@ async function buildChatContext(
   options: {
     contextWindowTokens: number;
     fallbackModel: string;
-    preserveSubagentHistory?: boolean;
     systemPromptTokens: number;
   }
 ): Promise<{ messages: Record<string, unknown>[]; summary: string }> {
@@ -298,9 +276,7 @@ async function buildChatContext(
     .map((message) => ({
       role: message.role,
       content: truncateMessageContent(
-        message.role === 'assistant'
-          ? scrubAssistantTranscript(message.content, Boolean(options.preserveSubagentHistory))
-          : message.content,
+        message.role === 'assistant' ? scrubAssistantTranscript(message.content) : message.content,
         message.role === 'assistant' ? 20000 : 32000
       )
     }))
@@ -574,8 +550,6 @@ export const POST: RequestHandler = async ({ request }) => {
     const chatContext = await buildChatContext(uiMessages, userContent, {
       contextWindowTokens: contextWindowForModel(enabledModel),
       fallbackModel: model,
-      preserveSubagentHistory:
-        exposedToolNames.has('subagentFanout') || exposedToolNames.has('subagentAssemble'),
       systemPromptTokens: estimateTokens(systemPrompt)
     });
     const messages = chatContext.messages;

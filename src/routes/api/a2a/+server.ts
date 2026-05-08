@@ -27,14 +27,6 @@ function routeToAgent(prompt: string): AgentRoute {
     return { agentId: 'data-agent', reason: 'The request references files or tabular data.' };
   }
 
-  if (
-    /\b(json|yaml|yml|toml|typescript|javascript|svelte|html|css|config|code artifact)\b/.test(
-      normalized
-    )
-  ) {
-    return { agentId: 'code-agent', reason: 'The request asks for non-Mermaid code output.' };
-  }
-
   if (/\b(review|critique|quality|missing|best practice|validate|check)\b/.test(normalized)) {
     return { agentId: 'critic', reason: 'The request asks for quality or correctness review.' };
   }
@@ -45,15 +37,6 @@ function routeToAgent(prompt: string): AgentRoute {
 
   if (/\b(style|color|icon|polish|readable|layout|pretty|visual)\b/.test(normalized)) {
     return { agentId: 'visual-polish', reason: 'The request asks for visual refinement.' };
-  }
-
-  if (
-    /\b(plan|design|architecture|system|multi-step|think|trade-off|tradeoff)\b/.test(normalized)
-  ) {
-    return {
-      agentId: 'planner',
-      reason: 'The request needs planning or architecture decomposition.'
-    };
   }
 
   return { agentId: 'diagram-engineer', reason: 'The request is best handled as diagram work.' };

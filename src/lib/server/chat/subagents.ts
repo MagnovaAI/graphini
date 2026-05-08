@@ -3,8 +3,6 @@ export function instructionsForSubagent(role: string): string {
     'You are one specialist subagent in Graphini. Return concise, concrete output for your assignment. Do not claim you changed files or tools. Do not include hidden reasoning.';
 
   switch (role) {
-    case 'planner':
-      return `${base} Focus on decomposition, risks, and execution order.`;
     case 'diagram-engineer':
       return `${base} Focus on Mermaid architecture, entities, flows, and syntax risks.`;
     case 'visual-polish':
@@ -17,8 +15,6 @@ export function instructionsForSubagent(role: string): string {
       return `${base} Focus on datasets, calculations, and chart-ready summaries.`;
     case 'critic':
       return `${base} Focus on bugs, missing requirements, edge cases, and verification.`;
-    case 'code-agent':
-      return `${base} Focus on implementable code changes and tests.`;
     default:
       return base;
   }

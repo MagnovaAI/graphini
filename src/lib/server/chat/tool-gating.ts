@@ -1,19 +1,3 @@
-function wantsSubagents(message: string): boolean {
-  const negatedSubagentTarget =
-    /\b(no|not|don't|dont|never|without|avoid|stop)\b.{0,80}\b(subagents?|multi[-\s]?agent|fan\s*out|parallel agents?|specialist agents?)\b/i;
-  const diagnosticSubagentTarget =
-    /\b(why|what|how)\b.{0,80}\b(use|using|used|run|ran|spawn|spawned|deploy|deployed|fan\s*out|subagents?|multi[-\s]?agent|parallel agents?|specialist agents?)\b/i;
-  const reportedSubagentTarget =
-    /\b(i['’]?ll|i will|we['’]?ll|we will|it|the model|the assistant)\b.{0,80}\b(use|using|used|run|ran|spawn|spawned|deploy|deployed|fan\s*out)\b.{0,80}\b(subagents?|multi[-\s]?agent|parallel agents?|specialist agents?)\b/i;
-  const commandedSubagentTarget =
-    /\b(use|run|spawn|deploy|launch|parallelize|parallelise|split|delegate|ask|bring in)\b.{0,80}\b(subagents?|multi[-\s]?agent|parallel agents?|specialist agents?)\b/i;
-
-  if (negatedSubagentTarget.test(message)) return false;
-  if (diagnosticSubagentTarget.test(message) || reportedSubagentTarget.test(message)) return false;
-
-  return commandedSubagentTarget.test(message) || /\bfan\s*out\b/i.test(message);
-}
-
 function isCasualMessage(message: string): boolean {
   return /^(hi|hey|hello|yo|sup|thanks|thank you|ok|okay|cool|nice)[!.?\s]*$/i.test(message.trim());
 }
@@ -47,13 +31,7 @@ function wantsToolInventoryFollowUp(
     .map((item) => (typeof item.content === 'string' ? item.content : ''))
     .join('\n');
 
-  return /\b(tools?|capabilities|selfCritique|diagramRead|errorChecker)\b/i.test(recentText);
-}
-
-function wantsSelfCritique(message: string): boolean {
-  return /\b(self[-\s]?critique|critique|review|audit|evaluate|assess|improve|quality check|quality review)\b/i.test(
-    message
-  );
+  return /\b(tools?|capabilities|diagramRead|errorChecker)\b/i.test(recentText);
 }
 
 function wantsDiagramDeletion(message: string): boolean {
@@ -70,12 +48,6 @@ function wantsVisualStyling(message: string): boolean {
 
 function wantsIcons(message: string): boolean {
   return /\b(icon|icons|logo|logos|badge|badges)\b/i.test(message);
-}
-
-function wantsRepoPlanning(message: string): boolean {
-  return /\b(modify|edit|write|patch|change|refactor|commit|repo|repository|codebase|file|docs?)\b/i.test(
-    message
-  );
 }
 
 function wantsNewDiagram(message: string): boolean {
@@ -97,15 +69,6 @@ function wantsDocumentation(message: string): boolean {
   return /\b(markdown|document|documentation|docs?|summary|notes?|write[-\s]?up)\b/i.test(message);
 }
 
-function wantsCodeArtifact(message: string, activeEngine?: string): boolean {
-  return (
-    activeEngine === 'json' ||
-    activeEngine === 'yaml' ||
-    activeEngine === 'markdown' ||
-    /\b(json|yaml|yml|code|typescript|javascript|svelte|html|css|config|artifact)\b/i.test(message)
-  );
-}
-
 function wantsDataWork(message: string): boolean {
   return /\b(csv|xlsx|spreadsheet|table|rows?|columns?|data|analy[sz]e|chart|stats?)\b/i.test(
     message
@@ -120,21 +83,13 @@ function wantsWebSearch(message: string): boolean {
   return /\b(web|search|lookup|internet|latest|docs?|documentation|source)\b/i.test(message);
 }
 
-function wantsMemoryWork(message: string): boolean {
-  return /\b(remember|memory|memories|forget|recall|preference)\b/i.test(message);
-}
-
 function addAll(target: Set<string>, tools: string[]) {
   for (const tool of tools) target.add(tool);
 }
 
 export const REQUESTABLE_TOOL_NAMES = [
-  'actionItemExtractor',
   'askQuestions',
   'autoStyler',
-  'codePatch',
-  'codeRead',
-  'codeWrite',
   'dataAnalyzer',
   'diagramDelete',
   'diagramPatch',
@@ -142,20 +97,11 @@ export const REQUESTABLE_TOOL_NAMES = [
   'diagramWrite',
   'errorChecker',
   'fileManager',
-  'gitGuard',
   'iconSearch',
   'iconifier',
-  'longTermMemory',
   'markdownRead',
   'markdownWrite',
-  'planWithProgress',
-  'planner',
-  'selfCritique',
-  'sequentialThinking',
   'styleSearch',
-  'subagentAssemble',
-  'subagentFanout',
-  'tableAnalytics',
   'thinking',
   'webSearch'
 ];
@@ -204,40 +150,12 @@ export function selectToolNamesForRequest(
   // askQuestions is always available so the model can clarify intent on any turn.
   selected.add('askQuestions');
 
-  if (wantsSubagents(message)) {
-    addAll(selected, ['subagentFanout', 'subagentAssemble']);
-  }
-
-  if (wantsMemoryWork(message)) addAll(selected, ['longTermMemory']);
   if (wantsWebSearch(message)) addAll(selected, ['webSearch']);
   if (wantsFileWork(message)) addAll(selected, ['fileManager']);
-  if (wantsDataWork(message)) addAll(selected, ['fileManager', 'dataAnalyzer', 'tableAnalytics']);
-
-  if (wantsRepoPlanning(message)) addAll(selected, ['gitGuard']);
-
-  if (wantsSelfCritique(message)) {
-    addAll(selected, ['selfCritique']);
-    if (activeEngine === 'mermaid') {
-      addAll(selected, [
-        'diagramRead',
-        'diagramPatch',
-        'errorChecker',
-        'styleSearch',
-        'iconSearch'
-      ]);
-    } else if (activeEngine === 'markdown') {
-      addAll(selected, ['markdownRead', 'markdownWrite']);
-    } else {
-      addAll(selected, ['codeRead', 'codeWrite', 'codePatch']);
-    }
-  }
+  if (wantsDataWork(message)) addAll(selected, ['fileManager', 'dataAnalyzer']);
 
   if (wantsDocumentation(message) && !wantsDiagramRepair(message)) {
-    addAll(selected, ['markdownRead', 'markdownWrite', 'fileManager', 'actionItemExtractor']);
-  }
-
-  if (wantsCodeArtifact(message, activeEngine) && activeEngine !== 'mermaid') {
-    addAll(selected, ['codeRead', 'codeWrite', 'codePatch']);
+    addAll(selected, ['markdownRead', 'markdownWrite', 'fileManager']);
   }
 
   if (activeEngine === 'mermaid') {
@@ -252,11 +170,10 @@ export function selectToolNamesForRequest(
     if (shouldWriteFullDiagram || workspaceIsEmpty) {
       selected.add('diagramWrite');
     }
-
   }
 
   if (wantsDeepThinking(message) && !wantsDiagramRepair(message)) {
-    addAll(selected, ['thinking', 'planner']);
+    selected.add('thinking');
   }
 
   return selected;
