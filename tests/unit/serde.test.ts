@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { State } from '../../src/lib/types';
+import type { State } from '../../src/lib/client/types';
 import {
   deserializeState,
   serializeState,
   type SerdeType
-} from '../../src/lib/util/serialization/serde';
+} from '../../src/lib/client/util/serialization/serde';
 
 const defaultMermaidConfig =
   '{\n  "theme": "default",\n  "layout": "elk",\n  "flowchart": {\n    "defaultRenderer": "elk"\n  }\n}';

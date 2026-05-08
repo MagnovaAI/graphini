@@ -1,4 +1,4 @@
-import { TID } from '$/constants';
+import { TID } from '$lib/client/constants';
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 import { verifyFileSizeGreaterThan, type EditorOptions } from './utils';
 

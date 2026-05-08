@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { HistoryEntry, State } from '../../src/lib/types';
+import type { HistoryEntry, State } from '../../src/lib/client/types';
 import { installKvStore, uninstallKvStore } from './kv-test-utils';
 
 const stateFixture: State = {
@@ -29,7 +29,7 @@ describe('history migrations', () => {
       manualHistoryStore: legacyManual,
       migrations: { version: -1 }
     });
-    const { applyMigrations } = await import('../../src/lib/util/state/migrations');
+    const { applyMigrations } = await import('../../src/lib/client/util/state/migrations');
 
     applyMigrations();
 

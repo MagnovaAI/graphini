@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HistoryEntry, State } from '../../src/lib/types';
+import type { HistoryEntry, State } from '../../src/lib/client/types';
 import { installKvStore, uninstallKvStore, type MemoryKvStore } from './kv-test-utils';
 
 const stateFixture: State = {
@@ -26,7 +26,7 @@ describe('history persistence', () => {
 
   it('saves and clears entries through the KV-backed persistence store', async () => {
     const { addHistoryEntry, clearHistoryData, historyModeStore } = await import(
-      '../../src/lib/features/history/History/history'
+      '../../src/lib/client/features/history/history'
     );
 
     addHistoryEntry({
