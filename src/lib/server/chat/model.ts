@@ -236,7 +236,7 @@ function buildAnthropicChat(modelId: string, apiKey: string, authToken: string) 
 
 /**
  * Env-only OpenRouter constructor used by subagent tool calls (fileManager,
- * markdownWrite, iconifier, ...). Subagents intentionally use the global key
+ * markdownWrite, iconSearch, ...). Subagents intentionally use the global key
  * rather than per-user keys today; per-user wiring would require threading
  * userId through every tool's session context.
  */

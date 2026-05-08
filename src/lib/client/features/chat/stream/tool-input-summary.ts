@@ -4,6 +4,66 @@ function matchJsonString(json: string, key: string): string | null {
   return match ? match[1].replace(/\\"/g, '"') : null;
 }
 
+/**
+ * Best-effort parse of a streaming `thinking` tool input. The JSON may be
+ * unterminated mid-stream, so we walk the `thoughts` array manually and
+ * pull out completed `{ label, detail? }` objects plus a partial
+ * conclusion when present.
+ */
+export function parsePartialThoughts(json: string): {
+  thoughts: { label: string; detail?: string }[];
+  conclusion?: string;
+} {
+  const thoughts: { label: string; detail?: string }[] = [];
+
+  // Locate the start of the thoughts array, then walk its top-level entries.
+  const arrayStart = json.search(/"thoughts"\s*:\s*\[/);
+  if (arrayStart >= 0) {
+    let i = json.indexOf('[', arrayStart);
+    if (i >= 0) {
+      i++;
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      let entryStart = -1;
+      for (; i < json.length; i++) {
+        const ch = json[i];
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escape = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (inString) continue;
+        if (ch === '{') {
+          if (depth === 0) entryStart = i;
+          depth++;
+        } else if (ch === '}') {
+          depth--;
+          if (depth === 0 && entryStart >= 0) {
+            const entry = json.slice(entryStart, i + 1);
+            const label = matchJsonString(entry, 'label');
+            const detail = matchJsonString(entry, 'detail');
+            if (label) thoughts.push(detail ? { label, detail } : { label });
+            entryStart = -1;
+          }
+        } else if (ch === ']' && depth === 0) {
+          break;
+        }
+      }
+    }
+  }
+
+  const conclusion = matchJsonString(json, 'conclusion') ?? undefined;
+  return { thoughts, conclusion };
+}
+
 export interface ToolInputDisplay {
   subtitle?: string;
   details?: string[];
@@ -14,7 +74,7 @@ export function deriveToolInputDisplay(toolName: string, inputJson: string): Too
     const palette = matchJsonString(inputJson, 'palette');
     return palette ? { subtitle: palette } : {};
   }
-  if (toolName === 'iconifier' || toolName === 'iconSearch') {
+  if (toolName === 'iconSearch') {
     const query = matchJsonString(inputJson, 'query');
     return query ? { subtitle: query.slice(0, 80) } : {};
   }
@@ -27,12 +87,8 @@ export function deriveToolInputDisplay(toolName: string, inputJson: string): Too
       details: reason ? [reason] : undefined
     };
   }
-  if (toolName === 'thinking') {
-    const summary = matchJsonString(inputJson, 'summary');
-    if (summary) return { subtitle: summary.slice(0, 80) };
-    const focus = matchJsonString(inputJson, 'focus');
-    return focus ? { subtitle: focus.slice(0, 80) } : {};
-  }
+  // `thinking` is handled as its own chain-of-thought part; it never
+  // reaches this generic tool-simple input formatter.
   if (toolName === 'errorChecker') {
     return { subtitle: 'diagram syntax' };
   }

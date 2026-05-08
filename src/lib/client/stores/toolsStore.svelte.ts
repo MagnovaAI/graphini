@@ -54,17 +54,11 @@ const DEFAULT_TOOLS: ToolConfig[] = [
   },
   {
     category: 'icons',
-    description: 'Search icon candidates for diagram nodes before patching',
+    description:
+      'Search local and Iconify web icons for diagram nodes; the model applies chosen icons via diagramPatch',
     enabled: true,
     id: 'iconSearch',
     label: 'Icon Tool'
-  },
-  {
-    category: 'icons',
-    description: 'Attach resolved icons to diagram nodes after a diagram exists',
-    enabled: true,
-    id: 'iconifier',
-    label: 'iconifier'
   },
   {
     category: 'search',
@@ -214,10 +208,6 @@ export const toolsStore = {
     return tools.filter((t) => t.enabled).map((t) => t.id);
   },
 
-  syncFromKv() {
-    syncToolsConfigFromKv();
-  },
-
   reset() {
     tools = cloneDefaultTools();
     saveToolsConfig(tools);
@@ -226,6 +216,10 @@ export const toolsStore = {
   setEnabled(toolId: string, enabled: boolean) {
     tools = tools.map((t) => (t.id === toolId ? { ...t, enabled } : t));
     saveToolsConfig(tools);
+  },
+
+  syncFromKv() {
+    syncToolsConfigFromKv();
   },
 
   toggle(toolId: string) {

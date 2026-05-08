@@ -163,21 +163,6 @@ export const graphiniMcpTools = [
     title: 'Icon Search'
   },
   {
-    annotations: { destructiveHint: true, openWorldHint: true, title: 'Iconifier' },
-    description:
-      'Attach resolved visual icons to Mermaid diagram nodes, remove icons, or iconify all eligible nodes.',
-    inputSchema: objectSchema(
-      z.object({
-        mode: z.enum(['all', 'selective', 'remove']),
-        nodes: z.array(z.string()).optional(),
-        removeAll: z.boolean().optional(),
-        removeFromNodes: z.array(z.string()).optional()
-      })
-    ),
-    name: 'iconifier',
-    title: 'Iconifier'
-  },
-  {
     annotations: { readOnlyHint: true, title: 'Markdown Read' },
     description: 'Read the document panel markdown content.',
     inputSchema: emptyObjectSchema(),
@@ -212,14 +197,19 @@ export const graphiniMcpTools = [
   {
     annotations: { readOnlyHint: true, title: 'Thinking' },
     description:
-      'Record a concise public thinking checkpoint before complex, ambiguous, or tool-heavy work.',
+      'Record an ordered chain of reasoning thoughts shown to the user as a Chain of Thought block. A single thought renders as a one-step chain.',
     inputSchema: objectSchema(
       z.object({
-        confidence: z.enum(['low', 'medium', 'high']).optional(),
-        focus: z.string().min(1),
-        nextAction: z.string().optional(),
-        summary: z.string().min(1),
-        toolsConsidered: z.array(z.string()).max(8).optional()
+        thoughts: z
+          .array(
+            z.object({
+              label: z.string().min(1),
+              detail: z.string().optional()
+            })
+          )
+          .min(1)
+          .max(12),
+        conclusion: z.string().optional()
       })
     ),
     name: 'thinking',

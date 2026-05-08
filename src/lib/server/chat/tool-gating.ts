@@ -22,7 +22,6 @@ export const REQUESTABLE_TOOL_NAMES = [
   'errorChecker',
   'fileManager',
   'iconSearch',
-  'iconifier',
   'markdownRead',
   'markdownWrite',
   'styleSearch',

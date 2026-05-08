@@ -17,7 +17,6 @@ import {
   searchProviderModels
 } from '../../src/lib/server/model-lab';
 import { applyDiagramLinePatch } from '../../src/lib/server/chat/tools/diagramPatch';
-import { findMermaidSyntaxErrors } from '../../src/lib/server/chat/tools/errorChecker';
 import { createIconSearchTool } from '../../src/lib/server/chat/tools/iconSearch';
 import {
   classifySvgColorMode,
@@ -179,7 +178,6 @@ const expectedMcpToolNames = [
   'styleSearch',
   'autoStyler',
   'iconSearch',
-  'iconifier',
   'longTermMemory',
   'markdownRead',
   'markdownWrite',
@@ -211,7 +209,6 @@ const expectedToolRequiredInputs = {
   fileManager: ['operation'],
   gitGuard: ['operation'],
   iconSearch: [],
-  iconifier: ['mode'],
   longTermMemory: ['operation'],
   markdownRead: [],
   markdownWrite: ['content'],
@@ -754,7 +751,6 @@ describe('server harness model routing', () => {
   });
 });
 
-
 describe('diagram patch tool', () => {
   const baseDiagram = [
     'flowchart TD',
@@ -853,29 +849,6 @@ describe('diagram patch tool', () => {
 
     if (!result.success) throw new Error(result.error);
     expect(result.content).toBe('flowchart TD\n  User["👤 User/Client"]\n  Web["🌐 Web Browser"]');
-  });
-});
-
-describe('server Mermaid syntax checker', () => {
-  it('catches parser-level Mermaid syntax errors', async () => {
-    const errors = await findMermaidSyntaxErrors('flowchart TD\n  A[Start --> B[Done]');
-
-    expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0].line).toBe(2);
-    expect(errors[0].message).toContain('Parse error');
-  });
-
-  it('accepts valid flowchart icon annotations used by the canvas renderer', async () => {
-    const errors = await findMermaidSyntaxErrors(
-      [
-        'flowchart TD',
-        '  React[Video Streaming UI]',
-        '  React@{ img: "/icons/react.svg", pos: "b", w: 60, h: 60, constraint: "on" }',
-        '  React --> API[API]'
-      ].join('\n')
-    );
-
-    expect(errors).toEqual([]);
   });
 });
 

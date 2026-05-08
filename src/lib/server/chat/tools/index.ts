@@ -8,7 +8,6 @@ export { createDiagramWriteTool } from './diagramWrite';
 export { createErrorCheckerTool } from './errorChecker';
 export { createFileManagerTool } from './fileManager';
 export { createIconSearchTool } from './iconSearch';
-export { createIconifierTool } from './iconifier';
 export { createMarkdownReadTool } from './markdownRead';
 export { createMarkdownWriteTool } from './markdownWrite';
 export { createStyleSearchTool } from './styleSearch';
@@ -25,7 +24,6 @@ import { createDiagramWriteTool } from './diagramWrite';
 import { createErrorCheckerTool } from './errorChecker';
 import { createFileManagerTool } from './fileManager';
 import { createIconSearchTool } from './iconSearch';
-import { createIconifierTool } from './iconifier';
 import { createMarkdownReadTool } from './markdownRead';
 import { createMarkdownWriteTool } from './markdownWrite';
 import { createStyleSearchTool } from './styleSearch';
@@ -51,7 +49,6 @@ export function createDiagramTools(
     errorChecker: createErrorCheckerTool(context),
     fileManager: createFileManagerTool(context),
     iconSearch: createIconSearchTool(context),
-    iconifier: createIconifierTool(context),
     markdownRead: createMarkdownReadTool(context),
     markdownWrite: createMarkdownWriteTool(context),
     styleSearch: createStyleSearchTool(context),

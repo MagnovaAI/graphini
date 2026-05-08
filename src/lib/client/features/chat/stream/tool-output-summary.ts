@@ -40,16 +40,6 @@ export function deriveErrorCheckerSubtitle(result: ErrorCheckerResult): string {
 }
 
 export function deriveToolSubtitle(toolName: string, output: ToolOutput): string {
-  if (toolName === 'iconifier') {
-    const results = (output.results as { status: string }[] | undefined) || [];
-    const added = results.filter((r) => r.status === 'added').length;
-    const removed = results.filter((r) => r.status === 'removed').length;
-    const skipped = results.filter((r) => r.status === 'skipped').length;
-    if (output.mode === 'remove') {
-      return `${removed} icon${removed !== 1 ? 's' : ''} removed`;
-    }
-    return `${added} added${skipped > 0 ? `, ${skipped} skipped` : ''}`;
-  }
   if (toolName === 'webSearch') {
     const results = (output.results as unknown[] | undefined) || [];
     const n = results.length;
@@ -79,41 +69,21 @@ export function deriveToolSubtitle(toolName: string, output: ToolOutput): string
     }
     return parts.join(' · ') || (output.summary as string) || '';
   }
-  if (toolName === 'thinking') {
-    return ((output.summary as string) || '').slice(0, 80);
-  }
+  // `thinking` is rendered as its own `chain-of-thought` part — it never
+  // goes through the tool-simple chip pipeline, so no thinking branch here.
   if (output.summary) return String(output.summary).slice(0, 80);
   if (output.message) return String(output.message).slice(0, 80);
   return '';
 }
 
 export function deriveToolDetails(toolName: string, output: ToolOutput): string[] {
-  if (toolName === 'iconifier') {
-    const results = output.results as
-      | { nodeId: string; nodeText?: string; status: string; iconId?: string }[]
-      | undefined;
-    if (!results?.length) return [];
-    return results
-      .slice(0, 12)
-      .map((r) =>
-        r.status === 'added' && r.iconId ? `${r.nodeId}: ${r.iconId}` : `${r.nodeId}: ${r.status}`
-      );
-  }
   if (toolName === 'webSearch') {
     // webSearch results are rendered as structured cards via
     // deriveSearchResults; only fall back to flat details if there are none.
     return [];
   }
-  if (toolName === 'thinking') {
-    const out: string[] = [];
-    if (output.focus) out.push(`Focus: ${output.focus}`);
-    if (output.summary) out.push(String(output.summary));
-    const tools = output.toolsConsidered as string[] | undefined;
-    if (tools?.length) out.push(`Tools: ${tools.join(', ')}`);
-    if (output.nextAction) out.push(`Next: ${output.nextAction}`);
-    if (output.confidence) out.push(`Confidence: ${output.confidence}`);
-    return out;
-  }
+  // `thinking` is rendered as its own `chain-of-thought` part; it never
+  // produces tool-simple details, so no thinking branch here.
   if (toolName === 'styleSearch') {
     const out: string[] = [];
     if (output.palette) out.push(`Palette: ${output.palette}`);
