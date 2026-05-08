@@ -184,10 +184,12 @@ export function selectToolNamesForRequest(
     activeEngine?: string;
     continuingAfterFanout?: boolean;
     recentMessages?: { content?: unknown; role?: unknown }[];
+    workspaceIsEmpty?: boolean;
   } = {}
 ): Set<string> {
   const selected = new Set<string>();
   const activeEngine = context.activeEngine ?? 'mermaid';
+  const workspaceIsEmpty = Boolean(context.workspaceIsEmpty);
 
   if (isCasualMessage(message)) return selected;
 
@@ -198,6 +200,9 @@ export function selectToolNamesForRequest(
 
   const explicitlyNamedTools = selectExplicitlyNamedTools(message);
   addAll(selected, explicitlyNamedTools);
+
+  // askQuestions is always available so the model can clarify intent on any turn.
+  selected.add('askQuestions');
 
   if (wantsSubagents(message)) {
     addAll(selected, ['subagentFanout', 'subagentAssemble']);
@@ -242,16 +247,12 @@ export function selectToolNamesForRequest(
     if (wantsDiagramDeletion(message)) selected.add('diagramDelete');
     if (wantsVisualStyling(message)) selected.add('autoStyler');
     if (wantsIcons(message)) selected.add('iconifier');
-    if (shouldWriteFullDiagram) {
+    // On a fresh/empty mermaid workspace there is nothing to patch — the user
+    // is starting from zero, so diagramWrite must always be on the table.
+    if (shouldWriteFullDiagram || workspaceIsEmpty) {
       selected.add('diagramWrite');
     }
 
-    if (
-      shouldWriteFullDiagram &&
-      /\b(create|generate|architecture|system design|diagram)\b/i.test(message)
-    ) {
-      selected.add('askQuestions');
-    }
   }
 
   if (wantsDeepThinking(message) && !wantsDiagramRepair(message)) {
