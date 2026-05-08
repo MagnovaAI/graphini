@@ -323,6 +323,19 @@ export class NeonAdapter implements DatabaseAdapter {
     return conversationsDomain.deleteMessage(this.db, id);
   }
 
+  async updateMessageByClientId(
+    conversation_id: string,
+    client_id: string,
+    data: {
+      content?: string;
+      parts?: unknown;
+      model_used?: string;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<Message | null> {
+    return conversationsDomain.updateMessageByClientId(this.db, conversation_id, client_id, data);
+  }
+
   // ── Snapshots ─────────────────────────────────────────────────────────
 
   async createSnapshot(data: {

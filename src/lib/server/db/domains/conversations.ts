@@ -2,7 +2,7 @@
  * Domain helper — Conversations, Messages, Snapshots, Files, Usage Stats
  */
 
-import { and, asc, desc, eq, inArray, not } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, not, sql } from 'drizzle-orm';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import type {
   Conversation,
@@ -261,6 +261,39 @@ export async function deleteMessage(
   id: string
 ): Promise<void> {
   await db.delete(schema.messages).where(eq(schema.messages.id, id));
+}
+
+export async function updateMessageByClientId(
+  db: NeonHttpDatabase<typeof schema>,
+  conversation_id: string,
+  client_id: string,
+  data: {
+    content?: string;
+    parts?: unknown;
+    model_used?: string;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<Message | null> {
+  const updates: Record<string, unknown> = {};
+  if (data.content !== undefined) updates.content = data.content;
+  if (data.parts !== undefined) updates.parts = data.parts as Record<string, unknown>;
+  if (data.model_used !== undefined) updates.model_used = data.model_used;
+  if (data.metadata !== undefined) updates.metadata = data.metadata;
+  if (Object.keys(updates).length === 0) return null;
+
+  const [row] = await db
+    .update(schema.messages)
+    .set(updates)
+    .where(
+      and(
+        eq(schema.messages.conversation_id, conversation_id),
+        sql`${schema.messages.metadata}->>'clientId' = ${client_id}`
+      )
+    )
+    .returning();
+  if (!row) return null;
+  await touchConversation(db, conversation_id);
+  return mapMessage(row);
 }
 
 async function touchConversation(

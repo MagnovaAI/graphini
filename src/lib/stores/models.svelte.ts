@@ -47,7 +47,19 @@ async function fetchModels(): Promise<void> {
       models = data.data;
       lastFetched = Date.now();
 
-      // Auto-select first model if none selected
+      const isKnown = (id: string) => models.some((m) => m.id === id);
+      if (selectedModelId && !isKnown(selectedModelId)) {
+        // Saved selection points at a model that's no longer enabled — drop it
+        // so we don't ship an unknown id to the provider.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const kvMod = (globalThis as any).__kvStoreModule;
+          if (kvMod) kvMod.set('models', 'graphini_selected_model', '');
+        } catch {
+          /* silent */
+        }
+        selectedModelId = '';
+      }
       if (!selectedModelId && models.length > 0) {
         selectedModelId = models[0].id;
       }

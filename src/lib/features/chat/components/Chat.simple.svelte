@@ -13,6 +13,36 @@
   import { CodeArtifact } from '$lib/features/chat/components/ai-elements/code-artifact';
   import type { PromptInputMessage } from '$lib/features/chat/components/ai-elements/prompt-input';
   import { Response } from '$lib/features/chat/components/ai-elements/response';
+  import type {
+    Artifact,
+    Checkpoint,
+    ContentPart,
+    DisplayContentPart,
+    PatchChainPart,
+    QuestionnaireQuestion
+  } from '$lib/features/chat/content-parts/types';
+  import { toolVerbs } from '$lib/features/chat/content-parts/tool-display';
+  import {
+    buildDiagramPatchPreview,
+    mermaidDeclarationPattern
+  } from '$lib/features/chat/stream/preview';
+  import {
+    deriveToolInputDisplay,
+    parsePartialQuestionnaire,
+    parseStreamingContent
+  } from '$lib/features/chat/stream/tool-input-summary';
+  import {
+    deriveErrorCheckerSubtitle,
+    deriveToolDetails,
+    deriveToolSubtitle
+  } from '$lib/features/chat/stream/tool-output-summary';
+  import {
+    createConversation,
+    fetchConversationMessages,
+    postConversationMessages
+  } from '$lib/features/chat/persistence/db-api';
+  import { messagesFromDbRows, partsFromDbRows } from '$lib/features/chat/persistence/db-mappers';
+  import type { DbMessageRow } from '$lib/features/chat/persistence/db-types';
   import { parse as mermaidParse } from '$lib/features/diagram/mermaid';
   import { canvasStatus } from '$lib/stores/canvasStatus.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -21,6 +51,7 @@
   import { kv } from '$lib/stores/kvStore.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import ProviderIcon from '$lib/features/chat/components/ProviderIcon.svelte';
+  import ToolSimpleChip from '$lib/features/chat/components/ToolSimpleChip.svelte';
   import TooltipWrap from '$lib/components/ui/tooltip/TooltipWrap.svelte';
   // sessionFilesStore removed — workspace handles state
   import { toolsStore } from '$lib/stores/toolsStore.svelte';
@@ -29,38 +60,24 @@
   import {
     AlertCircle,
     ArrowDown,
-    BookOpen,
     Brain,
     Building2,
-    ChartBar,
     Check,
     ChevronDown,
     ChevronRight,
-    ChevronsUpDown,
-    ClipboardCheck,
     Database,
-    Eye,
     FileText,
     GitBranch,
-    Globe,
-    Lightbulb,
-    ListChecks,
-    Lock,
     MessageCircleQuestion,
-    Network,
-    Paintbrush,
     Palette,
     Paperclip,
     Plus,
     RefreshCw,
     RotateCcw,
     Search,
-    ShieldCheck,
     Smartphone,
     Sparkles,
     Square,
-    Target,
-    Trash2,
     Undo2,
     Wrench,
     X,
@@ -111,31 +128,6 @@
     return targetMatch[1].replace(/\\"/g, '"') === activeTab.title;
   }
 
-  const mermaidDeclarationPattern =
-    /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)\b/i;
-
-  function extractStreamingJsonNumber(inputJson: string, key: string): number | null {
-    const match = inputJson.match(new RegExp(`"${key}"\\s*:\\s*(\\d+)`));
-    return match ? Number(match[1]) : null;
-  }
-
-  function buildDiagramPatchPreview(inputJson: string, replacement: string, previousCode: string) {
-    const startLine = extractStreamingJsonNumber(inputJson, 'startLine');
-    const endLine = extractStreamingJsonNumber(inputJson, 'endLine');
-    if (!startLine || !endLine || startLine > endLine || !previousCode.trim()) return null;
-
-    const lines = previousCode.split('\n');
-    if (endLine > lines.length) return null;
-
-    const replacementLines = replacement.split('\n');
-    const replacingWholeDocument = startLine === 1 && endLine === lines.length && lines.length > 1;
-    if (replacingWholeDocument && mermaidDeclarationPattern.test(replacement.trim())) return null;
-
-    const nextLines = [...lines];
-    nextLines.splice(startLine - 1, endLine - startLine + 1, ...replacementLines);
-    return nextLines.join('\n');
-  }
-
   function previewDiagramToolInput(
     toolName: string,
     inputJson: string,
@@ -163,29 +155,6 @@
       updateDiagram: getActiveWorkspaceEngine() === 'mermaid'
     }));
     return true;
-  }
-
-  function getToolDisplayName(toolName: string) {
-    const names: Record<string, string> = {
-      askQuestions: 'Question Tool',
-      autoStyler: 'Style Tool',
-      dataAnalyzer: 'Data Analyzer',
-      diagramDelete: 'Clear Diagram',
-      diagramPatch: 'Diagram Patch',
-      diagramRead: 'Diagram Read',
-      diagramWrite: 'Diagram Write',
-      errorChecker: 'Error Checker',
-      fileManager: 'Files',
-      iconSearch: 'Icon Tool',
-      iconifier: 'Icon Tool',
-      markdownRead: 'Markdown Read',
-      markdownWrite: 'Markdown Write',
-      styleSearch: 'Style Tool',
-      thinking: 'Thinking',
-      webSearch: 'Web Search'
-    };
-
-    return names[toolName] ?? toolName;
   }
 
   function applyToolSourceToActiveTab(content: string, output?: Record<string, unknown>) {
@@ -262,16 +231,6 @@
   let dbSyncedMessageCount = 0;
   let dbSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  interface DbMessageRow {
-    content: string;
-    created_at: string;
-    id: string;
-    metadata: Record<string, unknown> | null;
-    model_used: string | null;
-    parts: unknown;
-    role: string;
-  }
-
   function getDbConversationId(): string | null {
     try {
       return kv.get<string>('chat', chatKey('dbConvId')) || null;
@@ -290,39 +249,16 @@
     }
   }
 
-  function metadataOf(message: DbMessageRow): Record<string, unknown> {
-    return message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
-  }
-
-  function messagesFromDbRows(rows: DbMessageRow[]): Record<string, unknown>[] {
-    return rows.map((message) => {
-      const metadata = metadataOf(message);
-      return {
-        attachments: metadata.attachments || [],
-        content: message.content,
-        contextContent: metadata.contextContent,
-        id: typeof metadata.clientId === 'string' ? metadata.clientId : message.id,
-        model_used: message.model_used,
-        role: message.role,
-        timestamp: metadata.timestamp || new Date(message.created_at).getTime()
-      };
-    });
-  }
-
-  function partsFromDbRows(rows: DbMessageRow[]): Record<number, ContentPart[]> {
-    const restoredParts: Record<number, ContentPart[]> = {};
-    rows.forEach((message, index) => {
-      if (Array.isArray(message.parts)) restoredParts[index] = message.parts as ContentPart[];
-      else if (message.role === 'assistant' && message.content) {
-        restoredParts[index] = [{ type: 'text', text: message.content }];
-      }
-    });
-    return restoredParts;
-  }
-
   function applyDbMessages(convId: string, rows: DbMessageRow[]) {
     messages = messagesFromDbRows(rows);
-    messageParts = partsFromDbRows(rows);
+    const restored = partsFromDbRows(rows);
+    messageParts = restored.parts;
+    if (Object.keys(restored.artifacts).length > 0) {
+      // Merge over any KV-restored artifactMap. DB is authoritative for the
+      // bodies we explicitly inlined; KV-only artifacts (older messages whose
+      // sync predates inlining) are preserved.
+      artifactMap = { ...artifactMap, ...restored.artifacts };
+    }
     dbConversationId = convId || null;
     dbSyncedMessageCount = messages.length;
     conversationStarted = messages.length > 0;
@@ -342,96 +278,93 @@
   async function ensureDbConversation(): Promise<string | null> {
     if (!authStore.isLoggedIn) return null;
     if (dbConversationId) return dbConversationId;
-    // Check localStorage first
     const saved = getDbConversationId();
     if (saved) {
       dbConversationId = saved;
       return saved;
     }
-    try {
-      const res = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          title: conversationTitle || 'New Chat',
-          metadata: { fileId: getCurrentFileId() }
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const newConvId = data.conversation?.id || null;
-        setDbConversationId(newConvId);
-        // Persist active conversation ID so it survives refresh
-        if (newConvId) {
-          try {
-            kv.set('chat', chatKey('activeConversationId'), newConvId);
-          } catch {
-            /* ignore */
-          }
-          // Refresh conversations list so history panel shows the new conversation
-          import('$lib/stores/conversations.svelte')
-            .then(({ conversationsStore }) => {
-              conversationsStore.fetch();
-              conversationsStore.setActive(newConvId);
-            })
-            .catch(() => {
-              /* ignore */
-            });
-        }
-        return dbConversationId;
+    const created = await createConversation({
+      fileId: getCurrentFileId(),
+      title: conversationTitle || 'New Chat'
+    });
+    if (!created) return null;
+    const newConvId = created.id;
+    setDbConversationId(newConvId);
+    if (newConvId) {
+      try {
+        kv.set('chat', chatKey('activeConversationId'), newConvId);
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
+      // Refresh conversations list so history panel shows the new conversation
+      import('$lib/stores/conversations.svelte')
+        .then(({ conversationsStore }) => {
+          conversationsStore.fetch();
+          conversationsStore.setActive(newConvId);
+        })
+        .catch(() => {
+          /* ignore */
+        });
     }
-    return null;
+    return dbConversationId;
   }
 
   async function syncMessagesToDb() {
     if (!authStore.isLoggedIn || messages.length === 0 || !conversationStarted) return;
     const convId = await ensureDbConversation();
     if (!convId) return;
-    // Only sync new messages since last sync
-    const newMessages = messages.slice(dbSyncedMessageCount);
+    // Re-sync the trailing window so messages whose state finalized after
+    // the first sync (artifact bodies, reasoning text, tool-simple done state)
+    // get persisted. The server upserts on conflict by clientId.
+    const RESYNC_TAIL = 3;
+    const start = Math.max(0, Math.min(dbSyncedMessageCount, messages.length - RESYNC_TAIL));
+    const newMessages = messages.slice(start);
     if (newMessages.length === 0) return;
-    try {
-      const payload = newMessages.map((m: Record<string, unknown>, i: number) => {
-        const globalIdx = dbSyncedMessageCount + i;
-        // Sanitize parts to be JSON-safe
-        let safeParts = null;
-        try {
-          const raw = messageParts[globalIdx];
-          if (raw) safeParts = JSON.parse(JSON.stringify(raw));
-        } catch {
-          /* ignore */
+    const payload = newMessages.map((m: Record<string, unknown>, i: number) => {
+      const globalIdx = start + i;
+      let safeParts: unknown = null;
+      try {
+        const raw = messageParts[globalIdx];
+        if (raw) {
+          // Inline artifact bodies so DB-only restores (different machine,
+          // cleared KV, conversation switch across files) don't lose them.
+          // Streaming artifacts are skipped — they'll inline on the next sync.
+          const enriched = (raw as ContentPart[]).map((part: ContentPart) => {
+            if (part.type === 'artifact') {
+              const art = artifactMap[part.artifactId];
+              if (art && !art.isStreaming) {
+                return { ...part, artifact: { ...art, isStreaming: false } };
+              }
+            }
+            return part;
+          });
+          safeParts = JSON.parse(JSON.stringify(enriched));
         }
-        // DB has content_not_empty constraint — never send empty string
-        const rawContent = m.content as string | undefined;
-        const content = rawContent && rawContent.trim() ? rawContent : '[tool call]';
-        return {
-          content,
-          metadata: {
-            attachments: m.attachments,
-            clientId: typeof m.id === 'string' ? m.id : undefined,
-            contextContent: m.contextContent,
-            timestamp: m.timestamp
-          },
-          model_used: m.role === 'assistant' ? (m.model_used ?? selectedModelId) : undefined,
-          parts: safeParts,
-          role: m.role
-        };
-      });
-      const res = await fetch('/api/conversations/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ conversation_id: convId, messages: payload })
-      });
-      if (res.ok) {
-        dbSyncedMessageCount = messages.length;
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
+      // DB has content_not_empty constraint — never send empty string
+      const rawContent = m.content as string | undefined;
+      const content = rawContent && rawContent.trim() ? rawContent : '[tool call]';
+      return {
+        content,
+        metadata: {
+          attachments: m.attachments,
+          clientId: typeof m.id === 'string' ? m.id : undefined,
+          contextContent: m.contextContent,
+          timestamp: m.timestamp
+        },
+        model_used:
+          m.role === 'assistant'
+            ? ((m.model_used as string | undefined) ?? (selectedModelId as string | undefined))
+            : undefined,
+        parts: safeParts,
+        role: m.role as string
+      };
+    });
+    const ok = await postConversationMessages(convId, payload);
+    if (ok) {
+      dbSyncedMessageCount = messages.length;
     }
   }
 
@@ -447,24 +380,16 @@
     if (!authStore.isLoggedIn) return false;
     const convId = getDbConversationId();
     if (!convId) return false;
-    try {
-      const res = await fetch(`/api/conversations/messages?conversation_id=${convId}`, {
-        credentials: 'include'
-      });
-      if (res.status === 404) {
-        clearCurrentFileChatCache();
-        setDbConversationId(null);
-        applyDbMessages('', []);
-        return true;
-      }
-      if (!res.ok) return false;
-      const data = await res.json();
-      if (!Array.isArray(data.messages)) return false;
-      applyDbMessages(convId, data.messages as DbMessageRow[]);
+    const result = await fetchConversationMessages(convId);
+    if (result.status === 'gone') {
+      clearCurrentFileChatCache();
+      setDbConversationId(null);
+      applyDbMessages('', []);
       return true;
-    } catch {
-      return false;
     }
+    if (result.status === 'error' || !result.rows) return false;
+    applyDbMessages(convId, result.rows);
+    return true;
   }
 
   // Models loaded from API via modelsStore
@@ -632,10 +557,6 @@
   let conversationTitle = $state<string | null>(null);
 
   // Checkpoint system: save diagram state before each user message
-  interface Checkpoint {
-    code: string;
-    messageIndex: number;
-  }
   let checkpoints = $state<Checkpoint[]>([]);
 
   // Context: track selected diagram elements for chat context
@@ -710,46 +631,11 @@
   let hoveredMessageIndex = $state<number | null>(null);
 
   // Per-message artifact tracking with unique IDs
-  interface Artifact {
-    id: string;
-    code: string;
-    previousCode: string;
-    operation: 'create' | 'update' | 'patch' | 'delete' | 'read';
-    isStreaming: boolean;
-    title: string;
-    language?: string;
-    hasErrors?: boolean;
-    errors?: string[];
-    readFrom?: number;
-    readTo?: number;
-    totalLines?: number;
-  }
   // Artifacts stored by ID for quick lookup
   let artifactMap = $state<Record<string, Artifact>>({});
   let artifactIdsByToolCall = $state<Record<string, string>>({});
   let reasoningExpanded = $state<Record<string, boolean>>({});
   let toolSimpleExpanded = $state<Record<string, boolean>>({});
-
-  const TOOL_VERBS: Record<string, { pending: string; done: string }> = {
-    askQuestions: { pending: 'Asking', done: 'Asked' },
-    autoStyler: { pending: 'Styling', done: 'Styled' },
-    dataAnalyzer: { pending: 'Analyzing', done: 'Analyzed' },
-    diagramDelete: { pending: 'Clearing', done: 'Cleared' },
-    diagramRead: { pending: 'Reading', done: 'Read' },
-    errorChecker: { pending: 'Checking', done: 'Checked' },
-    fileManager: { pending: 'Managing', done: 'Managed' },
-    iconSearch: { pending: 'Finding icons', done: 'Found icons' },
-    iconifier: { pending: 'Iconifying', done: 'Iconified' },
-    markdownRead: { pending: 'Reading', done: 'Read' },
-    markdownWrite: { pending: 'Writing', done: 'Wrote' },
-    styleSearch: { pending: 'Styling', done: 'Styled' },
-    thinking: { pending: 'Thinking', done: 'Thought' },
-    webSearch: { pending: 'Searching', done: 'Searched' }
-  };
-
-  function toolVerbs(toolName: string): { pending: string; done: string } {
-    return TOOL_VERBS[toolName] ?? { pending: 'Running', done: 'Done' };
-  }
 
   function updateToolSimple(
     assistantIdx: number,
@@ -804,6 +690,7 @@
           const k = `reasoning-expanded:${part.id}`;
           if (reasoningExpanded[k] !== undefined) {
             const next = { ...reasoningExpanded };
+            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
             delete next[k];
             reasoningExpanded = next;
           }
@@ -831,50 +718,6 @@
     artifactIdsByToolCall = { ...artifactIdsByToolCall, [key]: artifactId };
     return artifactId;
   }
-
-  // Ordered content parts per assistant message: text, artifact refs, and reasoning in stream order
-  type ContentPart =
-    | { type: 'text'; text: string }
-    | { type: 'thinking'; id: string }
-    | { type: 'artifact'; artifactId: string }
-    | { type: 'reasoning'; id: string; text: string; status: 'running' | 'done' }
-    | { type: 'error'; error: string; userMessage?: string }
-    | {
-        type: 'questionnaire';
-        id: string;
-        context: string;
-        questions: QuestionnaireQuestion[];
-        isStreaming?: boolean;
-        submitted?: boolean;
-      }
-    | {
-        type: 'markdown';
-        id: string;
-        content: string;
-        operation: 'read' | 'write' | 'append';
-        lines: number;
-        isStreaming?: boolean;
-      }
-    | {
-        type: 'tool-simple';
-        id: string;
-        toolName: string;
-        titlePending: string;
-        titleDone: string;
-        subtitle?: string;
-        status: 'running' | 'done';
-        details?: string[];
-      };
-
-  type PatchChainPart = Extract<ContentPart, { type: 'artifact' }>;
-  type DisplayContentPart =
-    | ContentPart
-    | {
-        type: 'tool-chain';
-        id: string;
-        parts: PatchChainPart[];
-        status: 'running' | 'done';
-      };
 
   function messageKey(message: Record<string, unknown>, index: number) {
     return String(message.id ?? `${message.role ?? 'message'}:${message.timestamp ?? index}`);
@@ -983,13 +826,6 @@
       return part;
     });
     return changed ? finalized : parts;
-  }
-
-  interface QuestionnaireQuestion {
-    id: string;
-    text: string;
-    type: 'single' | 'multi';
-    options: { id: string; label: string }[];
   }
 
   let questionnaireResponses = $state<Record<string, Record<string, string | string[]>>>({});
@@ -1293,17 +1129,23 @@
       } else {
         workspaceStore.setActiveDiagramChatMessages(workspaceMessages);
       }
-      // Save message parts, excluding provider reasoning/internal thoughts.
+      // Save message parts. Reasoning text is preserved (so refresh shows
+      // that the model thought + what it thought) but its in-flight 'running'
+      // state is normalized to 'done' on persist.
       const allParts: Record<number, ContentPart[]> = {};
       for (const [idx, parts] of Object.entries(messageParts)) {
-        allParts[Number(idx)] = (parts as ContentPart[])
-          .filter((p: ContentPart) => p.type !== 'reasoning' && p.type !== 'thinking')
-          .map((p: ContentPart) => {
-            if (p.type === 'text') return { type: 'text', text: p.text };
-            if (p.type === 'artifact') return { type: 'artifact', artifactId: p.artifactId };
-            if (p.type === 'error') return { type: 'error', error: p.error };
-            return p;
-          });
+        allParts[Number(idx)] = (parts as ContentPart[]).map((p: ContentPart) => {
+          if (p.type === 'text') return { type: 'text', text: p.text };
+          if (p.type === 'artifact') return { type: 'artifact', artifactId: p.artifactId };
+          if (p.type === 'error') return { type: 'error', error: p.error };
+          if (p.type === 'reasoning') {
+            return { type: 'reasoning', id: p.id, text: p.text, status: 'done' };
+          }
+          if (p.type === 'tool-simple') {
+            return { ...p, status: 'done' };
+          }
+          return p;
+        });
       }
       kv.set('chat', chatKey('parts', fileId), allParts);
       // Save artifacts (only finalized, non-streaming)
@@ -1367,14 +1209,7 @@
         messages = restoredMessages;
         conversationStarted = true;
         if (savedParts) {
-          messageParts = Object.fromEntries(
-            Object.entries(savedParts).map(([idx, parts]) => [
-              idx,
-              (parts as ContentPart[]).filter(
-                (part) => part.type !== 'reasoning' && part.type !== 'thinking'
-              )
-            ])
-          );
+          messageParts = savedParts;
         } else {
           // Rebuild simple text parts from messages
           const parts: Record<number, ContentPart[]> = {};
@@ -1754,9 +1589,7 @@
     const lines: string[] = [];
     for (const q of questions) {
       const answer = responses[q.id];
-      const answerText = Array.isArray(answer)
-        ? answer.join(', ')
-        : answer || '(no answer)';
+      const answerText = Array.isArray(answer) ? answer.join(', ') : answer || '(no answer)';
       lines.push(`Q: ${q.text}\nA: ${answerText}`);
     }
     const responseText = lines.join('\n\n');
@@ -2006,7 +1839,7 @@
               role: m.role,
               content: m.contextContent || m.content
             })),
-          model: selectedModelId,
+          model: selectedModel.id,
           sessionId: sessionId,
           workspaceTabs: workspaceStore.diagrams.map((tab) => ({
             engine: tab.engine,
@@ -2183,10 +2016,7 @@
                       diagramWrite: 'Diagram Write'
                     };
 
-                    if (
-                      currentToolName === 'diagramWrite' ||
-                      currentToolName === 'diagramPatch'
-                    ) {
+                    if (currentToolName === 'diagramWrite' || currentToolName === 'diagramPatch') {
                       currentArtifactId = getArtifactIdForToolCall(
                         currentToolName,
                         currentToolCallId
@@ -2253,10 +2083,10 @@
                         const verbs = toolVerbs(currentToolName);
                         parts.push({
                           id: simpleId,
-                          toolName: currentToolName,
-                          titlePending: verbs.pending,
-                          titleDone: verbs.done,
                           status: 'running',
+                          titleDone: verbs.done,
+                          titlePending: verbs.pending,
+                          toolName: currentToolName,
                           type: 'tool-simple'
                         });
                         messageParts[assistantIndex] = [...parts];
@@ -2273,45 +2103,11 @@
                         (p: ContentPart) => p.type === 'questionnaire' && p.id === qId
                       );
                       if (qIdx >= 0) {
-                        // Try to parse partial context
-                        const ctxMatch = currentToolInputJson.match(
-                          /"context"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        const partialCtx = ctxMatch
-                          ? ctxMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n')
-                          : '';
-
-                        // Try to parse partial questions array — extract as many complete question objects as possible
-                        let partialQuestions: QuestionnaireQuestion[] = [];
-                        const qArrMatch = currentToolInputJson.match(
-                          /"questions"\s*:\s*\[([\s\S]*)/
-                        );
-                        if (qArrMatch) {
-                          const qArrStr = qArrMatch[1];
-                          // Find each complete question object by matching balanced braces
-                          const objRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
-                          let match;
-                          while ((match = objRegex.exec(qArrStr)) !== null) {
-                            try {
-                              const qObj = JSON.parse(match[0]);
-                              if (qObj.id && qObj.text) {
-                                partialQuestions.push({
-                                  id: qObj.id,
-                                  text: qObj.text,
-                                  type: qObj.type || 'single',
-                                  options: qObj.options || []
-                                });
-                              }
-                            } catch {
-                              /* incomplete object */
-                            }
-                          }
-                        }
-
+                        const partial = parsePartialQuestionnaire(currentToolInputJson);
                         parts[qIdx] = {
                           ...parts[qIdx],
-                          context: partialCtx,
-                          questions: partialQuestions,
+                          context: partial.context,
+                          questions: partial.questions,
                           isStreaming: true
                         } as ContentPart;
                         messageParts[assistantIndex] = [...parts];
@@ -2325,16 +2121,8 @@
                         (p: ContentPart) => p.type === 'markdown' && p.id === mdId
                       );
                       if (mdIdx >= 0) {
-                        // Extract content from accumulated JSON
-                        const contentMatch = currentToolInputJson.match(
-                          /"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/
-                        );
-                        if (contentMatch) {
-                          const rawMd = contentMatch[1]
-                            .replace(/\\n/g, '\n')
-                            .replace(/\\t/g, '\t')
-                            .replace(/\\"/g, '"')
-                            .replace(/\\\\/g, '\\');
+                        const rawMd = parseStreamingContent(currentToolInputJson);
+                        if (rawMd !== null) {
                           parts[mdIdx] = {
                             ...parts[mdIdx],
                             content: rawMd,
@@ -2361,16 +2149,8 @@
                         currentToolName,
                         currentToolCallId
                       );
-                      const contentMatch = currentToolInputJson.match(
-                        /"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/
-                      );
-                      if (contentMatch) {
-                        const rawCode = contentMatch[1]
-                          .replace(/\\n/g, '\n')
-                          .replace(/\\t/g, '\t')
-                          .replace(/\\"/g, '"')
-                          .replace(/\\\\/g, '\\');
-
+                      const rawCode = parseStreamingContent(currentToolInputJson);
+                      if (rawCode !== null) {
                         if (rawCode.trim() && artifactMap[artifactId]) {
                           artifactMap[artifactId] = {
                             ...artifactMap[artifactId],
@@ -2403,62 +2183,9 @@
                       }
                     } else {
                       // Live subtitle/details for tool-simple
-                      let subtitle: string | undefined;
-                      let details: string[] | undefined;
-                      if (
-                        currentToolName === 'autoStyler' ||
-                        currentToolName === 'styleSearch'
-                      ) {
-                        const palMatch = currentToolInputJson.match(
-                          /"palette"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (palMatch) subtitle = palMatch[1].replace(/\\"/g, '"');
-                      } else if (
-                        currentToolName === 'iconifier' ||
-                        currentToolName === 'iconSearch'
-                      ) {
-                        const queryMatch = currentToolInputJson.match(
-                          /"query"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (queryMatch)
-                          subtitle = queryMatch[1].replace(/\\"/g, '"').slice(0, 80);
-                      } else if (currentToolName === 'webSearch') {
-                        const queryMatch = currentToolInputJson.match(
-                          /"query"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        const reasonMatch = currentToolInputJson.match(
-                          /"reason"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (queryMatch) {
-                          const q = queryMatch[1].replace(/\\"/g, '"');
-                          subtitle = `"${q}"`;
-                          const r = reasonMatch?.[1]?.replace(/\\"/g, '"');
-                          if (r) details = [r];
-                        }
-                      } else if (currentToolName === 'thinking') {
-                        const focusMatch = currentToolInputJson.match(
-                          /"focus"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        const summaryMatch = currentToolInputJson.match(
-                          /"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (summaryMatch)
-                          subtitle = summaryMatch[1].replace(/\\"/g, '"').slice(0, 80);
-                        else if (focusMatch)
-                          subtitle = focusMatch[1].replace(/\\"/g, '"').slice(0, 80);
-                      } else if (currentToolName === 'errorChecker') {
-                        subtitle = 'diagram syntax';
-                      } else if (currentToolName === 'fileManager') {
-                        const opMatch = currentToolInputJson.match(
-                          /"operation"\s*:\s*"((?:[^"\\]|\\.)*)"/
-                        );
-                        if (opMatch) subtitle = opMatch[1];
-                      }
-                      if (subtitle !== undefined || details !== undefined) {
-                        updateToolSimple(assistantIndex, currentToolCallId, {
-                          subtitle,
-                          details
-                        });
+                      const display = deriveToolInputDisplay(currentToolName, currentToolInputJson);
+                      if (display.subtitle !== undefined || display.details !== undefined) {
+                        updateToolSimple(assistantIndex, currentToolCallId, display);
                       }
                     }
                   } else if (data.type === 'tool-output-available') {
@@ -2486,11 +2213,11 @@
                       } else {
                         parts.push({
                           id: simpleId,
-                          toolName: 'diagramRead',
-                          titlePending: 'Reading',
-                          titleDone: 'Read',
                           status: 'done',
                           subtitle,
+                          titleDone: 'Read',
+                          titlePending: 'Reading',
+                          toolName: 'diagramRead',
                           type: 'tool-simple'
                         });
                       }
@@ -2606,132 +2333,22 @@
                         }
                       }
 
-                      // Compute subtitle
-                      let subtitle = '';
-                      if (toolName === 'iconifier') {
-                        const added = (output.results || []).filter(
-                          (r: { status: string }) => r.status === 'added'
-                        ).length;
-                        const removed = (output.results || []).filter(
-                          (r: { status: string }) => r.status === 'removed'
-                        ).length;
-                        const skipped = (output.results || []).filter(
-                          (r: { status: string }) => r.status === 'skipped'
-                        ).length;
-                        if (output.mode === 'remove') {
-                          subtitle = `${removed} icon${removed !== 1 ? 's' : ''} removed`;
-                        } else {
-                          subtitle = `${added} added${skipped > 0 ? `, ${skipped} skipped` : ''}`;
-                        }
-                      } else if (toolName === 'webSearch') {
-                        const n = (output.results || []).length;
-                        subtitle =
-                          (output.query ? `"${output.query}"` : '') +
-                          (n ? ` · ${n} result${n !== 1 ? 's' : ''}` : '');
-                      } else if (toolName === 'fileManager') {
-                        if (output.fileCount !== undefined)
-                          subtitle = `${output.fileCount} file${output.fileCount !== 1 ? 's' : ''}`;
-                        else if (output.filename) subtitle = output.filename;
-                        else if (output.totalMatches !== undefined)
-                          subtitle = `${output.totalMatches} match${output.totalMatches !== 1 ? 'es' : ''}`;
-                        else if (output.message) subtitle = String(output.message);
-                      } else if (toolName === 'errorChecker') {
-                        subtitle = !checkerValid
-                          ? checkerErrors[0]
-                            ? checkerErrors[0].line > 0
-                              ? `line ${checkerErrors[0].line}: ${checkerErrors[0].message}`
-                              : checkerErrors[0].message
-                            : `${checkerErrors.length} error${checkerErrors.length !== 1 ? 's' : ''}`
-                          : 'no errors';
-                      } else if (toolName === 'autoStyler' || toolName === 'styleSearch') {
-                        const parts: string[] = [];
-                        if (output.palette) parts.push(String(output.palette));
-                        if (output.nodesStyled !== undefined)
-                          parts.push(`${output.nodesStyled} node${output.nodesStyled !== 1 ? 's' : ''}`);
-                        subtitle = parts.join(' · ') || (output.summary as string) || '';
-                      } else if (toolName === 'thinking') {
-                        subtitle = (output.summary as string)?.slice(0, 80) || '';
-                      } else if (output.summary) {
-                        subtitle = String(output.summary).slice(0, 80);
-                      } else if (output.message) {
-                        subtitle = String(output.message).slice(0, 80);
-                      }
-
-                      // Build details array
-                      const toolDetails: string[] = [];
-                      if (toolName === 'errorChecker') {
-                        if (!checkerValid) {
-                          toolDetails.push(
-                            ...checkerErrors.map((e) =>
-                              e.line > 0 ? `Line ${e.line}: ${e.message}` : e.message
-                            )
-                          );
-                        } else {
-                          toolDetails.push('All syntax checks passed');
-                        }
-                      } else if (toolName === 'iconifier' && output.results?.length) {
-                        toolDetails.push(
-                          ...output.results
-                            .slice(0, 12)
-                            .map(
-                              (r: {
-                                nodeId: string;
-                                nodeText?: string;
-                                status: string;
-                                iconId?: string;
-                              }) =>
-                                r.status === 'added' && r.iconId
-                                  ? `${r.nodeId}: ${r.iconId}`
-                                  : `${r.nodeId}: ${r.status}`
-                            )
-                        );
-                      } else if (toolName === 'webSearch' && output.results?.length) {
-                        toolDetails.push(
-                          ...output.results
-                            .slice(0, 8)
-                            .map(
-                              (r: { title?: string; snippet?: string; url?: string }) =>
-                                `${r.title || r.url || ''}${r.snippet ? ` — ${String(r.snippet).slice(0, 100)}` : ''}`
-                            )
-                        );
-                      } else if (toolName === 'thinking') {
-                        if (output.focus) toolDetails.push(`Focus: ${output.focus}`);
-                        if (output.summary) toolDetails.push(String(output.summary));
-                        if (output.toolsConsidered?.length)
-                          toolDetails.push(`Tools: ${output.toolsConsidered.join(', ')}`);
-                        if (output.nextAction) toolDetails.push(`Next: ${output.nextAction}`);
-                        if (output.confidence)
-                          toolDetails.push(`Confidence: ${output.confidence}`);
-                      } else if (toolName === 'styleSearch') {
-                        if (output.palette) toolDetails.push(`Palette: ${output.palette}`);
-                        if (output.suggestedPatch) {
-                          toolDetails.push(
-                            `Patch: lines ${output.suggestedPatch.startLine}-${output.suggestedPatch.endLine}`
-                          );
-                        }
-                        if (output.styleLines?.length)
-                          toolDetails.push(
-                            ...output.styleLines.slice(0, 8).map((line: string) => line.trim())
-                          );
-                      } else if (toolName === 'iconSearch' && output.suggestions?.length) {
-                        toolDetails.push(
-                          ...output.suggestions
-                            .slice(0, 8)
-                            .map(
-                              (item: {
-                                colorMode?: string;
-                                confidence?: number;
-                                iconId?: string;
-                                nodeId: string;
-                                source?: string;
-                                status: string;
-                              }) =>
-                                item.status === 'matched'
-                                  ? `${item.nodeId}: ${item.iconId} (${item.colorMode || 'any'}, ${item.source || 'local'}, ${Math.round((item.confidence || 0) * 100)}%)`
-                                  : `${item.nodeId}: no match`
-                            )
-                        );
-                      }
+                      // Compute subtitle and details (errorChecker special-cased to use client mermaidParse result)
+                      const subtitle =
+                        toolName === 'errorChecker'
+                          ? deriveErrorCheckerSubtitle({
+                              valid: checkerValid,
+                              errors: checkerErrors
+                            })
+                          : deriveToolSubtitle(toolName, output);
+                      const toolDetails =
+                        toolName === 'errorChecker'
+                          ? checkerValid
+                            ? ['All syntax checks passed']
+                            : checkerErrors.map((e) =>
+                                e.line > 0 ? `Line ${e.line}: ${e.message}` : e.message
+                              )
+                          : deriveToolDetails(toolName, output);
 
                       // Upsert tool-simple part
                       const simpleId = `tool-simple-${data.toolCallId || currentToolCallId}`;
@@ -2749,13 +2366,13 @@
                       } else {
                         const verbs = toolVerbs(toolName);
                         parts.push({
+                          details: toolDetails.length > 0 ? toolDetails : undefined,
                           id: simpleId,
-                          toolName,
-                          titlePending: verbs.pending,
-                          titleDone: verbs.done,
                           status: 'done',
                           subtitle,
-                          details: toolDetails.length > 0 ? toolDetails : undefined,
+                          titleDone: verbs.done,
+                          titlePending: verbs.pending,
+                          toolName,
                           type: 'tool-simple'
                         });
                       }
@@ -3054,8 +2671,7 @@
                 {/if}
                 {#if message.content}
                   {@const isQA =
-                    typeof message.content === 'string' &&
-                    /^Q:\s/.test(message.content)}
+                    typeof message.content === 'string' && /^Q:\s/.test(message.content)}
                   {#if isQA}
                     {@const qaPairs = (message.content as string)
                       .split(/\n\n+/)
@@ -3063,13 +2679,15 @@
                         const m = block.match(/^Q:\s*(.+?)\nA:\s*([\s\S]+)$/);
                         return m ? { q: m[1], a: m[2] } : null;
                       })
-                      .filter(Boolean) as Array<{ q: string; a: string }>}
+                      .filter(Boolean) as { q: string; a: string }[]}
                     <div
                       class="inline-block max-w-[420px] rounded-lg rounded-tr-sm bg-muted px-3 py-2 text-left text-[13px] leading-relaxed">
                       <div class="space-y-2">
-                        {#each qaPairs as pair}
+                        {#each qaPairs as pair (pair.q)}
                           <div class="flex items-start gap-1">
-                            <span class="mt-[8px] size-1 shrink-0 rounded-full bg-muted-foreground/50"></span>
+                            <span
+                              class="mt-[8px] size-1 shrink-0 rounded-full bg-muted-foreground/50"
+                            ></span>
                             <span class="min-w-0">
                               <span class="text-muted-foreground/80">{pair.q}</span>
                               <span class="text-muted-foreground/40"> · </span>
@@ -3115,7 +2733,6 @@
                         0,
                         Math.floor(reasoningElapsedMs / 1000)
                       )}
-                      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                       <div
                         class="group flex cursor-pointer items-center gap-2 px-2 py-1 text-[13px]"
                         role="button"
@@ -3169,126 +2786,13 @@
                         </div>
                       {/if}
                     {:else if part.type === 'tool-simple'}
-                      {@const isPending = part.status === 'running'}
-                      {@const hasDetails = (part.details?.length ?? 0) > 0}
-                      {@const expandedKey = `tool-simple-expanded:${part.id}`}
-                      {@const isToolExpanded = toolSimpleExpanded[expandedKey] === true}
-                      <div
-                        class="group flex items-center gap-2 px-2 py-1 {hasDetails
-                          ? 'cursor-pointer'
-                          : ''}"
-                        role={hasDetails ? 'button' : undefined}
-                        tabindex={hasDetails ? 0 : undefined}
-                        onclick={() => {
-                          if (!hasDetails) return;
-                          toolSimpleExpanded = {
-                            ...toolSimpleExpanded,
-                            [expandedKey]: !isToolExpanded
-                          };
-                        }}
-                        onkeydown={(e) => {
-                          if (!hasDetails) return;
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            toolSimpleExpanded = {
-                              ...toolSimpleExpanded,
-                              [expandedKey]: !isToolExpanded
-                            };
-                          }
-                        }}>
-                        {#if part.toolName === 'autoStyler' || part.toolName === 'styleSearch'}
-                          <Paintbrush
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'iconifier' || part.toolName === 'iconSearch'}
-                          <Palette
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'webSearch'}
-                          <Globe
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'fileManager'}
-                          <FileText
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'errorChecker'}
-                          <ShieldCheck
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'dataAnalyzer'}
-                          <ChartBar
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'thinking'}
-                          <Lightbulb
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'askQuestions'}
-                          <MessageCircleQuestion
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'diagramRead'}
-                          <Eye
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else if part.toolName === 'diagramDelete'}
-                          <Trash2
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {:else}
-                          <Wrench
-                            class="size-3.5 flex-shrink-0 text-muted-foreground/70 {isPending
-                              ? 'animate-pulse'
-                              : ''}" />
-                        {/if}
-                        <div class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
-                          <span class="flex-shrink-0 font-medium whitespace-nowrap">
-                            {#if isPending}
-                              <span
-                                class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
-                                >{part.titlePending}</span>
-                            {:else}
-                              {part.titleDone}
-                            {/if}
-                          </span>
-                          {#if part.subtitle}
-                            <span class="min-w-0 truncate font-normal text-muted-foreground/60">
-                              {part.subtitle}
-                            </span>
-                          {/if}
-                          {#if hasDetails}
-                            <ChevronRight
-                              class="size-3.5 flex-shrink-0 text-muted-foreground/60 transition-transform duration-200 ease-out {isToolExpanded
-                                ? 'rotate-90'
-                                : 'opacity-0 group-hover:opacity-100'}" />
-                          {/if}
-                        </div>
-                      </div>
-                      {#if hasDetails && isToolExpanded}
-                        <div
-                          class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
-                          style="max-height: 250px; background-color: var(--tool-box-bg);">
-                          <div class="space-y-1">
-                            {#each part.details ?? [] as detail, dIdx (`${detail}:${dIdx}`)}
-                              <div class="flex items-start gap-2 text-[13px] leading-relaxed text-muted-foreground/75">
-                                <span class="mt-1 shrink-0 text-muted-foreground/40">·</span>
-                                <span class="min-w-0">{detail}</span>
-                              </div>
-                            {/each}
-                          </div>
-                        </div>
-                      {/if}
+                      <ToolSimpleChip
+                        toolName={part.toolName}
+                        titlePending={part.titlePending}
+                        titleDone={part.titleDone}
+                        subtitle={part.subtitle}
+                        status={part.status}
+                        details={part.details} />
                     {:else if part.type === 'tool-chain'}
                       {@const runningCount = part.parts.filter(
                         (toolPart) => toolPartStatus(toolPart) === 'running'
@@ -3344,9 +2848,7 @@
                           </div>
                         </button>
                         <div
-                          class="{part.status === 'running'
-                            ? ''
-                            : 'hidden'} px-3 py-3"
+                          class="{part.status === 'running' ? '' : 'hidden'} px-3 py-3"
                           style="max-height: 280px; overflow-y: auto;">
                           <div class="space-y-0">
                             {#each part.parts as toolPart, chainIdx (contentPartKey(toolPart, chainIdx))}
@@ -3444,8 +2946,7 @@
                       {@const isMdExpanded =
                         toolSimpleExpanded[mdExpandKey] ?? Boolean(part.isStreaming)}
                       {@const mdHasContent = (part.content ?? '').length > 0}
-                      {@const mdPendingTitle =
-                        part.operation === 'read' ? 'Reading' : 'Writing'}
+                      {@const mdPendingTitle = part.operation === 'read' ? 'Reading' : 'Writing'}
                       {@const mdDoneTitle =
                         part.operation === 'read'
                           ? 'Read'
@@ -3479,7 +2980,8 @@
                           class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
-                        <div class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
+                        <div
+                          class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if part.isStreaming}
                               <span
@@ -3515,7 +3017,8 @@
                           class="size-3.5 flex-shrink-0 text-muted-foreground/70 {part.isStreaming
                             ? 'animate-pulse'
                             : ''}" />
-                        <div class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
+                        <div
+                          class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
                           <span class="flex-shrink-0 font-medium whitespace-nowrap">
                             {#if part.isStreaming}
                               <span
@@ -3589,418 +3092,414 @@
       {@const qPart = pendingQuestionnaire?.part}
       {@const qAssistantIdx = pendingQuestionnaire?.assistantIdx ?? -1}
       {#if qPart}
-      <div
-        class="overflow-hidden rounded-2xl border border-border/50 bg-sidebar text-foreground">
-        <div class="flex items-center gap-2 border-b border-border/40 px-4 py-2">
-          <MessageCircleQuestion class="size-3.5 flex-shrink-0 text-muted-foreground/70" />
-          <span class="text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-            {qPart.questions.length} question{qPart.questions.length !== 1 ? 's' : ''}
-          </span>
-          <div class="ml-auto">
-            <TooltipWrap text="Skip">
-              <button
-                type="button"
-                class="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-                aria-label="Skip questions"
-                onclick={() => {
-                  const parts = messageParts[qAssistantIdx] || [];
-                  const idx = parts.findIndex(
-                    (p: ContentPart) => p.type === 'questionnaire' && p.id === qPart.id
-                  );
-                  if (idx >= 0) {
-                    parts[idx] = { ...parts[idx], submitted: true } as ContentPart;
-                    messageParts[qAssistantIdx] = [...parts];
-                  }
-                }}>
-                <X class="size-3.5" />
-              </button>
-            </TooltipWrap>
+        <div class="overflow-hidden rounded-2xl border border-border/50 bg-sidebar text-foreground">
+          <div class="flex items-center gap-2 border-b border-border/40 px-4 py-2">
+            <MessageCircleQuestion class="size-3.5 flex-shrink-0 text-muted-foreground/70" />
+            <span class="text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+              {qPart.questions.length} question{qPart.questions.length !== 1 ? 's' : ''}
+            </span>
+            <div class="ml-auto">
+              <TooltipWrap text="Skip">
+                <button
+                  type="button"
+                  class="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                  aria-label="Skip questions"
+                  onclick={() => {
+                    const parts = messageParts[qAssistantIdx] || [];
+                    const idx = parts.findIndex(
+                      (p: ContentPart) => p.type === 'questionnaire' && p.id === qPart.id
+                    );
+                    if (idx >= 0) {
+                      parts[idx] = { ...parts[idx], submitted: true } as ContentPart;
+                      messageParts[qAssistantIdx] = [...parts];
+                    }
+                  }}>
+                  <X class="size-3.5" />
+                </button>
+              </TooltipWrap>
+            </div>
+          </div>
+          <div class="max-h-[40vh] overflow-y-auto px-4 py-3">
+            {#if qPart.context}
+              <p class="mb-3 text-[13px] leading-relaxed text-muted-foreground/70">
+                {qPart.context}
+              </p>
+            {/if}
+            <div class="space-y-3">
+              {#each qPart.questions as q, qi (q.id)}
+                <div>
+                  <p class="mb-2 text-[13px] font-medium text-foreground/85">
+                    {qi + 1}. {q.text}
+                  </p>
+                  {#if q.options.length > 0}
+                    <div class="flex flex-wrap gap-2">
+                      {#each q.options as opt (opt.id)}
+                        {@const respVal = (questionnaireResponses[qPart.id] || {})[q.id]}
+                        {@const isSelected =
+                          q.type === 'multi'
+                            ? Array.isArray(respVal) && respVal.includes(opt.label)
+                            : respVal === opt.label}
+                        <button
+                          type="button"
+                          class="flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-[13px] transition-all {isSelected
+                            ? 'border-foreground/40 bg-foreground/10 text-foreground'
+                            : 'border-border/60 text-foreground/75 hover:border-foreground/30 hover:bg-foreground/5'}"
+                          onclick={() => {
+                            const resp = questionnaireResponses[qPart.id] || {};
+                            if (q.type === 'multi') {
+                              const current = Array.isArray(resp[q.id])
+                                ? [...(resp[q.id] as string[])]
+                                : [];
+                              const idx = current.indexOf(opt.label);
+                              if (idx >= 0) current.splice(idx, 1);
+                              else current.push(opt.label);
+                              questionnaireResponses[qPart.id] = { ...resp, [q.id]: current };
+                            } else {
+                              questionnaireResponses[qPart.id] = { ...resp, [q.id]: opt.label };
+                            }
+                            questionnaireResponses = { ...questionnaireResponses };
+                          }}>
+                          {#if isSelected}
+                            <Check class="size-3" />
+                          {/if}
+                          <span>{opt.label}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </div>
+          <div class="flex items-center justify-end gap-2 px-4 py-2">
+            <button
+              type="button"
+              class="cursor-pointer rounded-md px-3 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+              onclick={() => {
+                const parts = messageParts[qAssistantIdx] || [];
+                const idx = parts.findIndex(
+                  (p: ContentPart) => p.type === 'questionnaire' && p.id === qPart.id
+                );
+                if (idx >= 0) {
+                  parts[idx] = { ...parts[idx], submitted: true } as ContentPart;
+                  messageParts[qAssistantIdx] = [...parts];
+                }
+              }}>
+              Skip
+            </button>
+            <button
+              type="button"
+              class="cursor-pointer rounded-full bg-foreground px-4 py-2 text-[13px] font-medium text-background transition-transform duration-150 hover:scale-105 active:scale-95"
+              onclick={() =>
+                handleQuestionnaireSubmit(qPart.id, qPart.questions, qPart.context, qAssistantIdx)}>
+              Submit
+            </button>
           </div>
         </div>
-        <div class="max-h-[40vh] overflow-y-auto px-4 py-3">
-          {#if qPart.context}
-            <p class="mb-3 text-[13px] leading-relaxed text-muted-foreground/70">
-              {qPart.context}
-            </p>
-          {/if}
-          <div class="space-y-3">
-            {#each qPart.questions as q, qi (q.id)}
-              <div>
-                <p class="mb-2 text-[13px] font-medium text-foreground/85">
-                  {qi + 1}. {q.text}
-                </p>
-                {#if q.options.length > 0}
-                  <div class="flex flex-wrap gap-2">
-                    {#each q.options as opt (opt.id)}
-                      {@const respVal = (questionnaireResponses[qPart.id] || {})[q.id]}
-                      {@const isSelected =
-                        q.type === 'multi'
-                          ? Array.isArray(respVal) && respVal.includes(opt.label)
-                          : respVal === opt.label}
-                      <button
-                        type="button"
-                        class="flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-[13px] transition-all {isSelected
-                          ? 'border-foreground/40 bg-foreground/10 text-foreground'
-                          : 'border-border/60 text-foreground/75 hover:border-foreground/30 hover:bg-foreground/5'}"
-                        onclick={() => {
-                          const resp = questionnaireResponses[qPart.id] || {};
-                          if (q.type === 'multi') {
-                            const current = Array.isArray(resp[q.id])
-                              ? [...(resp[q.id] as string[])]
-                              : [];
-                            const idx = current.indexOf(opt.label);
-                            if (idx >= 0) current.splice(idx, 1);
-                            else current.push(opt.label);
-                            questionnaireResponses[qPart.id] = { ...resp, [q.id]: current };
-                          } else {
-                            questionnaireResponses[qPart.id] = { ...resp, [q.id]: opt.label };
-                          }
-                          questionnaireResponses = { ...questionnaireResponses };
-                        }}>
-                        {#if isSelected}
-                          <Check class="size-3" />
-                        {/if}
-                        <span>{opt.label}</span>
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
-        <div class="flex items-center justify-end gap-2 px-4 py-2">
-          <button
-            type="button"
-            class="cursor-pointer rounded-md px-3 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-            onclick={() => {
-              const parts = messageParts[qAssistantIdx] || [];
-              const idx = parts.findIndex(
-                (p: ContentPart) => p.type === 'questionnaire' && p.id === qPart.id
-              );
-              if (idx >= 0) {
-                parts[idx] = { ...parts[idx], submitted: true } as ContentPart;
-                messageParts[qAssistantIdx] = [...parts];
-              }
-            }}>
-            Skip
-          </button>
-          <button
-            type="button"
-            class="cursor-pointer rounded-full bg-foreground px-4 py-2 text-[13px] font-medium text-background transition-transform duration-150 hover:scale-105 active:scale-95"
-            onclick={() =>
-              handleQuestionnaireSubmit(
-                qPart.id,
-                qPart.questions,
-                qPart.context,
-                qAssistantIdx
-              )}>
-            Submit
-          </button>
-        </div>
-      </div>
       {/if}
     {:else}
-    <PromptInput
-      class="overflow-hidden rounded-2xl border border-border/50 text-foreground transition-[border-color] duration-150 focus-within:border-foreground/30"
-      style="background-color: var(--chat-input-bg);"
-      accept={attachmentAccept}
-      multiple
-      maxFileSize={20 * 1024 * 1024}
-      onError={(err) => {
-        fileError = err.message;
-        if (fileErrorTimeout) clearTimeout(fileErrorTimeout);
-        fileErrorTimeout = setTimeout(() => {
-          fileErrorTimeout = null;
-          fileError = null;
-        }, 5000);
-      }}
-      onSubmit={(message) => handleSubmit(message)}>
-      <!-- Attachment previews -->
-      <PromptInputAttachments>
-        {#snippet children(file)}
-          <PromptInputAttachment data={file} />
-        {/snippet}
-      </PromptInputAttachments>
-      <PromptInputBody>
-        <Textarea
-          class="field-sizing-content block w-full resize-none rounded-none border-none bg-transparent px-3 pt-3 pb-1 text-[13px] leading-[1.45] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/45 focus-visible:ring-0 dark:bg-transparent"
-          style="min-height: var(--ds-input-min-height); max-height: var(--ds-input-max-height);"
-          name="message"
-          aria-label="Message"
-          autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-          spellcheck="false"
-          data-1p-ignore
-          data-lpignore="true"
-          placeholder={selectedContext.type
-            ? `Ask about the selected ${selectedContext.type}…`
-            : 'Describe your diagram…'}
-          bind:value={inputText}
-          disabled={isLoading}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-              e.preventDefault();
-              const form = (e.currentTarget as HTMLTextAreaElement).form;
-              if (form) form.requestSubmit();
-            }
-          }} />
-      </PromptInputBody>
-      <PromptInputToolbar class="gap-2 px-2 pt-0 pb-2">
-        <PromptInputTools class="gap-2">
-          <!-- Attachment button -->
-          <TooltipWrap
-            text={selectedModel?.imageSupport
-              ? 'Attach PDF, DOC, TXT, Markdown, or image'
-              : 'Attach PDF, DOC, TXT, or Markdown'}>
-            <button
-              type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
-              aria-label="Attach files"
-              onclick={(e) => {
+      <PromptInput
+        class="overflow-hidden rounded-2xl border border-border/50 text-foreground transition-[border-color] duration-150 focus-within:border-foreground/30"
+        style="background-color: var(--chat-input-bg);"
+        accept={attachmentAccept}
+        multiple
+        maxFileSize={20 * 1024 * 1024}
+        onError={(err) => {
+          fileError = err.message;
+          if (fileErrorTimeout) clearTimeout(fileErrorTimeout);
+          fileErrorTimeout = setTimeout(() => {
+            fileErrorTimeout = null;
+            fileError = null;
+          }, 5000);
+        }}
+        onSubmit={(message) => handleSubmit(message)}>
+        <!-- Attachment previews -->
+        <PromptInputAttachments>
+          {#snippet children(file)}
+            <PromptInputAttachment data={file} />
+          {/snippet}
+        </PromptInputAttachments>
+        <PromptInputBody>
+          <Textarea
+            class="block field-sizing-content w-full resize-none rounded-none border-none bg-transparent px-3 pt-3 pb-1 text-[13px] leading-[1.45] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/45 focus-visible:ring-0 dark:bg-transparent"
+            style="min-height: var(--ds-input-min-height); max-height: var(--ds-input-max-height);"
+            name="message"
+            aria-label="Message"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            data-1p-ignore
+            data-lpignore="true"
+            placeholder={selectedContext.type
+              ? `Ask about the selected ${selectedContext.type}…`
+              : 'Describe your diagram…'}
+            bind:value={inputText}
+            disabled={isLoading}
+            onkeydown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault();
-                const wrapper = (e.currentTarget as HTMLElement).closest('.mx-auto');
-                const fileInput = wrapper?.querySelector('input[type="file"]') as HTMLInputElement;
-                if (fileInput) fileInput.click();
-              }}>
-              <Paperclip class="size-3.5" />
-            </button>
-          </TooltipWrap>
-          <!-- Improve prompt button -->
-          {#if inputText.trim().length > 0}
-            <TooltipWrap text={isImprovingPrompt ? 'Improving…' : 'Improve prompt'}>
-              <button
-                type="button"
-                class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground {isImprovingPrompt
-                  ? 'bg-primary/10 text-primary'
-                  : ''}"
-                aria-label={isImprovingPrompt ? 'Improving prompt' : 'Improve prompt'}
-                disabled={isImprovingPrompt || isLoading}
-                onclick={improvePrompt}>
-                {#if isImprovingPrompt}
-                  <div
-                    class="size-3 animate-spin rounded-full border-2 border-primary border-t-transparent">
-                  </div>
-                {:else}
-                  <Sparkles class="size-3.5" />
-                {/if}
-              </button>
-            </TooltipWrap>
-          {/if}
-          <!-- Model picker -->
-          <Popover.Root
-            bind:open={modelPopoverOpen}
-            onOpenChange={(open) => {
-              if (open) {
-                // Refresh on every open so admin changes show without reload
-                modelsStore.fetch();
-              } else {
-                modelSearchQuery = '';
+                const form = (e.currentTarget as HTMLTextAreaElement).form;
+                if (form) form.requestSubmit();
               }
-            }}>
-            <Popover.Trigger
-              aria-label="Select model"
-              class="flex h-7 max-w-[200px] cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] font-medium text-muted-foreground transition-[background-color,color] duration-150 ease-out outline-offset-2 hover:bg-foreground/10 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
-              <ProviderIcon
-                provider={selectedModel?.provider}
-                modelId={selectedModel?.id}
-                class="size-3.5 shrink-0" />
-              <span class="truncate">
-                {selectedModel
-                  ? selectedModel.name.includes(': ')
-                    ? selectedModel.name.split(': ').slice(1).join(': ')
-                    : selectedModel.name
-                  : 'Model'}
-              </span>
-              <ChevronDown class="size-3 shrink-0 opacity-50" />
-            </Popover.Trigger>
-            <Popover.Content
-              class="w-[320px] overflow-hidden rounded-xl border border-border bg-popover p-0 shadow-2xl"
-              align="start"
-              sideOffset={8}>
-              <!-- Search -->
-              <div class="flex items-center gap-2 border-b border-border/60 px-3 py-2">
-                <Search class="size-3.5 shrink-0 text-muted-foreground/60" />
-                <input
-                  type="text"
-                  name="model-search"
-                  aria-label="Search models"
-                  placeholder="Search models…"
-                  class="h-5 w-full bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
-                  bind:value={modelSearchQuery} />
-                <TooltipWrap text="Refresh models">
-                  <button
-                    type="button"
-                    class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-                    aria-label="Refresh models"
-                    disabled={modelsStore.isLoading}
-                    onclick={() => modelsStore.fetch()}>
-                    <RefreshCw class="size-3.5 {modelsStore.isLoading ? 'animate-spin' : ''}" />
-                  </button>
-                </TooltipWrap>
-              </div>
-              <!-- Model list -->
-              <div class="max-h-[360px] overflow-y-auto overscroll-contain p-1">
-                {#if modelsStore.isLoading && modelsStore.models.length === 0}
-                  <div class="flex items-center justify-center py-8">
-                    <div class="flex items-center gap-2 text-[13px] text-muted-foreground">
-                      <div
-                        class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground">
-                      </div>
-                      Loading…
-                    </div>
-                  </div>
-                {:else if filteredModels.length === 0}
-                  <div class="flex flex-col items-center justify-center gap-2 py-8">
-                    <Search class="size-4 text-muted-foreground/20" />
-                    <span class="text-[13px] text-muted-foreground/60">No models</span>
-                  </div>
-                {:else}
-                  {#each groupedModels as [provider, providerModels], gIdx (provider)}
-                    {#if gIdx > 0}
-                      <div class="my-1 h-px bg-border/40"></div>
-                    {/if}
-                    <div class="px-2 pt-2 pb-1">
-                      <span
-                        class="text-[13px] font-semibold tracking-wider text-muted-foreground/60 uppercase"
-                        >{providerLabel(provider)}</span>
-                    </div>
-                    {#each providerModels as model (model.id)}
-                      {@const isSelected = selectedModelId === model.id}
-                      <button
-                        type="button"
-                        class="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-foreground/10 {isSelected
-                          ? 'bg-foreground/10'
-                          : ''}"
-                        onclick={() => {
-                          modelsStore.select(model.id);
-                          modelPopoverOpen = false;
-                          modelSearchQuery = '';
-                        }}>
-                        <ProviderIcon
-                          provider={model.provider}
-                          modelId={model.id}
-                          class="size-3.5 shrink-0 text-muted-foreground/70" />
-                        <span
-                          class="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground"
-                          >{model.name.includes(': ')
-                            ? model.name.split(': ').slice(1).join(': ')
-                            : model.name}</span>
-                        {#if isSelected}
-                          <Check class="size-3.5 shrink-0 text-foreground" />
-                        {/if}
-                      </button>
-                    {/each}
-                  {/each}
-                {/if}
-              </div>
-            </Popover.Content>
-          </Popover.Root>
-          <!-- Context usage -->
-          <TooltipWrap text={contextTitle}>
-            <div
-              class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
-              aria-label={contextTitle}>
-            <svg class="size-5" viewBox="0 0 36 36">
-              <circle
-                cx="18"
-                cy="18"
-                r="14"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3"
-                class="text-muted-foreground/30" />
-              <circle
-                cx="18"
-                cy="18"
-                r="14"
-                fill="none"
-                stroke-width="3"
-                stroke-linecap="round"
-                class="stroke-black transition-all duration-500 dark:stroke-white"
-                stroke-dasharray="{contextPercent * 0.8796} 87.96"
-                transform="rotate(-90 18 18)" />
-            </svg>
-            </div>
-          </TooltipWrap>
-        </PromptInputTools>
-        <div class="flex items-center gap-2">
-          <!-- Mic button -->
-          <TooltipWrap
-            text={isRecording
-              ? 'Stop recording'
-              : isTranscribing
-                ? 'Transcribing…'
-                : 'Voice input'}>
-            <button
-              type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 {isRecording
-                ? 'bg-destructive/10 text-destructive'
-                : isTranscribing
-                  ? 'bg-foreground/10 text-foreground'
-                  : 'hover:bg-foreground/10 hover:text-foreground'}"
-              disabled={isTranscribing}
-              aria-label={isRecording ? 'Stop recording' : 'Voice input'}
-              onclick={() => {
-                if (isRecording) stopRecording();
-                else startRecording();
-              }}>
-            {#if isTranscribing}
-              <div
-                class="size-3 animate-spin rounded-full border-2 border-foreground border-t-transparent">
-              </div>
-            {:else}
-              <svg
-                class="size-3.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                ><path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line
-                  x1="8"
-                  y1="23"
-                  x2="16"
-                  y2="23" /></svg>
-              {/if}
-            </button>
-          </TooltipWrap>
-          <!-- Send / Stop / Processing -->
-          {#if isProcessingFiles}
-            <div
-              class="flex size-8 items-center justify-center rounded-full bg-muted"
-              title="Processing files…"
-              role="status"
-              aria-label="Processing files">
-              <div
-                class="size-3.5 animate-spin rounded-full border-2 border-warning/20 border-t-amber-500">
-              </div>
-            </div>
-          {:else if isLoading}
-            <TooltipWrap text="Stop response">
+            }} />
+        </PromptInputBody>
+        <PromptInputToolbar class="gap-2 px-2 pt-0 pb-2">
+          <PromptInputTools class="gap-2">
+            <!-- Attachment button -->
+            <TooltipWrap
+              text={selectedModel?.imageSupport
+                ? 'Attach PDF, DOC, TXT, Markdown, or image'
+                : 'Attach PDF, DOC, TXT, or Markdown'}>
               <button
                 type="button"
-                onclick={stopStream}
-                aria-label="Stop response"
-                class="flex size-8 cursor-pointer items-center justify-center rounded-full bg-foreground text-background transition-transform duration-150 hover:scale-105 active:scale-95">
-                <Square class="size-3" fill="currentColor" />
+                class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
+                aria-label="Attach files"
+                onclick={(e) => {
+                  e.preventDefault();
+                  const wrapper = (e.currentTarget as HTMLElement).closest('.mx-auto');
+                  const fileInput = wrapper?.querySelector(
+                    'input[type="file"]'
+                  ) as HTMLInputElement;
+                  if (fileInput) fileInput.click();
+                }}>
+                <Paperclip class="size-3.5" />
               </button>
             </TooltipWrap>
-          {:else}
-            <PromptInputSubmit
-              status={chatStatus}
-              aria-label="Send message"
-              class="size-8 rounded-full bg-foreground text-background transition-transform duration-150 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100" />
-          {/if}
-        </div>
-      </PromptInputToolbar>
-    </PromptInput>
+            <!-- Improve prompt button -->
+            {#if inputText.trim().length > 0}
+              <TooltipWrap text={isImprovingPrompt ? 'Improving…' : 'Improve prompt'}>
+                <button
+                  type="button"
+                  class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground {isImprovingPrompt
+                    ? 'bg-primary/10 text-primary'
+                    : ''}"
+                  aria-label={isImprovingPrompt ? 'Improving prompt' : 'Improve prompt'}
+                  disabled={isImprovingPrompt || isLoading}
+                  onclick={improvePrompt}>
+                  {#if isImprovingPrompt}
+                    <div
+                      class="size-3 animate-spin rounded-full border-2 border-primary border-t-transparent">
+                    </div>
+                  {:else}
+                    <Sparkles class="size-3.5" />
+                  {/if}
+                </button>
+              </TooltipWrap>
+            {/if}
+            <!-- Model picker -->
+            <Popover.Root
+              bind:open={modelPopoverOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  // Refresh on every open so admin changes show without reload
+                  modelsStore.fetch();
+                } else {
+                  modelSearchQuery = '';
+                }
+              }}>
+              <Popover.Trigger
+                aria-label="Select model"
+                class="flex h-7 max-w-[200px] cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] font-medium text-muted-foreground outline-offset-2 transition-[background-color,color] duration-150 ease-out hover:bg-foreground/10 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
+                <ProviderIcon
+                  provider={selectedModel?.provider}
+                  modelId={selectedModel?.id}
+                  class="size-3.5 shrink-0" />
+                <span class="truncate">
+                  {selectedModel
+                    ? selectedModel.name.includes(': ')
+                      ? selectedModel.name.split(': ').slice(1).join(': ')
+                      : selectedModel.name
+                    : 'Model'}
+                </span>
+                <ChevronDown class="size-3 shrink-0 opacity-50" />
+              </Popover.Trigger>
+              <Popover.Content
+                class="w-[320px] overflow-hidden rounded-xl border border-border bg-popover p-0 shadow-2xl"
+                align="start"
+                sideOffset={8}>
+                <!-- Search -->
+                <div class="flex items-center gap-2 border-b border-border/60 px-3 py-2">
+                  <Search class="size-3.5 shrink-0 text-muted-foreground/60" />
+                  <input
+                    type="text"
+                    name="model-search"
+                    aria-label="Search models"
+                    placeholder="Search models…"
+                    class="h-5 w-full bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
+                    bind:value={modelSearchQuery} />
+                  <TooltipWrap text="Refresh models">
+                    <button
+                      type="button"
+                      class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                      aria-label="Refresh models"
+                      disabled={modelsStore.isLoading}
+                      onclick={() => modelsStore.fetch()}>
+                      <RefreshCw class="size-3.5 {modelsStore.isLoading ? 'animate-spin' : ''}" />
+                    </button>
+                  </TooltipWrap>
+                </div>
+                <!-- Model list -->
+                <div class="max-h-[360px] overflow-y-auto overscroll-contain p-1">
+                  {#if modelsStore.isLoading && modelsStore.models.length === 0}
+                    <div class="flex items-center justify-center py-8">
+                      <div class="flex items-center gap-2 text-[13px] text-muted-foreground">
+                        <div
+                          class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground">
+                        </div>
+                        Loading…
+                      </div>
+                    </div>
+                  {:else if filteredModels.length === 0}
+                    <div class="flex flex-col items-center justify-center gap-2 py-8">
+                      <Search class="size-4 text-muted-foreground/20" />
+                      <span class="text-[13px] text-muted-foreground/60">No models</span>
+                    </div>
+                  {:else}
+                    {#each groupedModels as [provider, providerModels], gIdx (provider)}
+                      {#if gIdx > 0}
+                        <div class="my-1 h-px bg-border/40"></div>
+                      {/if}
+                      <div class="px-2 pt-2 pb-1">
+                        <span
+                          class="text-[13px] font-semibold tracking-wider text-muted-foreground/60 uppercase"
+                          >{providerLabel(provider)}</span>
+                      </div>
+                      {#each providerModels as model (model.id)}
+                        {@const isSelected = selectedModelId === model.id}
+                        <button
+                          type="button"
+                          class="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-foreground/10 {isSelected
+                            ? 'bg-foreground/10'
+                            : ''}"
+                          onclick={() => {
+                            modelsStore.select(model.id);
+                            modelPopoverOpen = false;
+                            modelSearchQuery = '';
+                          }}>
+                          <ProviderIcon
+                            provider={model.provider}
+                            modelId={model.id}
+                            class="size-3.5 shrink-0 text-muted-foreground/70" />
+                          <span
+                            class="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground"
+                            >{model.name.includes(': ')
+                              ? model.name.split(': ').slice(1).join(': ')
+                              : model.name}</span>
+                          {#if isSelected}
+                            <Check class="size-3.5 shrink-0 text-foreground" />
+                          {/if}
+                        </button>
+                      {/each}
+                    {/each}
+                  {/if}
+                </div>
+              </Popover.Content>
+            </Popover.Root>
+            <!-- Context usage -->
+            <TooltipWrap text={contextTitle}>
+              <div
+                class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
+                aria-label={contextTitle}>
+                <svg class="size-5" viewBox="0 0 36 36">
+                  <circle
+                    cx="18"
+                    cy="18"
+                    r="14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    class="text-muted-foreground/30" />
+                  <circle
+                    cx="18"
+                    cy="18"
+                    r="14"
+                    fill="none"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                    class="stroke-black transition-all duration-500 dark:stroke-white"
+                    stroke-dasharray="{contextPercent * 0.8796} 87.96"
+                    transform="rotate(-90 18 18)" />
+                </svg>
+              </div>
+            </TooltipWrap>
+          </PromptInputTools>
+          <div class="flex items-center gap-2">
+            <!-- Mic button -->
+            <TooltipWrap
+              text={isRecording
+                ? 'Stop recording'
+                : isTranscribing
+                  ? 'Transcribing…'
+                  : 'Voice input'}>
+              <button
+                type="button"
+                class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 {isRecording
+                  ? 'bg-destructive/10 text-destructive'
+                  : isTranscribing
+                    ? 'bg-foreground/10 text-foreground'
+                    : 'hover:bg-foreground/10 hover:text-foreground'}"
+                disabled={isTranscribing}
+                aria-label={isRecording ? 'Stop recording' : 'Voice input'}
+                onclick={() => {
+                  if (isRecording) stopRecording();
+                  else startRecording();
+                }}>
+                {#if isTranscribing}
+                  <div
+                    class="size-3 animate-spin rounded-full border-2 border-foreground border-t-transparent">
+                  </div>
+                {:else}
+                  <svg
+                    class="size-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    ><path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line
+                      x1="8"
+                      y1="23"
+                      x2="16"
+                      y2="23" /></svg>
+                {/if}
+              </button>
+            </TooltipWrap>
+            <!-- Send / Stop / Processing -->
+            {#if isProcessingFiles}
+              <div
+                class="flex size-8 items-center justify-center rounded-full bg-muted"
+                title="Processing files…"
+                role="status"
+                aria-label="Processing files">
+                <div
+                  class="size-3.5 animate-spin rounded-full border-2 border-warning/20 border-t-amber-500">
+                </div>
+              </div>
+            {:else if isLoading}
+              <TooltipWrap text="Stop response">
+                <button
+                  type="button"
+                  onclick={stopStream}
+                  aria-label="Stop response"
+                  class="flex size-8 cursor-pointer items-center justify-center rounded-full bg-foreground text-background transition-transform duration-150 hover:scale-105 active:scale-95">
+                  <Square class="size-3" fill="currentColor" />
+                </button>
+              </TooltipWrap>
+            {:else}
+              <PromptInputSubmit
+                status={chatStatus}
+                aria-label="Send message"
+                class="size-8 rounded-full bg-foreground text-background transition-transform duration-150 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100" />
+            {/if}
+          </div>
+        </PromptInputToolbar>
+      </PromptInput>
     {/if}
   </div>
 </div>
@@ -4019,7 +3518,9 @@
     position: relative;
     display: inline-block;
     background-image: var(--bg), linear-gradient(var(--base-color), var(--base-color));
-    background-size: 250% 100%, auto;
+    background-size:
+      250% 100%,
+      auto;
     background-repeat: no-repeat, padding-box;
     background-position: 100% center;
     -webkit-background-clip: text;

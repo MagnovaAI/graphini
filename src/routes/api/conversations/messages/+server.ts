@@ -83,29 +83,53 @@ export const POST: RequestHandler = async ({ request }) => {
         .filter((clientId): clientId is string => typeof clientId === 'string')
     );
     const seenClientIds = new Set<string>();
-    const messagesToCreate = (messages as MessagePayload[])
-      .filter((msg) => {
-        const clientId = asRecord(msg.metadata).clientId;
-        if (typeof clientId !== 'string') return true;
-        if (existingClientIds.has(clientId) || seenClientIds.has(clientId)) return false;
-        seenClientIds.add(clientId);
-        return true;
-      })
-      .map((msg) => ({
+
+    const toUpsert = (messages as MessagePayload[]).filter((msg) => {
+      const clientId = asRecord(msg.metadata).clientId;
+      if (typeof clientId !== 'string') return true;
+      if (seenClientIds.has(clientId)) return false;
+      seenClientIds.add(clientId);
+      return true;
+    });
+
+    const updates: MessagePayload[] = [];
+    const inserts: MessagePayload[] = [];
+    for (const msg of toUpsert) {
+      const clientId = asRecord(msg.metadata).clientId;
+      if (typeof clientId === 'string' && existingClientIds.has(clientId)) {
+        updates.push(msg);
+      } else {
+        inserts.push(msg);
+      }
+    }
+
+    const updated: Message[] = [];
+    for (const msg of updates) {
+      const clientId = asRecord(msg.metadata).clientId as string;
+      const row = await db.updateMessageByClientId(conversation_id, clientId, {
         content:
           typeof msg.content === 'string' && msg.content.trim() ? msg.content : '[tool call]',
-        conversation_id,
-        credits_charged: toFiniteNumber(msg.credits_charged),
         metadata: asRecord(msg.metadata),
         model_used: typeof msg.model_used === 'string' ? msg.model_used : undefined,
-        parts: msg.parts ?? null,
-        role: toMessageRole(msg.role),
-        tokens_used: toFiniteNumber(msg.tokens_used)
-      }));
+        parts: msg.parts ?? null
+      });
+      if (row) updated.push(row);
+    }
 
-    const created = await db.createMessages(messagesToCreate);
+    const messagesToCreate = inserts.map((msg) => ({
+      content: typeof msg.content === 'string' && msg.content.trim() ? msg.content : '[tool call]',
+      conversation_id,
+      credits_charged: toFiniteNumber(msg.credits_charged),
+      metadata: asRecord(msg.metadata),
+      model_used: typeof msg.model_used === 'string' ? msg.model_used : undefined,
+      parts: msg.parts ?? null,
+      role: toMessageRole(msg.role),
+      tokens_used: toFiniteNumber(msg.tokens_used)
+    }));
 
-    return json({ messages: created }, { status: 201 });
+    const created = messagesToCreate.length > 0 ? await db.createMessages(messagesToCreate) : [];
+
+    return json({ messages: [...updated, ...created] }, { status: 201 });
   } catch (err: unknown) {
     return json({ error: errorMessage(err, 'Failed to sync messages') }, { status: 500 });
   }

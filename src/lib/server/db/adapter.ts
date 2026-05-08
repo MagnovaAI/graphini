@@ -171,6 +171,16 @@ export interface DatabaseAdapter {
   ): Promise<Message[]>;
   listMessages(conversation_id: string, options?: PaginationOptions): Promise<Message[]>;
   deleteMessage(id: string): Promise<void>;
+  updateMessageByClientId(
+    conversation_id: string,
+    client_id: string,
+    data: {
+      content?: string;
+      parts?: unknown;
+      model_used?: string;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<Message | null>;
 
   // ── Snapshots ─────────────────────────────────────────────────────────
   createSnapshot(data: {

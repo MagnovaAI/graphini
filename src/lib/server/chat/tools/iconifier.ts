@@ -46,11 +46,32 @@ WHEN TO CALL:
 - Call with mode "remove" when user wants icons removed.
 - Do NOT call for simple flowcharts, sequence diagrams, or non-tech diagrams unless user asks.
 
+COLOR MODE (defaults to "color"):
+- Use "color" (default) for architecture, cloud, infra, devops, and brand diagrams — the user expects recognizable brand colors (AWS orange, GCP blue, etc.).
+- Use "noncolor" only when the user asks for monochrome / themeable / "matches my theme" / minimal icons. These render as currentColor silhouettes.
+- Use "any" only when the user explicitly says "either is fine" or icon availability matters more than visual style.
+
+WEB SEARCH:
+- The local index already covers 2400+ common icons; the Iconify web index is consulted automatically when no local match is found, so you do not need to set includeWebSuggestions in the common case.
+- Set includeWebSuggestions: true when (1) the diagram features niche or recently launched brands likely missing from local, (2) the user explicitly asks for "the latest" or a specific Iconify pack, or (3) a previous run returned mostly low-confidence local matches and you want broader candidates.
+
 CRITICAL FOR BEST RESULTS:
 - NodeIDs MUST be real brand/product names (e.g. "React", "PostgreSQL", "Docker", "Nginx") — this is how icons are matched.
 - Node labels should describe function (e.g. "Frontend App", "Primary Database") — NOT contain brand names.
 - Example: React["Frontend Application"] NOT WebApp["React Frontend"]`,
     inputSchema: z.object({
+      colorMode: z
+        .enum(['color', 'noncolor', 'any'])
+        .optional()
+        .describe(
+          'Visual style filter. "color" = multicolor brand/cloud icons (default for architecture/infra). "noncolor" = monochrome/themeable silhouettes. "any" = no preference. Defaults to "color".'
+        ),
+      includeWebSuggestions: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, also consult the Iconify web index (200,000+ icons) even if a local match exists. Use for niche brands or when local matches feel weak. Defaults to false (web is still consulted automatically when no local match is found).'
+        ),
       mode: z
         .enum(['all', 'selective', 'remove'])
         .describe(
@@ -66,7 +87,14 @@ CRITICAL FOR BEST RESULTS:
         .optional()
         .describe('Node IDs to remove icons from (for remove mode)')
     }),
-    execute: async ({ mode, nodes: targetNodes, removeAll, removeFromNodes }) => {
+    execute: async ({
+      colorMode = 'color',
+      includeWebSuggestions = false,
+      mode,
+      nodes: targetNodes,
+      removeAll,
+      removeFromNodes
+    }) => {
       const diagram = diagramStore.get(sessionId) || '';
       if (!diagram.trim()) return { success: false, error: 'No diagram to iconify' };
 
@@ -117,7 +145,10 @@ CRITICAL FOR BEST RESULTS:
       // Resolve icons for each node and apply as separate annotation lines
       let insertionOffset = 0;
       for (const node of nodesToProcess) {
-        const result = await resolveIconForNode(node.id, node.text);
+        const result = await resolveIconForNode(node.id, node.text, {
+          colorMode,
+          includeWebSuggestions
+        });
         if (result) {
           // Escape node.id for safe regex usage
           const escapedId = node.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
