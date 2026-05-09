@@ -187,14 +187,31 @@ async function register(
   }
 }
 
-function logout(): void {
+async function logout(): Promise<void> {
   state.user = null;
   state.credits = null;
   saveCachedAuth(null, null);
   setActiveUserId(null);
-  // Clear local session cookie by setting expired
-  document.cookie = 'graphini_session=; Path=/; Max-Age=0';
-  window.location.href = '/api/auth/logout';
+
+  // POST clears both graphini_session and graphini_guest_id server-side, then
+  // 302s to /. We don't follow that redirect via fetch (browsers won't apply
+  // its Set-Cookie to the document anyway when fetch follows redirects), so
+  // we read the response and force-navigate to / ourselves below. The
+  // Set-Cookie on the POST response is what actually removes the cookies.
+  //
+  // The earlier `window.location.href = '/api/auth/logout'` issued a GET,
+  // which routes to magnova-auth's federated signout — wrong for guests
+  // (they have no magnova session) and unnecessary for password users.
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      redirect: 'manual'
+    });
+  } catch {
+    /* non-fatal — client state is already cleared and we force-reload below. */
+  }
+  window.location.href = '/';
 }
 
 async function refreshCredits(): Promise<void> {
