@@ -5,13 +5,11 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   getChatProviderOptions,
-  loadAnthropicApiKey,
-  loadAnthropicAuthToken,
-  loadOpenRouterApiKey,
   normalizeChatModelId,
-  resolveChatModel,
+  resolveChatModelFor,
   type ChatProvider
 } from '../../src/lib/server/chat/model';
+import { emptyProviderKeys, type ProviderKeys } from '../../src/lib/server/auth/provider-keys';
 import {
   defaultOpenRouterDiagramModel,
   searchProviderModels
@@ -338,15 +336,24 @@ function liveTraceProvider(): Extract<ChatProvider, 'anthropic' | 'openrouter'> 
   return process.env.HARNESS_TRACE_PROVIDER === 'anthropic' ? 'anthropic' : 'openrouter';
 }
 
-async function loadLiveTraceApiKey(provider: Extract<ChatProvider, 'anthropic' | 'openrouter'>) {
-  if (provider === 'anthropic') {
-    const [apiKey, authToken] = await Promise.all([
-      loadAnthropicApiKey(),
-      loadAnthropicAuthToken()
-    ]);
-    return authToken || apiKey;
-  }
-  return await loadOpenRouterApiKey();
+/**
+ * Live-trace harness reads keys directly from env so a developer can run it
+ * locally with their own credentials. The production code path no longer has
+ * env-key fallbacks; this helper is intentionally test-only.
+ */
+function liveTraceProviderKeys(): ProviderKeys {
+  return {
+    ...emptyProviderKeys(),
+    anthropic: process.env.ANTHROPIC_API_KEY ?? '',
+    anthropicAuthToken: process.env.ANTHROPIC_AUTH_TOKEN ?? process.env.ANTHROPIC_OAUTH_TOKEN ?? '',
+    openrouter: process.env.OPENROUTER_API_KEY ?? ''
+  };
+}
+
+function loadLiveTraceApiKey(provider: Extract<ChatProvider, 'anthropic' | 'openrouter'>): string {
+  const keys = liveTraceProviderKeys();
+  if (provider === 'anthropic') return keys.anthropicAuthToken || keys.anthropic;
+  return keys.openrouter;
 }
 
 function defaultLiveTraceModel(provider: Extract<ChatProvider, 'anthropic' | 'openrouter'>) {
@@ -865,7 +872,7 @@ describe('server icon search', () => {
     const sessionId = 'icon-search-query-fallback';
     diagramStore.set(sessionId, iconSearchDiagram);
 
-    const iconSearch = createIconSearchTool({ sessionId });
+    const iconSearch = createIconSearchTool({ keys: emptyProviderKeys(), sessionId });
     const result = (await iconSearch.execute?.(
       { query: 'icons' },
       {} as never
@@ -890,7 +897,7 @@ describe('server icon search', () => {
     const sessionId = 'icon-search-color-mode';
     diagramStore.set(sessionId, ['flowchart TD', '  Search[Search]'].join('\n'));
 
-    const iconSearch = createIconSearchTool({ sessionId });
+    const iconSearch = createIconSearchTool({ keys: emptyProviderKeys(), sessionId });
     const result = (await iconSearch.execute?.(
       { colorMode: 'noncolor', includeWebSuggestions: false, nodeIds: ['Search'] },
       {} as never
@@ -964,10 +971,11 @@ describe('server harness live model trace', () => {
     'runs natural intent prompts and logs selected tools, steps, and usage',
     async () => {
       const provider = liveTraceProvider();
-      const apiKey = await loadLiveTraceApiKey(provider);
+      const traceKeys = liveTraceProviderKeys();
+      const apiKey = loadLiveTraceApiKey(provider);
       expect(
         apiKey,
-        `${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENROUTER_API_KEY'} must be set for RUN_LIVE_MODEL_TRACE=true, or saved in Settings > Model Access.`
+        `${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENROUTER_API_KEY'} must be set for RUN_LIVE_MODEL_TRACE=true.`
       ).toBeTruthy();
 
       const modelId = process.env.HARNESS_TRACE_MODEL ?? defaultLiveTraceModel(provider);
@@ -987,6 +995,7 @@ describe('server harness live model trace', () => {
       let modelSearchError: string | undefined;
       try {
         modelMatches = await searchProviderModels({
+          keys: traceKeys,
           limit: 10,
           provider,
           query: provider === 'anthropic' ? 'haiku' : 'nemotron'
@@ -1013,7 +1022,7 @@ describe('server harness live model trace', () => {
               traceEvents.push({ event: 'toolCallStart', ...event });
             },
             maxOutputTokens: 700,
-            model: resolveChatModel(modelId, provider),
+            model: resolveChatModelFor(modelId, provider, traceKeys),
             prompt: intentCase.prompt,
             stopWhen: stepCountIs(3),
             system:
@@ -1195,11 +1204,9 @@ describe('server harness live model trace', () => {
   liveHarnessTrace.skip(
     'runs the legacy forced diagramWrite diagnostic',
     async () => {
-      const apiKey = await loadOpenRouterApiKey();
-      expect(
-        apiKey,
-        'OPENROUTER_API_KEY must be set for RUN_LIVE_MODEL_TRACE=true, or saved in Settings > Model Access.'
-      ).toBeTruthy();
+      const traceKeys = liveTraceProviderKeys();
+      const apiKey = traceKeys.openrouter;
+      expect(apiKey, 'OPENROUTER_API_KEY must be set for RUN_LIVE_MODEL_TRACE=true.').toBeTruthy();
 
       const prompt =
         process.env.HARNESS_TRACE_PROMPT ??
@@ -1210,6 +1217,7 @@ describe('server harness live model trace', () => {
         'Verify the live OpenRouter diagram model can produce valid Mermaid and use the diagramWrite tool with observable trace data.';
       const toolMode = process.env.HARNESS_TRACE_TOOL_MODE ?? 'diagramWrite';
       const modelMatches = await searchProviderModels({
+        keys: traceKeys,
         limit: 10,
         provider: 'openrouter',
         query: 'nemotron'
@@ -1221,7 +1229,7 @@ describe('server harness live model trace', () => {
         toolMode === 'none'
           ? await generateText({
               maxOutputTokens: 900,
-              model: resolveChatModel(modelId, 'openrouter'),
+              model: resolveChatModelFor(modelId, 'openrouter', traceKeys),
               prompt,
               temperature: 0
             })
@@ -1233,7 +1241,7 @@ describe('server harness live model trace', () => {
                 traceEvents.push({ event: 'toolCallStart', ...event });
               },
               maxOutputTokens: 500,
-              model: resolveChatModel(modelId, 'openrouter'),
+              model: resolveChatModelFor(modelId, 'openrouter', traceKeys),
               prompt,
               stopWhen: stepCountIs(1),
               temperature: 0,

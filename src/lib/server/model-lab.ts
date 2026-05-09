@@ -1,14 +1,11 @@
 import { generateText } from 'ai';
 import {
-  getAnthropicAuthHeaders,
-  loadAnthropicAuthToken,
-  loadAnthropicApiKey,
-  loadOpenAiApiKey,
-  loadOpenRouterApiKey,
-  loadProviderApiKeys,
-  resolveChatModel,
+  buildAnthropicChat,
+  buildOpenAiChat,
+  buildOpenRouterChat,
   type ChatProvider
 } from './chat/model';
+import { missingProviderKeyError, type ProviderKeys } from './auth/provider-keys';
 
 export type ModelLabProvider = Extract<ChatProvider, 'openai' | 'anthropic' | 'openrouter'>;
 
@@ -75,21 +72,43 @@ function limitResults(models: ModelSearchResult[], limit: number): ModelSearchRe
   return models.slice(0, Math.max(1, Math.min(limit, 100)));
 }
 
+/**
+ * Build the Anthropic auth headers for the admin model-listing call. Mirrors
+ * the precedence in buildAnthropicChat: explicit OAuth token wins, an
+ * api_key shaped like `sk-ant-oauth*` is also treated as OAuth, otherwise
+ * a regular x-api-key header.
+ */
+function anthropicListHeaders(keys: ProviderKeys): Record<string, string> {
+  const oauthShaped = (k: string) => k.startsWith('sk-ant-oat') || k.startsWith('sk-ant-oauth');
+  const explicitToken =
+    keys.anthropicAuthToken ||
+    (keys.anthropic && oauthShaped(keys.anthropic) ? keys.anthropic : '');
+  if (explicitToken) {
+    return {
+      'anthropic-beta': 'oauth-2025-04-20',
+      Authorization: `Bearer ${explicitToken}`
+    };
+  }
+  return { 'x-api-key': keys.anthropic };
+}
+
 export async function searchProviderModels({
+  keys,
   limit = 25,
   provider,
   query = ''
 }: {
+  keys: ProviderKeys;
   limit?: number;
   provider: ModelLabProvider;
   query?: string;
 }): Promise<ModelSearchResult[]> {
   const models =
     provider === 'openai'
-      ? await listOpenAiModels()
+      ? await listOpenAiModels(keys)
       : provider === 'anthropic'
-        ? await listAnthropicModels()
-        : await listOpenRouterModels();
+        ? await listAnthropicModels(keys)
+        : await listOpenRouterModels(keys);
 
   return limitResults(
     models.filter((model) => matchesQuery(model, query)),
@@ -97,12 +116,11 @@ export async function searchProviderModels({
   );
 }
 
-async function listOpenAiModels(): Promise<ModelSearchResult[]> {
-  const apiKey = await loadOpenAiApiKey();
-  if (!apiKey) throw new Error('OPENAI_API_KEY is not set. Add it in Settings > Model Access.');
+async function listOpenAiModels(keys: ProviderKeys): Promise<ModelSearchResult[]> {
+  if (!keys.openai) missingProviderKeyError('openai');
 
   const response = await fetch('https://api.openai.com/v1/models', {
-    headers: { Authorization: `Bearer ${apiKey}` }
+    headers: { Authorization: `Bearer ${keys.openai}` }
   });
   if (!response.ok) throw new Error(`OpenAI models API error: ${response.status}`);
 
@@ -118,13 +136,13 @@ async function listOpenAiModels(): Promise<ModelSearchResult[]> {
   }));
 }
 
-async function listAnthropicModels(): Promise<ModelSearchResult[]> {
-  await Promise.all([loadAnthropicApiKey(), loadAnthropicAuthToken()]);
+async function listAnthropicModels(keys: ProviderKeys): Promise<ModelSearchResult[]> {
+  if (!keys.anthropic && !keys.anthropicAuthToken) missingProviderKeyError('anthropic');
 
   const response = await fetch('https://api.anthropic.com/v1/models', {
     headers: {
       'anthropic-version': '2023-06-01',
-      ...getAnthropicAuthHeaders()
+      ...anthropicListHeaders(keys)
     }
   });
   if (!response.ok) throw new Error(`Anthropic models API error: ${response.status}`);
@@ -140,10 +158,12 @@ async function listAnthropicModels(): Promise<ModelSearchResult[]> {
   }));
 }
 
-async function listOpenRouterModels(): Promise<ModelSearchResult[]> {
-  const apiKey = await loadOpenRouterApiKey();
+async function listOpenRouterModels(keys: ProviderKeys): Promise<ModelSearchResult[]> {
+  // OpenRouter's /v1/models endpoint works without auth (returns the full
+  // catalog), but a key gives access to the user's enabled-only filter.
+  // Don't require it — admins can browse anonymously.
   const response = await fetch('https://openrouter.ai/api/v1/models', {
-    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
+    headers: keys.openrouter ? { Authorization: `Bearer ${keys.openrouter}` } : undefined
   });
   if (!response.ok) throw new Error(`OpenRouter models API error: ${response.status}`);
 
@@ -169,21 +189,41 @@ async function listOpenRouterModels(): Promise<ModelSearchResult[]> {
 }
 
 export async function smokeTestProviderModel({
+  keys,
   maxOutputTokens = 80,
   modelId,
   prompt = modelLabPromptPresets[0],
   provider
 }: {
+  keys: ProviderKeys;
   maxOutputTokens?: number;
   modelId: string;
   prompt?: string;
   provider: ModelLabProvider;
 }): Promise<ModelSmokeResult> {
-  await loadProviderApiKeys();
+  // Construct the right model client directly. resolveChatModelFor would
+  // also work, but we already know the exact provider here so we skip
+  // normalization and the providerHint dance.
+  const model =
+    provider === 'openai'
+      ? (() => {
+          if (!keys.openai) missingProviderKeyError('openai');
+          return buildOpenAiChat(modelId, keys.openai);
+        })()
+      : provider === 'anthropic'
+        ? (() => {
+            if (!keys.anthropic && !keys.anthropicAuthToken) missingProviderKeyError('anthropic');
+            return buildAnthropicChat(modelId, keys.anthropic, keys.anthropicAuthToken);
+          })()
+        : (() => {
+            if (!keys.openrouter) missingProviderKeyError('openrouter');
+            return buildOpenRouterChat(modelId, keys.openrouter);
+          })();
+
   const startedAt = performance.now();
   const result = await generateText({
     maxOutputTokens,
-    model: resolveChatModel(modelId, provider),
+    model,
     prompt,
     temperature: 0
   });

@@ -4,15 +4,11 @@
  */
 
 import { getDb } from '$lib/server/db';
-import { loadOpenRouterApiKey } from '$lib/server/chat/model';
+import { extractProviderKeys } from '$lib/server/auth/provider-keys';
 import { settingsManager, stateManager } from '$lib/server/state-manager';
 import { validateSessionOrGuest } from '$lib/server/auth';
 import { audioLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json, type RequestHandler } from '@sveltejs/kit';
-import dotenv from 'dotenv';
-
-dotenv.config({ path: '.env.local' });
-dotenv.config();
 
 /**
  * Cap audio uploads at 10MB. Audio is base64-encoded in memory before being
@@ -21,7 +17,6 @@ dotenv.config();
  */
 const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const DEFAULT_VOICE_MODEL = 'google/gemini-2.0-flash-001';
 const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash-lite';
 
@@ -90,13 +85,14 @@ async function ensureInternalModelsRegistered() {
 }
 
 async function transcribeWithGemini(
+  geminiKey: string,
   base64Audio: string,
   mimeType: string,
   model = GEMINI_FALLBACK_MODEL
 ): Promise<string | null> {
-  if (!GEMINI_API_KEY) return null;
+  if (!geminiKey) return null;
   try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${normalizeGeminiModel(model)}:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${normalizeGeminiModel(model)}:generateContent?key=${geminiKey}`;
     const res = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -127,11 +123,11 @@ async function transcribeWithGemini(
 }
 
 async function transcribeWithOpenRouter(
+  openRouterApiKey: string,
   base64Audio: string,
   mimeType: string,
   model: string
 ): Promise<string | null> {
-  const openRouterApiKey = await loadOpenRouterApiKey();
   if (!openRouterApiKey) return null;
   try {
     const dataUri = `data:${mimeType};base64,${base64Audio}`;
@@ -196,8 +192,18 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Audio file too large. Max 10MB allowed.' }, { status: 413 });
     }
 
-    if (!GEMINI_API_KEY && !(await loadOpenRouterApiKey())) {
-      return json({ error: 'No transcription API key configured' }, { status: 500 });
+    // Keys travel per-request: x-provider-gemini for direct Gemini calls,
+    // x-provider-openrouter for the OpenRouter fallback. The user must
+    // supply at least one — we don't read any global key here.
+    const keys = extractProviderKeys(request);
+    if (!keys.gemini && !keys.openrouter) {
+      return json(
+        {
+          error:
+            'No transcription API key set. Add a Gemini or OpenRouter key in Settings > Models & Keys.'
+        },
+        { status: 400 }
+      );
     }
 
     const arrayBuffer = await audioFile.arrayBuffer();
@@ -209,13 +215,13 @@ export const POST: RequestHandler = async ({ request }) => {
       voiceModel.startsWith('gemini-') || voiceModel.startsWith('gemini/');
 
     let text = prefersGeminiDirect
-      ? await transcribeWithGemini(base64Audio, mimeType, voiceModel)
+      ? await transcribeWithGemini(keys.gemini, base64Audio, mimeType, voiceModel)
       : null;
     if (text === null) {
-      text = await transcribeWithOpenRouter(base64Audio, mimeType, voiceModel);
+      text = await transcribeWithOpenRouter(keys.openrouter, base64Audio, mimeType, voiceModel);
     }
     if (text === null) {
-      text = await transcribeWithGemini(base64Audio, mimeType, GEMINI_FALLBACK_MODEL);
+      text = await transcribeWithGemini(keys.gemini, base64Audio, mimeType, GEMINI_FALLBACK_MODEL);
     }
 
     if (text === null) {

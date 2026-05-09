@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { emptyProviderKeys, type ProviderKeys } from '../../src/lib/server/auth/provider-keys';
 import { parseModelLabProvider, searchProviderModels } from '../../src/lib/server/model-lab';
+
+function keysWith(overrides: Partial<ProviderKeys>): ProviderKeys {
+  return { ...emptyProviderKeys(), ...overrides };
+}
 
 describe('model lab provider parsing', () => {
   it('accepts the supported providers case-insensitively', () => {
@@ -20,12 +25,10 @@ describe('model lab provider parsing', () => {
 
 describe('model lab search', () => {
   afterEach(() => {
-    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
   it('searches OpenAI models and normalizes their shape', async () => {
-    vi.stubEnv('OPENAI_API_KEY', 'test-openai-key');
     const fetchMock = vi.fn(async () =>
       Response.json({
         data: [
@@ -36,7 +39,12 @@ describe('model lab search', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const models = await searchProviderModels({ provider: 'openai', query: 'gpt', limit: 10 });
+    const models = await searchProviderModels({
+      keys: keysWith({ openai: 'test-openai-key' }),
+      limit: 10,
+      provider: 'openai',
+      query: 'gpt'
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('https://api.openai.com/v1/models', {
       headers: { Authorization: 'Bearer test-openai-key' }
@@ -53,7 +61,6 @@ describe('model lab search', () => {
   });
 
   it('searches Anthropic models and normalizes display names', async () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', 'test-anthropic-key');
     const fetchMock = vi.fn(async () =>
       Response.json({
         data: [
@@ -67,7 +74,11 @@ describe('model lab search', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const models = await searchProviderModels({ provider: 'anthropic', limit: 1 });
+    const models = await searchProviderModels({
+      keys: keysWith({ anthropic: 'test-anthropic-key' }),
+      limit: 1,
+      provider: 'anthropic'
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('https://api.anthropic.com/v1/models', {
       headers: {
@@ -86,7 +97,6 @@ describe('model lab search', () => {
   });
 
   it('uses Anthropic OAuth/OAT auth tokens as bearer credentials for model search', async () => {
-    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', 'test-anthropic-oat-token');
     const fetchMock = vi.fn(async () =>
       Response.json({
         data: [{ display_name: 'Claude Haiku Test', id: 'claude-haiku-test' }]
@@ -94,7 +104,12 @@ describe('model lab search', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await searchProviderModels({ provider: 'anthropic', query: 'haiku', limit: 1 });
+    await searchProviderModels({
+      keys: keysWith({ anthropicAuthToken: 'test-anthropic-oat-token' }),
+      limit: 1,
+      provider: 'anthropic',
+      query: 'haiku'
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('https://api.anthropic.com/v1/models', {
       headers: {
@@ -106,7 +121,6 @@ describe('model lab search', () => {
   });
 
   it('treats OAT-looking Anthropic API key values as bearer tokens', async () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-oat-test-token');
     const fetchMock = vi.fn(async () =>
       Response.json({
         data: [{ display_name: 'Claude OAuth Test', id: 'claude-oauth-test' }]
@@ -114,7 +128,12 @@ describe('model lab search', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await searchProviderModels({ provider: 'anthropic', query: 'oauth', limit: 1 });
+    await searchProviderModels({
+      keys: keysWith({ anthropic: 'sk-ant-oat-test-token' }),
+      limit: 1,
+      provider: 'anthropic',
+      query: 'oauth'
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('https://api.anthropic.com/v1/models', {
       headers: {
@@ -126,7 +145,6 @@ describe('model lab search', () => {
   });
 
   it('searches OpenRouter models with capability metadata', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key');
     const fetchMock = vi.fn(async () =>
       Response.json({
         data: [
@@ -143,7 +161,12 @@ describe('model lab search', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const models = await searchProviderModels({ provider: 'openrouter', query: 'fast', limit: 10 });
+    const models = await searchProviderModels({
+      keys: keysWith({ openrouter: 'test-openrouter-key' }),
+      limit: 10,
+      provider: 'openrouter',
+      query: 'fast'
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('https://openrouter.ai/api/v1/models', {
       headers: { Authorization: 'Bearer test-openrouter-key' }
@@ -162,7 +185,6 @@ describe('model lab search', () => {
   });
 
   it('clamps provider search limits to the supported range', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key');
     const data = Array.from({ length: 105 }, (_, index) => ({
       id: `provider/model-${index}`,
       name: `Model ${index}`
@@ -172,43 +194,55 @@ describe('model lab search', () => {
       vi.fn(async () => Response.json({ data }))
     );
 
-    await expect(searchProviderModels({ limit: 0, provider: 'openrouter' })).resolves.toHaveLength(
-      1
-    );
     await expect(
-      searchProviderModels({ limit: 1_000, provider: 'openrouter' })
+      searchProviderModels({
+        keys: keysWith({ openrouter: 'test-openrouter-key' }),
+        limit: 0,
+        provider: 'openrouter'
+      })
+    ).resolves.toHaveLength(1);
+    await expect(
+      searchProviderModels({
+        keys: keysWith({ openrouter: 'test-openrouter-key' }),
+        limit: 1_000,
+        provider: 'openrouter'
+      })
     ).resolves.toHaveLength(100);
   });
 
   it.each([
     {
-      envKey: 'OPENAI_API_KEY',
-      provider: 'openai',
+      keyField: 'openai' as const,
+      provider: 'openai' as const,
       status: 503,
       expectedMessage: 'OpenAI models API error: 503'
     },
     {
-      envKey: 'ANTHROPIC_API_KEY',
-      provider: 'anthropic',
+      keyField: 'anthropic' as const,
+      provider: 'anthropic' as const,
       status: 429,
       expectedMessage: 'Anthropic models API error: 429'
     },
     {
-      envKey: 'OPENROUTER_API_KEY',
-      provider: 'openrouter',
+      keyField: 'openrouter' as const,
+      provider: 'openrouter' as const,
       status: 502,
       expectedMessage: 'OpenRouter models API error: 502'
     }
-  ] as const)(
+  ])(
     'surfaces $provider model API failures',
-    async ({ envKey, expectedMessage, provider, status }) => {
-      vi.stubEnv(envKey, `test-${provider}-key`);
+    async ({ expectedMessage, keyField, provider, status }) => {
       vi.stubGlobal(
         'fetch',
         vi.fn(async () => new Response('nope', { status }))
       );
 
-      await expect(searchProviderModels({ provider })).rejects.toThrowError(expectedMessage);
+      await expect(
+        searchProviderModels({
+          keys: keysWith({ [keyField]: `test-${provider}-key` } as Partial<ProviderKeys>),
+          provider
+        })
+      ).rejects.toThrowError(expectedMessage);
     }
   );
 });
@@ -281,13 +315,19 @@ describe('model lab API route', () => {
   it('returns provider search results and prompt presets from GET', async () => {
     const { GET, searchModels } = await loadRoute();
     const response = await GET({
-      request: new Request('http://localhost/api/model-lab?provider=openrouter&q=nemotron&limit=5'),
+      request: new Request(
+        'http://localhost/api/model-lab?provider=openrouter&q=nemotron&limit=5',
+        {
+          headers: { 'x-provider-openrouter': 'caller-key' }
+        }
+      ),
       url: new URL('http://localhost/api/model-lab?provider=openrouter&q=nemotron&limit=5')
     } as Parameters<typeof GET>[0]);
     const body = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(200);
     expect(searchModels).toHaveBeenCalledWith({
+      keys: keysWith({ openrouter: 'caller-key' }),
       limit: 5,
       provider: 'openrouter',
       query: 'nemotron'
@@ -337,6 +377,7 @@ describe('model lab API route', () => {
           prompt: 'Draw a diagram',
           provider: 'openrouter'
         }),
+        headers: { 'x-provider-openrouter': 'caller-key' },
         method: 'POST'
       })
     } as Parameters<typeof POST>[0]);
@@ -344,6 +385,7 @@ describe('model lab API route', () => {
 
     expect(response.status).toBe(200);
     expect(smokeTest).toHaveBeenCalledWith({
+      keys: keysWith({ openrouter: 'caller-key' }),
       maxOutputTokens: 40,
       modelId: 'model-a',
       prompt: 'Draw a diagram',

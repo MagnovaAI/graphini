@@ -1,4 +1,5 @@
 import { requireAdmin } from '$lib/server/admin/auth';
+import { extractProviderKeys } from '$lib/server/auth/provider-keys';
 import {
   modelLabPromptPresets,
   parseModelLabProvider,
@@ -15,7 +16,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
     const provider = parseModelLabProvider(url.searchParams.get('provider'));
     const query = url.searchParams.get('q') ?? '';
     const limit = Number(url.searchParams.get('limit') ?? 25);
-    const models = await searchProviderModels({ limit, provider, query });
+    const keys = extractProviderKeys(request);
+    const models = await searchProviderModels({ keys, limit, provider, query });
 
     return json({
       data: {
@@ -48,7 +50,9 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'modelId is required', success: false }, { status: 400 });
     }
 
+    const keys = extractProviderKeys(request);
     const result = await smokeTestProviderModel({
+      keys,
       maxOutputTokens: body.maxOutputTokens,
       modelId: body.modelId,
       prompt: body.prompt,

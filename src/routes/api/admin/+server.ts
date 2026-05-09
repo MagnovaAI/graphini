@@ -6,12 +6,6 @@
 import { requireAdmin } from '$lib/server/admin/auth';
 import { handleAdminGet } from '$lib/server/admin/get-actions';
 import { getCache } from '$lib/server/cache';
-import {
-  setRuntimeAnthropicAuthToken,
-  setRuntimeAnthropicApiKey,
-  setRuntimeOpenAiApiKey,
-  setRuntimeOpenRouterApiKey
-} from '$lib/server/chat/model';
 import { getDb } from '$lib/server/db';
 import {
   adminDashboard,
@@ -454,68 +448,21 @@ export const POST: RequestHandler = async ({ request }) => {
         return json({ success: true });
       }
 
-      case 'setOpenRouterApiKey': {
-        const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-        if (!apiKey) {
-          return json({ success: false, error: 'apiKey required' }, { status: 400 });
-        }
-        await settingsManager.set(null, 'ai_provider', 'openrouter_api_key', apiKey, {
-          description: 'OpenRouter API key used for server-side AI requests',
-          isSensitive: true
-        });
-        setRuntimeOpenRouterApiKey(apiKey);
-        await adminDashboard.logAction(null, 'set_openrouter_api_key', 'setting', 'ai_provider');
-        return json({ success: true });
-      }
-
+      case 'setOpenRouterApiKey':
       case 'setProviderApiKey': {
-        const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-        const provider =
-          typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '';
-        const credentialType =
-          typeof body.credentialType === 'string'
-            ? body.credentialType.trim().toLowerCase()
-            : 'api_key';
-        const supportedProviders = new Set(['anthropic', 'openai', 'openrouter']);
-        if (!supportedProviders.has(provider)) {
-          return json(
-            { success: false, error: 'provider must be openai, anthropic, or openrouter' },
-            { status: 400 }
-          );
-        }
-        if (credentialType !== 'api_key' && credentialType !== 'auth_token') {
-          return json(
-            { success: false, error: 'credentialType must be api_key or auth_token' },
-            { status: 400 }
-          );
-        }
-        if (credentialType === 'auth_token' && provider !== 'anthropic') {
-          return json(
-            { success: false, error: 'OAuth bearer tokens are only supported for Anthropic' },
-            { status: 400 }
-          );
-        }
-        if (!apiKey) {
-          return json({ success: false, error: 'apiKey required' }, { status: 400 });
-        }
-
-        const settingKey =
-          credentialType === 'auth_token' ? `${provider}_auth_token` : `${provider}_api_key`;
-        await settingsManager.set(null, 'ai_provider', settingKey, apiKey, {
-          description:
-            credentialType === 'auth_token'
-              ? `${provider} OAuth/OAT bearer token used for server-side AI requests`
-              : `${provider} API key used for server-side AI requests`,
-          isSensitive: true
-        });
-        if (provider === 'anthropic' && credentialType === 'auth_token')
-          setRuntimeAnthropicAuthToken(apiKey);
-        if (provider === 'anthropic' && credentialType === 'api_key')
-          setRuntimeAnthropicApiKey(apiKey);
-        if (provider === 'openai') setRuntimeOpenAiApiKey(apiKey);
-        if (provider === 'openrouter') setRuntimeOpenRouterApiKey(apiKey);
-        await adminDashboard.logAction(null, 'set_provider_api_key', 'setting', settingKey);
-        return json({ success: true });
+        // Server-side provider key storage was removed. Each user supplies
+        // their own key in browser localStorage; chat / audio / upload /
+        // model-lab read those keys from x-provider-* request headers. The
+        // admin "set a global key" flow is intentionally gone — it was the
+        // mechanism that let guests ride the admin's billing.
+        return json(
+          {
+            success: false,
+            error:
+              'Server-side provider key storage has been removed. Each user manages their own keys in Settings > Models & Keys.'
+          },
+          { status: 410 }
+        );
       }
 
       case 'updateEnabledModel': {
