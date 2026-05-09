@@ -562,16 +562,69 @@
           </DropdownMenu.Root>
         {:else}
           <!--
-            Logged-out / guest state. We label the user "Guest User" so it's
-            clear the app is usable without an account; the click still
-            triggers the OAuth sign-in flow against auth.magnova.ai.
+            Guest / logged-out state. Same dropdown shape as the signed-in
+            footer so guests can reach Settings (their own API keys live in
+            localStorage there) and clear their session via Sign out. The
+            primary affordance is still "Sign in" — that's the most likely
+            action — but Settings is reachable too.
           -->
-          <Sidebar.MenuButton
-            tooltipContent="Sign in to save your work"
-            onclick={() => authStore.login()}>
-            <UserCircle />
-            <span>Guest User</span>
-          </Sidebar.MenuButton>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <Sidebar.MenuButton tooltipContent="Account" {...props}>
+                  <UserCircle />
+                  <span class="truncate text-[13px] font-medium">Guest User</span>
+                </Sidebar.MenuButton>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <Sidebar.MenuAction
+              onclick={onOpenSettings}
+              aria-label="Settings"
+              class="group-data-[collapsible=icon]:hidden">
+              <Settings />
+            </Sidebar.MenuAction>
+            <DropdownMenu.Content
+              align={isIconCollapsed ? 'end' : 'start'}
+              side={isIconCollapsed ? 'right' : 'top'}
+              sideOffset={6}
+              class="w-56 p-1">
+              <DropdownMenu.Label class="px-2 py-2">
+                <div class="flex items-center gap-2.5">
+                  <Avatar class="size-8 rounded-full">
+                    <AvatarFallback class="rounded-full bg-muted text-[12px] font-medium">
+                      <UserCircle class="size-4 text-muted-foreground" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <div class="flex min-w-0 flex-1 flex-col">
+                    <span class="truncate text-[13px] font-medium text-foreground">Guest User</span>
+                    <span class="truncate text-[12px] font-normal text-muted-foreground"
+                      >Sign in to save your work</span>
+                  </div>
+                </div>
+              </DropdownMenu.Label>
+              <DropdownMenu.Separator class="my-1" />
+              <DropdownMenu.Item
+                onclick={onOpenSettings}
+                class="cursor-pointer rounded-md px-2 py-1 text-[13px]">
+                <Settings class="size-3.5" />
+                <span>Settings</span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onclick={() => authStore.login()}
+                class="cursor-pointer rounded-md px-2 py-1 text-[13px]">
+                <LogOut class="size-3.5 rotate-180" />
+                <span>Sign in</span>
+              </DropdownMenu.Item>
+              {#if authStore.isGuest}
+                <DropdownMenu.Item
+                  onclick={() => authStore.logout()}
+                  class="cursor-pointer rounded-md px-2 py-1 text-[13px] text-destructive focus:text-destructive">
+                  <LogOut class="size-3.5" />
+                  <span>Sign out</span>
+                </DropdownMenu.Item>
+              {/if}
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
         {/if}
       </Sidebar.MenuItem>
     </Sidebar.Menu>
