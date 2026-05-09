@@ -19,16 +19,18 @@ import { createIconSearchTool } from './iconSearch';
 import { createStyleSearchTool } from './styleSearch';
 import { createThinkingTool } from './thinking';
 import { createWebSearchTool } from './webSearch';
-import type { FileSystemTurnGuard, WorkspaceToolTarget } from './context';
+import type { FileSystemTurnGuard, ToolContext, WorkspaceToolTarget } from './context';
+import type { ProviderKeys } from '$lib/server/auth/provider-keys';
 
 export function createDiagramTools(
   sessionId: string,
-  modelId?: string,
-  target?: WorkspaceToolTarget,
-  userId?: string,
-  fileSystemGuard?: FileSystemTurnGuard
+  modelId: string | undefined,
+  target: WorkspaceToolTarget | undefined,
+  userId: string | undefined,
+  fileSystemGuard: FileSystemTurnGuard | undefined,
+  keys: ProviderKeys
 ) {
-  const context = { fileSystemGuard, modelId, sessionId, target, userId };
+  const context: ToolContext = { fileSystemGuard, keys, modelId, sessionId, target, userId };
   return {
     askQuestions: createAskQuestionsTool(context),
     autoStyler: createAutoStylerTool(context),

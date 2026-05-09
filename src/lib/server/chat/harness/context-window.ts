@@ -1,7 +1,8 @@
 import { getDb } from '$lib/server/db';
 import { settingsManager } from '$lib/server/state-manager';
 import { generateText } from 'ai';
-import { getChatProviderOptions, resolveChatModel } from '$lib/server/chat/model';
+import { getChatProviderOptions, resolveChatModelFor } from '$lib/server/chat/model';
+import type { ProviderKeys } from '$lib/server/auth/provider-keys';
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
 const MIN_RECENT_CONTEXT_TOKENS = 12000;
@@ -43,6 +44,7 @@ function transcriptForSummary(messages: { content: string; role: unknown }[]): s
 async function summarizeOverflowingHistory(options: {
   fallbackModel: string;
   messages: { content: string; role: unknown }[];
+  keys: ProviderKeys;
 }): Promise<string> {
   if (options.messages.length === 0) return '';
 
@@ -55,7 +57,7 @@ async function summarizeOverflowingHistory(options: {
 
   const result = await generateText({
     maxOutputTokens: SUMMARY_TARGET_TOKENS,
-    model: resolveChatModel(summaryModel, providerHint),
+    model: resolveChatModelFor(summaryModel, providerHint, options.keys),
     prompt: `Summarize this older conversation history so a later assistant can continue seamlessly.\n\n${transcript}`,
     providerOptions: getChatProviderOptions(summaryModel, providerHint),
     system:
@@ -83,6 +85,7 @@ export async function buildChatContext(
     contextWindowTokens: number;
     fallbackModel: string;
     systemPromptTokens: number;
+    keys: ProviderKeys;
   }
 ): Promise<{ messages: Record<string, unknown>[]; summary: string }> {
   let history = Array.isArray(uiMessages) ? uiMessages : [];
@@ -141,6 +144,7 @@ export async function buildChatContext(
   try {
     const summary = await summarizeOverflowingHistory({
       fallbackModel: options.fallbackModel,
+      keys: options.keys,
       messages: olderMessages
     });
     return { messages: recentMessages, summary };

@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import type { NeonAdapter } from '$lib/server/db/neon-adapter';
 import { workspaceFiles } from '$lib/server/db/schema';
+import type { ProviderKeys } from '$lib/server/auth/provider-keys';
 
 export interface WorkspaceToolTab {
   engine: string;
@@ -39,10 +40,17 @@ export interface FileSystemTurnGuard {
 export interface ToolContext {
   modelId?: string;
   sessionId: string;
-  /** Authenticated user (or guest) id. Tools that need per-user keys read this. */
+  /** Authenticated user (or guest) id. Tools that need per-user data read this. */
   userId?: string;
   target?: WorkspaceToolTarget;
   fileSystemGuard?: FileSystemTurnGuard;
+  /**
+   * Provider keys carried by the originating chat request (extracted from
+   * `x-provider-*` headers at the request boundary). Subagent tools that
+   * make their own LLM / search calls use these so the user's quota — not
+   * a global key — is consumed.
+   */
+  keys: ProviderKeys;
 }
 
 export const targetTabNameSchema = z
