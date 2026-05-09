@@ -4,6 +4,7 @@
  */
 
 import { syncPreferencesFromServer } from '$lib/client/stores/panels.svelte';
+import { setActiveUserId } from '$lib/client/stores/settings.svelte';
 import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
 
 interface AuthUser {
@@ -71,6 +72,11 @@ const state = $state<AuthState>(
 );
 hmrPreserve('authState', () => ({ ...state }));
 
+// Bind the localStorage settings namespace to the cached user immediately so
+// the first paint after a hard reload reads from the right slot. fetchMe()
+// will rebind again once the server confirms identity.
+setActiveUserId(state.user?.id ?? null);
+
 async function fetchMe(): Promise<void> {
   try {
     state.loading = true;
@@ -80,7 +86,10 @@ async function fetchMe(): Promise<void> {
       state.user = data.user;
       state.credits = data.credits;
       saveCachedAuth(data.user, data.credits);
-      // Sync preferences from server after auth check
+      setActiveUserId(state.user?.id ?? null);
+      // syncPreferencesFromServer is a no-op now (panels load from
+      // localStorage). Kept as a compatibility shim while callers still
+      // exist; safe to remove later.
       if (state.user)
         syncPreferencesFromServer().catch(() => {
           /* silent */
@@ -89,11 +98,13 @@ async function fetchMe(): Promise<void> {
       state.user = null;
       state.credits = null;
       saveCachedAuth(null, null);
+      setActiveUserId(null);
     }
   } catch {
     state.user = null;
     state.credits = null;
     saveCachedAuth(null, null);
+    setActiveUserId(null);
   } finally {
     state.loading = false;
     state.initialized = true;
@@ -129,6 +140,7 @@ async function loginLocal(
     if (res.ok && data.user) {
       state.user = data.user;
       saveCachedAuth(data.user, null);
+      setActiveUserId(state.user?.id ?? null);
       state.initialized = true;
       // Fetch full user + credits
       await fetchMe();
@@ -162,6 +174,7 @@ async function register(
     if (res.ok && data.user) {
       state.user = data.user;
       saveCachedAuth(data.user, null);
+      setActiveUserId(state.user?.id ?? null);
       state.initialized = true;
       await fetchMe();
       return { success: true };
@@ -178,6 +191,7 @@ function logout(): void {
   state.user = null;
   state.credits = null;
   saveCachedAuth(null, null);
+  setActiveUserId(null);
   // Clear local session cookie by setting expired
   document.cookie = 'graphini_session=; Path=/; Max-Age=0';
   window.location.href = '/api/auth/logout';
@@ -200,6 +214,14 @@ export const authStore = {
   get credits() {
     return state.credits;
   },
+  /**
+   * True when there is *any* identity attached (real user OR guest cookie).
+   * Use this to gate DB persistence — guests get to persist too, just inside
+   * their own quota.
+   */
+  get hasIdentity() {
+    return !!state.user;
+  },
   get hasSession() {
     return !!state.user;
   },
@@ -215,14 +237,6 @@ export const authStore = {
   },
   get isLoggedIn() {
     return !!state.user && state.user.is_guest !== true;
-  },
-  /**
-   * True when there is *any* identity attached (real user OR guest cookie).
-   * Use this to gate DB persistence — guests get to persist too, just inside
-   * their own quota.
-   */
-  get hasIdentity() {
-    return !!state.user;
   },
   login,
   loginLocal,

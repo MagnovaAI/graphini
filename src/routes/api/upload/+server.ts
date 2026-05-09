@@ -1,11 +1,9 @@
 import { storeFile } from '$lib/server/file-store';
-import { loadOpenRouterApiKey } from '$lib/server/chat/model';
+import { extractProviderKeys } from '$lib/server/auth/provider-keys';
+import { validateSessionOrGuest } from '$lib/server/auth';
+import { getClientKey, rateLimitResponse, uploadLimiter } from '$lib/server/rate-limit';
 import { error, json } from '@sveltejs/kit';
-import dotenv from 'dotenv';
 import type { RequestHandler } from './$types';
-
-dotenv.config({ path: '.env.local' });
-dotenv.config();
 
 /**
  * File upload endpoint - processes all files server-side.
@@ -18,8 +16,11 @@ dotenv.config();
  * Returns: { url: string|null, mediaType: string, filename: string, type: string, extractedText?: string, fileId?: string }
  */
 
-async function describeImageWithVision(base64DataUrl: string, filename: string): Promise<string> {
-  const apiKey = await loadOpenRouterApiKey();
+async function describeImageWithVision(
+  apiKey: string,
+  base64DataUrl: string,
+  filename: string
+): Promise<string> {
   if (!apiKey) return `[Image: ${filename} — vision processing unavailable (no API key)]`;
 
   try {
@@ -78,6 +79,14 @@ Be thorough and precise. This description will be used to recreate or reference 
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
+    // Auth + rate limit before reading the body so anonymous floods get
+    // rejected before we pay the multipart parsing / vision-model costs.
+    const rl = uploadLimiter.check(getClientKey(request));
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
+    const user = await validateSessionOrGuest(request).catch(() => null);
+    if (!user) return error(401, 'Authentication required to upload files.');
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
@@ -96,6 +105,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const mediaType = file.type || 'application/octet-stream';
     const isImage = file.type.startsWith('image/');
     const supportsImages = formData.get('supportsImages') === 'true';
+    const keys = extractProviderKeys(request);
 
     // For images: analyze with vision model, return text description + thumbnail URL
     if (isImage) {
@@ -107,28 +117,31 @@ export const POST: RequestHandler = async ({ request }) => {
       const base64 = Buffer.from(buffer).toString('base64');
       const dataUrl = `data:${mediaType};base64,${base64}`;
 
-      // Process image with vision model to get text description
-      const description = await describeImageWithVision(dataUrl, filename);
+      // Process image with vision model to get text description.
+      // The vision call uses OpenRouter; if the user hasn't supplied a key,
+      // describeImageWithVision degrades to a placeholder description rather
+      // than failing the upload — text/PDF uploads don't need a key at all.
+      const description = await describeImageWithVision(keys.openrouter, dataUrl, filename);
 
       // Store image metadata for agent access
       const sessionId = (formData.get('sessionId') as string) || 'default';
       const storedFile = storeFile({
         buffer: Buffer.from(buffer),
         extractedText: `[Image: ${filename}]\n${description}`,
-        sessionId,
         filename,
         mimeType: mediaType,
-        originalName: filename
+        originalName: filename,
+        sessionId
       });
 
       return json({
-        url: dataUrl,
-        mediaType,
-        filename,
-        type: 'image',
         extractedText: `[Image: ${filename}]\n${description}`,
         fileId: storedFile.id,
-        size: file.size
+        filename,
+        mediaType,
+        size: file.size,
+        type: 'image',
+        url: dataUrl
       });
     }
 
@@ -146,20 +159,20 @@ export const POST: RequestHandler = async ({ request }) => {
       const storedFile = storeFile({
         buffer: Buffer.from(text),
         extractedText,
-        sessionId,
         filename,
         mimeType: mediaType,
-        originalName: filename
+        originalName: filename,
+        sessionId
       });
 
       return json({
-        url: null,
-        mediaType,
-        filename,
-        type: 'document',
         extractedText,
         fileId: storedFile.id,
-        size: file.size
+        filename,
+        mediaType,
+        size: file.size,
+        type: 'document',
+        url: null
       });
     }
 
@@ -190,10 +203,10 @@ export const POST: RequestHandler = async ({ request }) => {
       const storedFile = storeFile({
         buffer,
         extractedText: extractedText || `[PDF: ${filename}]`,
-        sessionId,
         filename,
         mimeType: mediaType,
-        originalName: filename
+        originalName: filename,
+        sessionId
       });
 
       const summary =
@@ -202,14 +215,14 @@ export const POST: RequestHandler = async ({ request }) => {
           : `[PDF: ${filename}, ${(file.size / 1024).toFixed(1)}KB]`;
 
       return json({
-        url: null,
-        mediaType,
-        filename,
-        type: 'pdf',
         extractedText: extractedText ? `${summary}\n\n${extractedText}` : summary,
         fileId: storedFile.id,
+        filename,
+        mediaType,
         pageCount,
-        size: file.size
+        size: file.size,
+        type: 'pdf',
+        url: null
       });
     }
 

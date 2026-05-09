@@ -16,9 +16,8 @@ import {
   validateSingleMermaidDocument
 } from '$lib/server/chat/mermaid';
 import { detectCodeLanguage, validateCodeArtifact } from '$lib/server/chat/code-artifacts';
-import { openrouterFastChat } from '$lib/server/chat/model';
 import { instructionsForSubagent } from '$lib/server/chat/subagents';
-import { generateText, tool } from 'ai';
+import { tool } from 'ai';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { z } from 'zod';
@@ -140,8 +139,7 @@ export function applyDiagramLinePatch({
   const nextEdgeCount = countMermaidEdgeLines(newDiagram);
   if (previousEdgeCount > 0 && nextEdgeCount === 0) {
     return {
-      error:
-        'REJECTED: diagramPatch would remove every connection from the existing diagram.',
+      error: 'REJECTED: diagramPatch would remove every connection from the existing diagram.',
       hint: 'Keep the existing edges when styling or adding icons. Patch only the relevant node, style, or icon lines unless the user explicitly asks to delete all relationships.',
       success: false
     };

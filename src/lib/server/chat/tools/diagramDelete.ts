@@ -15,9 +15,8 @@ import {
   validateSingleMermaidDocument
 } from '$lib/server/chat/mermaid';
 import { detectCodeLanguage, validateCodeArtifact } from '$lib/server/chat/code-artifacts';
-import { openrouterFastChat } from '$lib/server/chat/model';
 import { instructionsForSubagent } from '$lib/server/chat/subagents';
-import { generateText, tool } from 'ai';
+import { tool } from 'ai';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { z } from 'zod';

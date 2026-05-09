@@ -1,14 +1,9 @@
 import { validateSessionOrGuest } from '$lib/server/auth';
+import { extractProviderKeys, missingProviderKeyError } from '$lib/server/auth/provider-keys';
 import { getDb } from '$lib/server/db';
 import type { NeonAdapter } from '$lib/server/db/neon-adapter';
 import { workspaceFiles } from '$lib/server/db/schema';
-import {
-  hasProviderCredentialFor,
-  loadProviderApiKeys,
-  missingProviderCredentialMessage,
-  normalizeChatModelId,
-  resolveChatModelFor
-} from '$lib/server/chat/model';
+import { hasProviderKey, normalizeChatModelId, resolveChatModelFor } from '$lib/server/chat/model';
 import type { ChatProvider } from '$lib/server/chat/model';
 import { isToolInventoryRequest } from '$lib/server/chat/tool-gating';
 import { createDiagramTools } from '$lib/server/chat/tools';
@@ -130,10 +125,17 @@ export async function runChatTurn(request: Request): Promise<Response> {
   const providerHint = enabledModel.provider || undefined;
   const normalizedModel = normalizeChatModelId(model, providerHint);
   const { modelId: actualModelId } = normalizedModel;
-  await loadProviderApiKeys();
+  const keys = extractProviderKeys(request);
   const normalizedProvider = normalizedModel.provider as ChatProvider;
-  if (!(await hasProviderCredentialFor(normalizedProvider, userId))) {
-    throw error(400, missingProviderCredentialMessage(normalizedProvider));
+  if (!hasProviderKey(normalizedProvider, keys)) {
+    // Throws a 400 with a Settings-routable message keyed by provider.
+    missingProviderKeyError(
+      normalizedProvider === 'anthropic'
+        ? 'anthropic'
+        : normalizedProvider === 'openai'
+          ? 'openai'
+          : 'openrouter'
+    );
   }
 
   const { activeEngine, workspaceContext } = buildWorkspaceContext(body);
@@ -163,7 +165,8 @@ export async function runChatTurn(request: Request): Promise<Response> {
     actualModelId,
     workspaceContext,
     userId,
-    fileSystemGuard
+    fileSystemGuard,
+    keys
   );
   // Denylist semantics: any tool the user has explicitly disabled is
   // filtered out. Tools that are missing from the persisted config (because
@@ -194,13 +197,14 @@ export async function runChatTurn(request: Request): Promise<Response> {
   const chatContext = await buildChatContext(uiMessages, message, {
     contextWindowTokens: contextWindowForModel(enabledModel),
     fallbackModel: model,
+    keys,
     systemPromptTokens: estimateTokens(systemPrompt)
   });
   const system = chatContext.summary
     ? `${systemPrompt}\n\nCompacted prior chat history:\n${chatContext.summary}`
     : systemPrompt;
 
-  const resolvedModel = await resolveChatModelFor(userId, model, providerHint);
+  const resolvedModel = resolveChatModelFor(model, providerHint, keys);
   const result = runChatStream({
     abortSignal: request.signal,
     messages: chatContext.messages,
@@ -218,11 +222,7 @@ export async function runChatTurn(request: Request): Promise<Response> {
   });
 
   return result.toUIMessageStreamResponse({
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    },
+    // No CORS headers — same-origin only. See /api/chat/+server.ts comment.
     sendReasoning: true,
     // The AI SDK's default error handler scrubs provider errors to a generic
     // "An error occurred" string. Surface the real message instead — most

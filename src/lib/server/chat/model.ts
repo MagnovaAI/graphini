@@ -1,172 +1,35 @@
+/**
+ * Chat model resolver.
+ *
+ * Pure: every function takes the credentials it needs as a parameter. No DB
+ * lookups, no environment-variable fallbacks, no module-level state. This is
+ * the contract for the local-settings revamp — provider keys travel from the
+ * user's localStorage to the server in `x-provider-*` request headers, get
+ * pulled out via `extractProviderKeys`, and are passed in by the caller.
+ *
+ * If a key is missing, `resolveChatModelFor` throws via
+ * `missingProviderKeyError`, which surfaces a 400 with a Settings-routable
+ * message.
+ */
+
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
-import { getDb } from '$lib/server/db';
+import { missingProviderKeyError, type ProviderKeys } from '$lib/server/auth/provider-keys';
 import type { LanguageModel, ProviderMetadata } from 'ai';
 
-let runtimeOpenRouterApiKey = '';
-let runtimeOpenAiApiKey = '';
-let runtimeAnthropicApiKey = '';
-let runtimeAnthropicAuthToken = '';
-
 export type ChatProvider = 'openrouter' | 'openai' | 'anthropic';
-export type ProviderCredentialType = 'api_key' | 'auth_token';
-const anthropicOAuthBetaHeader = 'oauth-2025-04-20';
 
-// Provider keys are NOT loaded from a global DB setting. Each user supplies
-// their own key (per-user KV row written via Settings) — guests included.
-// Env vars remain only as a developer escape hatch; they are intentionally not
-// the production source of truth.
-
-export async function loadOpenRouterApiKey() {
-  runtimeOpenRouterApiKey = process.env.OPENROUTER_API_KEY || '';
-  return runtimeOpenRouterApiKey;
-}
-
-export async function loadOpenAiApiKey() {
-  runtimeOpenAiApiKey = process.env.OPENAI_API_KEY || '';
-  return runtimeOpenAiApiKey;
-}
-
-export async function loadAnthropicApiKey() {
-  runtimeAnthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
-  return runtimeAnthropicApiKey;
-}
-
-export async function loadAnthropicAuthToken() {
-  runtimeAnthropicAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_OAUTH_TOKEN || '';
-  return runtimeAnthropicAuthToken;
-}
-
-export async function loadProviderApiKeys() {
-  await Promise.all([
-    loadOpenRouterApiKey(),
-    loadOpenAiApiKey(),
-    loadAnthropicApiKey(),
-    loadAnthropicAuthToken()
-  ]);
-}
-
-/** Per-user API key lookup. Falls back to env/global when the user hasn't set one. */
-async function getUserScopedKey(
-  userId: string | null,
-  provider: ChatProvider | 'gemini',
-  fallback: string
-): Promise<string> {
-  if (!userId) return fallback;
-  try {
-    const value = await getDb().kvGet(userId, 'ai_provider', `${provider}_api_key`);
-    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
-  } catch (err) {
-    console.error(`[chat/model] failed to read per-user ${provider} key:`, err);
-  }
-  return fallback;
-}
-
-async function getOpenRouterKeyFor(userId: string | null): Promise<string> {
-  return getUserScopedKey(userId, 'openrouter', await loadOpenRouterApiKey());
-}
-async function getOpenAiKeyFor(userId: string | null): Promise<string> {
-  return getUserScopedKey(userId, 'openai', await loadOpenAiApiKey());
-}
-async function getAnthropicKeyFor(userId: string | null): Promise<string> {
-  return getUserScopedKey(userId, 'anthropic', await loadAnthropicApiKey());
-}
-
-export async function hasProviderCredentialFor(
-  provider: ChatProvider,
-  userId: string | null
-): Promise<boolean> {
-  if (provider === 'openrouter') return Boolean(await getOpenRouterKeyFor(userId));
-  if (provider === 'openai') return Boolean(await getOpenAiKeyFor(userId));
-  // Anthropic: per-user api_key OR global auth_token (OAuth) OR env api_key.
-  if (await getAnthropicKeyFor(userId)) return true;
-  return Boolean(await loadAnthropicAuthToken());
-}
-
-export function missingProviderCredentialMessage(provider: ChatProvider) {
-  const labelByProvider: Record<ChatProvider, string> = {
-    anthropic: 'Anthropic',
-    openai: 'OpenAI',
-    openrouter: 'OpenRouter'
-  };
-  return `${labelByProvider[provider]} API key is not set. Add your key in Settings > Models & Keys.`;
-}
-
-export function setRuntimeOpenRouterApiKey(apiKey: string) {
-  runtimeOpenRouterApiKey = apiKey.trim();
-}
-
-export function setRuntimeOpenAiApiKey(apiKey: string) {
-  runtimeOpenAiApiKey = apiKey.trim();
-}
-
-export function setRuntimeAnthropicApiKey(apiKey: string) {
-  runtimeAnthropicApiKey = apiKey.trim();
-}
-
-export function setRuntimeAnthropicAuthToken(authToken: string) {
-  runtimeAnthropicAuthToken = authToken.trim();
-}
-
-function getOpenRouterApiKey() {
-  const apiKey = process.env.OPENROUTER_API_KEY || runtimeOpenRouterApiKey;
-  if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not set. Add it in Settings > Model Access.');
-  }
-  return apiKey;
-}
-
-function getOpenAiApiKey() {
-  const apiKey = process.env.OPENAI_API_KEY || runtimeOpenAiApiKey;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not set. Add it in Settings > Model Access.');
-  }
-  return apiKey;
-}
-
-function getAnthropicApiKey() {
-  const apiKey = process.env.ANTHROPIC_API_KEY || runtimeAnthropicApiKey;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set. Add it in Settings > Model Access.');
-  }
-  return apiKey;
-}
-
-function getAnthropicAuthToken() {
-  return (
-    process.env.ANTHROPIC_AUTH_TOKEN ||
-    process.env.ANTHROPIC_OAUTH_TOKEN ||
-    runtimeAnthropicAuthToken
-  );
-}
+const ANTHROPIC_OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 
 function isAnthropicOAuthToken(token: string): boolean {
   return token.startsWith('sk-ant-oat') || token.startsWith('sk-ant-oauth');
 }
 
-export function getAnthropicAuthHeaders(): Record<string, string> {
-  const authToken = getAnthropicAuthToken();
-  if (authToken) {
-    return {
-      'anthropic-beta': anthropicOAuthBetaHeader,
-      Authorization: `Bearer ${authToken}`
-    };
-  }
-
-  const apiKey = getAnthropicApiKey();
-  if (isAnthropicOAuthToken(apiKey)) {
-    return {
-      'anthropic-beta': anthropicOAuthBetaHeader,
-      Authorization: `Bearer ${apiKey}`
-    };
-  }
-
-  return { 'x-api-key': apiKey };
-}
-
-export function normalizeChatModelId(modelId: string, providerHint?: string) {
+export function normalizeChatModelId(
+  modelId: string,
+  providerHint?: string
+): { modelId: string; provider: ChatProvider } {
   const provider = providerHint?.toLowerCase();
   if (modelId.startsWith('openrouter/')) {
     return { modelId: modelId.slice('openrouter/'.length), provider: 'openrouter' };
@@ -192,7 +55,14 @@ export function normalizeChatModelId(modelId: string, providerHint?: string) {
   return { modelId, provider: 'openrouter' };
 }
 
-function buildOpenRouterChat(modelId: string, apiKey: string) {
+/**
+ * Build an OpenRouter language model with an explicit API key.
+ *
+ * Exported because subagent tools (diagramPatch, markdownWrite, ...) need to
+ * construct lightweight chat clients with the same key the originating
+ * request supplied. They get the key via `ToolContext.keys`.
+ */
+export function buildOpenRouterChat(modelId: string, apiKey: string): LanguageModel {
   const openrouter = createOpenRouter({
     apiKey,
     appName: 'Graphini',
@@ -201,86 +71,75 @@ function buildOpenRouterChat(modelId: string, apiKey: string) {
   return openrouter.chat(modelId, {
     includeReasoning: true,
     reasoning: {
+      effort: 'medium',
       enabled: true,
-      exclude: false,
-      effort: 'medium'
+      exclude: false
     }
   });
 }
 
-function buildOpenAiChat(modelId: string, apiKey: string) {
+export function buildOpenAiChat(modelId: string, apiKey: string): LanguageModel {
   const openai = createOpenAI({ apiKey });
   return openai(modelId);
 }
 
-function buildAnthropicChat(modelId: string, apiKey: string, authToken: string) {
-  // Mirror the precedence of getAnthropicAuthHeaders: an OAuth-style token
-  // wins over an api_key, since OAuth tokens can be issued per-user with
-  // narrower scope. An api_key string starting with sk-ant-oauth IS an OAuth
-  // token even when it lives in the api_key slot.
+/**
+ * Build an Anthropic language model.
+ *
+ * Auth precedence:
+ *   1. authToken (the dedicated OAuth slot) wins, since OAuth tokens can be
+ *      issued per-user with narrower scope than a raw api_key.
+ *   2. apiKey, treated as OAuth if it has the `sk-ant-oauth` / `sk-ant-oat`
+ *      prefix (some flows only have one slot, the token lands there).
+ *   3. apiKey, treated as a regular API key otherwise.
+ */
+export function buildAnthropicChat(
+  modelId: string,
+  apiKey: string,
+  authToken: string
+): LanguageModel {
   const explicitToken = authToken || (apiKey && isAnthropicOAuthToken(apiKey) ? apiKey : '');
   const anthropic = createAnthropic({
     ...(explicitToken ? { authToken: explicitToken } : { apiKey }),
-    headers: explicitToken ? { 'anthropic-beta': anthropicOAuthBetaHeader } : undefined
+    headers: explicitToken ? { 'anthropic-beta': ANTHROPIC_OAUTH_BETA_HEADER } : undefined
   });
   return anthropic(modelId);
 }
 
 /**
- * Env-only OpenRouter constructor used by subagent tool calls (fileManager,
- * markdownWrite, iconSearch, ...). Subagents intentionally use the global key
- * rather than per-user keys today; per-user wiring would require threading
- * userId through every tool's session context.
+ * Whether `keys` carries enough credential to use `provider`. Used by the
+ * harness to fail fast with a Settings-routable 400 before model construction.
  */
-export function openrouterFastChat(modelId: string) {
-  return buildOpenRouterChat(modelId, getOpenRouterApiKey());
-}
-
-function openaiChat(modelId: string) {
-  return buildOpenAiChat(modelId, getOpenAiApiKey());
-}
-
-function anthropicChat(modelId: string) {
-  return buildAnthropicChat(modelId, getAnthropicApiKey(), getAnthropicAuthToken());
+export function hasProviderKey(provider: ChatProvider, keys: ProviderKeys): boolean {
+  if (provider === 'openrouter') return Boolean(keys.openrouter);
+  if (provider === 'openai') return Boolean(keys.openai);
+  // Anthropic accepts either a regular API key or an OAuth token.
+  return Boolean(keys.anthropic) || Boolean(keys.anthropicAuthToken);
 }
 
 /**
- * Per-user model resolution. The user's stored API key (if any) takes
- * priority over the environment/global key, which lets guests run their own
- * provider account with their own quota and billing.
+ * Resolve a `LanguageModel` for the given (modelId, providerHint) pair using
+ * the request's provider keys. Throws `missingProviderKeyError` if the
+ * required key is empty.
  */
-export async function resolveChatModelFor(
-  userId: string | null,
+export function resolveChatModelFor(
   modelId: string,
-  providerHint?: string
-): Promise<LanguageModel> {
+  providerHint: string | undefined,
+  keys: ProviderKeys
+): LanguageModel {
   const normalized = normalizeChatModelId(modelId, providerHint);
   if (normalized.provider === 'openai') {
-    const apiKey = await getOpenAiKeyFor(userId);
-    if (!apiKey) throw new Error('OPENAI_API_KEY is not set. Add it in Settings > Models & Keys.');
-    return buildOpenAiChat(normalized.modelId, apiKey);
+    if (!keys.openai) missingProviderKeyError('openai');
+    return buildOpenAiChat(normalized.modelId, keys.openai);
   }
   if (normalized.provider === 'anthropic') {
-    const apiKey = await getAnthropicKeyFor(userId);
-    const authToken = await loadAnthropicAuthToken();
-    if (!apiKey && !authToken) {
-      throw new Error('ANTHROPIC_API_KEY is not set. Add it in Settings > Models & Keys.');
+    if (!keys.anthropic && !keys.anthropicAuthToken) {
+      missingProviderKeyError('anthropic');
     }
-    return buildAnthropicChat(normalized.modelId, apiKey, authToken);
+    return buildAnthropicChat(normalized.modelId, keys.anthropic, keys.anthropicAuthToken);
   }
-  const apiKey = await getOpenRouterKeyFor(userId);
-  if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not set. Add it in Settings > Models & Keys.');
-  }
-  return buildOpenRouterChat(normalized.modelId, apiKey);
-}
-
-/** @deprecated env-only resolver; use resolveChatModelFor with a userId. */
-export function resolveChatModel(modelId: string, providerHint?: string): LanguageModel {
-  const normalized = normalizeChatModelId(modelId, providerHint);
-  if (normalized.provider === 'openai') return openaiChat(normalized.modelId);
-  if (normalized.provider === 'anthropic') return anthropicChat(normalized.modelId);
-  return openrouterFastChat(normalized.modelId);
+  if (!keys.openrouter) missingProviderKeyError('openrouter');
+  return buildOpenRouterChat(normalized.modelId, keys.openrouter);
 }
 
 function supportsAnthropicAdaptiveThinking(modelId: string): boolean {

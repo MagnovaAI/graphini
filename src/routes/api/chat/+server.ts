@@ -58,13 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 };
 
-export const OPTIONS: RequestHandler = async () => {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    }
-  });
-};
+// CORS preflight handler intentionally removed. The chat endpoint is
+// only consumed by the same-origin app shell. A wildcard CORS preflight
+// combined with credentialed cookies would let cross-origin sites trigger
+// chat actions on behalf of signed-in users.

@@ -1,4 +1,8 @@
 import { kv } from '$lib/client/stores/kvStore.svelte';
+import {
+  getActiveUserNamespace,
+  subscribeNamespaceChange
+} from '$lib/client/stores/settings.svelte';
 import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
 
 // ── Types ──
@@ -32,29 +36,20 @@ const PANEL_DEFAULTS: Record<PanelId, Omit<PanelConfig, 'id'>> = {
   chat: { label: 'Chat', maxWidth: 9999, minWidth: 220, visible: true, width: 380 }
 };
 
-const STORAGE_KEY = 'graphini_panels_v4';
-const ORDER_STORAGE_KEY = 'graphini_panel_order_v1';
-
-// ── Server Sync ──
-
-let serverSyncTimeout: ReturnType<typeof setTimeout> | null = null;
-
-function savePrefsToServer(key: string, value: unknown) {
-  if (typeof window === 'undefined') return;
-  if (serverSyncTimeout) clearTimeout(serverSyncTimeout);
-  serverSyncTimeout = setTimeout(async () => {
-    try {
-      await fetch('/api/user/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: { [key]: value } }),
-        credentials: 'include'
-      });
-    } catch {
-      /* silent fail */
-    }
-  }, 300);
+// Panel layout is per-user. Storage keys are namespaced by the active user
+// id (or 'guest' when no one is signed in) so two users on the same browser
+// don't share their layout.
+function panelStateKey(): string {
+  return `graphini_panels_v4_${getActiveUserNamespace()}`;
 }
+function panelOrderKey(): string {
+  return `graphini_panel_order_v1_${getActiveUserNamespace()}`;
+}
+
+// Panel preferences are stored in localStorage via kv (already wired below).
+// Earlier versions also mirrored each change to /api/user/preferences for
+// cross-device sync; that endpoint is deleted as part of the local-settings
+// revamp. Each browser keeps its own panel layout — deliberate trade-off.
 
 // ── Helpers ──
 
@@ -69,7 +64,7 @@ function loadPanelState(): Record<PanelId, PanelConfig> {
   if (typeof window === 'undefined') return defaults;
 
   try {
-    const saved = kv.get<Partial<Record<PanelId, Partial<PanelConfig>>>>('panels', STORAGE_KEY);
+    const saved = kv.get<Partial<Record<PanelId, Partial<PanelConfig>>>>('panels', panelStateKey());
     if (!saved) return defaults;
     for (const id of DEFAULT_ORDER) {
       const entry = saved[id];
@@ -90,7 +85,7 @@ function loadPanelState(): Record<PanelId, PanelConfig> {
 function loadPanelOrder(): PanelId[] {
   if (typeof window === 'undefined') return [...DEFAULT_ORDER];
   try {
-    const saved = kv.get<PanelId[]>('panels', ORDER_STORAGE_KEY);
+    const saved = kv.get<PanelId[]>('panels', panelOrderKey());
     if (!saved) return [...DEFAULT_ORDER];
     if (
       Array.isArray(saved) &&
@@ -123,14 +118,12 @@ class PanelManager {
       for (const id of DEFAULT_ORDER) {
         toSave[id] = { visible: this.panels[id].visible, width: this.panels[id].width };
       }
-      kv.set('panels', STORAGE_KEY, toSave);
-      savePrefsToServer('panelState', toSave);
+      kv.set('panels', panelStateKey(), toSave);
     }, 150);
   }
 
   private saveOrder() {
-    kv.set('panels', ORDER_STORAGE_KEY, this.order);
-    savePrefsToServer('panelOrder', this.order);
+    kv.set('panels', panelOrderKey(), this.order);
   }
 
   toggle(id: PanelId): void {
@@ -199,10 +192,23 @@ class PanelManager {
     for (const id of DEFAULT_ORDER) {
       toSave[id] = { visible: this.panels[id].visible, width: this.panels[id].width };
     }
-    kv.set('panels', STORAGE_KEY, toSave);
-    kv.set('panels', ORDER_STORAGE_KEY, this.order);
-    savePrefsToServer('panelState', toSave);
-    savePrefsToServer('panelOrder', this.order);
+    kv.set('panels', panelStateKey(), toSave);
+    kv.set('panels', panelOrderKey(), this.order);
+  }
+
+  /**
+   * Reload from the current user namespace's localStorage slot. Called by
+   * the settings-namespace subscriber when the active user changes; cancels
+   * any in-flight debounced save so we don't write user A's pending state
+   * into user B's slot.
+   */
+  reloadFromActiveNamespace(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.panels = loadPanelState();
+    this.order = loadPanelOrder();
   }
 }
 
@@ -212,45 +218,18 @@ export const panels: PanelManager = hmrRestore('panelsInstance') ?? new PanelMan
 hmrPreserve('panelsInstance', () => panels);
 export const PANEL_ORDER = DEFAULT_ORDER;
 
-/** Call after login to pull server prefs into the panels instance */
+// Reload panels when the active user changes so two users on the same
+// browser don't see each other's layout.
+subscribeNamespaceChange(() => panels.reloadFromActiveNamespace());
+
+/**
+ * Compatibility shim. Earlier versions pulled panel layout from
+ * /api/user/preferences after login; the local-only revamp removed that
+ * endpoint. Panel state now lives in localStorage and loads at construction
+ * time via `loadPanelState` / `loadPanelOrder`. Callers don't need to call
+ * this anymore, but it stays as a no-op so we don't have to delete every
+ * call site in one go.
+ */
 export async function syncPreferencesFromServer(): Promise<void> {
-  if (typeof window === 'undefined') return;
-  try {
-    const res = await fetch('/api/user/preferences', { credentials: 'include' });
-    if (!res.ok) return;
-    const data = await res.json();
-    const prefs = data.preferences;
-    if (!prefs) return;
-
-    if (prefs.panelOrder) {
-      const order = prefs.panelOrder as PanelId[];
-      if (
-        Array.isArray(order) &&
-        order.length === DEFAULT_ORDER.length &&
-        DEFAULT_ORDER.every((id) => order.includes(id))
-      ) {
-        panels.reorder(order);
-      }
-    }
-
-    if (prefs.panelState) {
-      const saved = prefs.panelState as Partial<
-        Record<PanelId, { visible: boolean; width: number }>
-      >;
-      for (const id of DEFAULT_ORDER) {
-        const entry = saved[id];
-        if (entry) {
-          if (typeof entry.visible === 'boolean') {
-            if (entry.visible) panels.show(id);
-            else panels.hide(id);
-          }
-          if (typeof entry.width === 'number') {
-            panels.setWidth(id, entry.width);
-          }
-        }
-      }
-    }
-  } catch {
-    /* silent */
-  }
+  // No-op: panels load from localStorage at construction time.
 }
