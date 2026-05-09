@@ -340,23 +340,44 @@ export function clearLocalSessionCookie(secure = false): string {
 // ── magnova-auth URLs ─────────────────────────────────────────────────────
 
 /**
+ * Coerce a `returnTo` query parameter to a safe relative path.
+ *
+ * Accepts only same-origin URLs. Anything else — absolute external URLs,
+ * protocol-relative URLs, or malformed values — collapses to `/`. This
+ * prevents `?returnTo=https://attacker.example` from turning the login flow
+ * into an open redirect.
+ *
+ * Always returns a leading-slash relative path (`pathname + search + hash`).
+ */
+export function safeReturnTo(value: string | null | undefined, requestUrl: URL): string {
+  if (!value) return '/';
+  try {
+    const parsed = new URL(value, requestUrl);
+    if (parsed.origin !== requestUrl.origin) return '/';
+    if (!parsed.pathname.startsWith('/')) return '/';
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return '/';
+  }
+}
+
+/**
  * Get the magnova-auth login URL for graphini-branded login page.
- * The redirect must be an absolute URL — relative paths resolve against
- * auth.magnova.ai, not graphini.magnova.ai.
+ *
+ * `returnTo` is treated as a same-origin relative path. The handoff to
+ * magnova-auth needs an absolute URL (relative paths there resolve against
+ * auth.magnova.ai, not back to us), so we anchor it on `requestUrl.origin`.
+ * Callers should pre-validate via `safeReturnTo` before calling.
  */
 export function getAuthUrl(returnTo?: string, requestUrl?: URL): string {
   const baseUrl = env.MAGNOVA_AUTH_URL || 'https://auth.magnova.ai';
   const loginUrl = `${baseUrl}/graphini`;
-  if (returnTo) {
-    const absoluteRedirect =
-      returnTo.startsWith('http://') || returnTo.startsWith('https://')
-        ? returnTo
-        : requestUrl
-          ? `${requestUrl.origin}${returnTo}`
-          : returnTo;
-    return `${loginUrl}?redirect=${encodeURIComponent(absoluteRedirect)}`;
-  }
-  return loginUrl;
+  if (!returnTo || !requestUrl) return loginUrl;
+  // Drop absolute URLs supplied by callers — they're either same-origin
+  // (in which case we re-anchor on origin) or hostile (drop to '/').
+  const safe = safeReturnTo(returnTo, requestUrl);
+  const absoluteRedirect = `${requestUrl.origin}${safe}`;
+  return `${loginUrl}?redirect=${encodeURIComponent(absoluteRedirect)}`;
 }
 
 export function getSignoutUrl(redirectTo?: string): string {

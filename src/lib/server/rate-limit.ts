@@ -89,14 +89,29 @@ export const apiLimiter = createRateLimiter('api', { maxRequests: 120, windowMs:
 export const authLimiter = createRateLimiter('auth', { maxRequests: 10, windowMs: 60_000 });
 
 /**
- * Extract client IP from request headers.
- * Falls back to 'unknown' if no forwarded header is present.
+ * Extract a stable client identifier for rate-limit keying.
+ *
+ * Priority order:
+ *   1. cf-connecting-ip — Cloudflare-set, not client-controllable.
+ *   2. x-real-ip — set by trusted reverse proxies (Vercel, nginx).
+ *   3. x-forwarded-for, *only if* TRUST_PROXY=true. Falls through otherwise
+ *      because clients can spoof XFF when the app is reachable directly.
+ *   4. 'unknown' fallback. Effectively keys all unknown clients into the
+ *      same bucket — strict but safe; legitimate clients are identified by
+ *      one of the headers above when behind a proxy.
+ *
+ * Set TRUST_PROXY=true only when the deployment is fronted by a proxy that
+ * overwrites x-forwarded-for. Do NOT set it when the app is reachable
+ * directly from the public Internet.
  */
 export function getClientKey(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) {
-    // Take the first IP in the chain (original client)
-    return forwarded.split(',')[0].trim();
+  const cf = request.headers.get('cf-connecting-ip')?.trim();
+  if (cf) return cf;
+  const real = request.headers.get('x-real-ip')?.trim();
+  if (real) return real;
+  if (process.env.TRUST_PROXY === 'true') {
+    const forwarded = request.headers.get('x-forwarded-for');
+    if (forwarded) return forwarded.split(',')[0].trim();
   }
   return 'unknown';
 }

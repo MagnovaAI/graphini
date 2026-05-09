@@ -218,11 +218,7 @@ export async function runChatTurn(request: Request): Promise<Response> {
   });
 
   return result.toUIMessageStreamResponse({
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    },
+    // No CORS headers — same-origin only. See /api/chat/+server.ts comment.
     sendReasoning: true,
     // The AI SDK's default error handler scrubs provider errors to a generic
     // "An error occurred" string. Surface the real message instead — most

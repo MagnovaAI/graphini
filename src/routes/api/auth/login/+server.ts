@@ -8,6 +8,7 @@ import {
   getAuthUrl,
   getDevBypassEmail,
   localSessionCookie,
+  safeReturnTo,
   validateSession
 } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
@@ -49,7 +50,11 @@ function withCookies(headers: Record<string, string>, ...cookies: (string | null
  * redirect back to the app instead of magnova-auth.
  */
 export const GET: RequestHandler = async ({ request, url }) => {
-  const returnTo = url.searchParams.get('returnTo') || '/';
+  // Coerce returnTo to a same-origin relative path. Without this,
+  // /api/auth/login?returnTo=https://attacker.example becomes an open
+  // redirect — both for already-authenticated users (302 below) and for
+  // unauthenticated users via getAuthUrl()'s redirect param.
+  const returnTo = safeReturnTo(url.searchParams.get('returnTo'), url);
 
   // If dev bypass is active, user is already "logged in" — just go back
   const user = await validateSession(request);
