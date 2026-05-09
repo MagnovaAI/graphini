@@ -53,16 +53,27 @@
   let newMemoryKey = $state('');
   let newMemoryValue = $state('');
 
+  interface MemoryEntry {
+    value: unknown;
+    savedAt?: string;
+  }
+
   async function loadMemories() {
     memoryLoading = true;
     try {
       const data = await kv.get('memories', 'all');
       if (data && typeof data === 'object' && !Array.isArray(data)) {
-        memories = Object.entries(data as Record<string, any>).map(([k, v]: [string, any]) => ({
-          key: k,
-          value: typeof v === 'object' ? v.value || JSON.stringify(v) : String(v),
-          savedAt: typeof v === 'object' ? v.savedAt || '' : ''
-        }));
+        memories = Object.entries(data as Record<string, unknown>).map(([k, v]) => {
+          const entry = v as MemoryEntry | string;
+          if (entry && typeof entry === 'object' && 'value' in entry) {
+            return {
+              key: k,
+              value: typeof entry.value === 'string' ? entry.value : JSON.stringify(entry.value),
+              savedAt: entry.savedAt ?? ''
+            };
+          }
+          return { key: k, value: String(entry), savedAt: '' };
+        });
       } else {
         memories = [];
       }
@@ -75,8 +86,8 @@
   async function saveMemory(key: string, value: string) {
     const current = (await kv.get('memories', 'all')) || {};
     const updated = {
-      ...(current as Record<string, any>),
-      [key]: { value, savedAt: new Date().toISOString() }
+      ...(current as Record<string, unknown>),
+      [key]: { savedAt: new Date().toISOString(), value }
     };
     await kv.set('memories', 'all', updated);
     await loadMemories();
@@ -88,8 +99,11 @@
 
   async function deleteMemory(key: string) {
     const current = (await kv.get('memories', 'all')) || {};
-    const updated = { ...(current as Record<string, any>) };
-    delete updated[key];
+    // Build a new object excluding the deleted key — avoids the
+    // `delete obj[dyn]` pattern that flips perf characteristics on V8.
+    const updated = Object.fromEntries(
+      Object.entries(current as Record<string, unknown>).filter(([k]) => k !== key)
+    );
     await kv.set('memories', 'all', updated);
     await loadMemories();
   }
@@ -160,29 +174,18 @@
   let openAiApiKeyInput = $state('');
   let openRouterApiKeyInput = $state('');
 
-  // Per-user search-provider keys (stored via /api/user/api-keys, encrypted
-  // server-side). Unlike AI provider keys above, these are NOT global —
-  // every user (including guests) carries their own.
+  // Per-user search-provider keys live in localStorage on aiSettings, same
+  // as the AI provider keys. Earlier versions stored these server-side via
+  // /api/user/api-keys (encrypted at rest); the local-settings revamp
+  // moved them client-side too so the server holds zero secrets.
   let braveSearchInput = $state('');
   let tavilyInput = $state('');
-  let braveSearchPresent = $state(false);
-  let tavilyPresent = $state(false);
+  const braveSearchPresent = $derived(Boolean(aiSettings.value.braveSearchApiKey));
+  const tavilyPresent = $derived(Boolean(aiSettings.value.tavilyApiKey));
   let searchKeySaving = $state(false);
   let searchKeyMessage = $state<{ kind: 'error' | 'notice'; text: string } | null>(null);
 
-  async function loadUserApiKeys() {
-    try {
-      const res = await fetch('/api/user/api-keys', { credentials: 'include' });
-      if (!res.ok) return;
-      const data = await res.json();
-      braveSearchPresent = Boolean(data?.providers?.brave_search);
-      tavilyPresent = Boolean(data?.providers?.tavily);
-    } catch {
-      /* non-fatal */
-    }
-  }
-
-  async function saveUserApiKey(provider: 'brave_search' | 'tavily', key: string) {
+  function saveUserApiKey(provider: 'brave_search' | 'tavily', key: string) {
     if (!key.trim() || key.trim().length < 8) {
       searchKeyMessage = { kind: 'error', text: 'Key must be at least 8 characters.' };
       return;
@@ -190,22 +193,13 @@
     searchKeySaving = true;
     searchKeyMessage = null;
     try {
-      const res = await fetch('/api/user/api-keys', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ provider, key: key.trim() })
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || `Failed to save ${provider}`);
-      }
+      const trimmed = key.trim();
       if (provider === 'brave_search') {
+        aiSettings.update((s) => ({ ...s, braveSearchApiKey: trimmed }));
         braveSearchInput = '';
-        braveSearchPresent = true;
       } else {
+        aiSettings.update((s) => ({ ...s, tavilyApiKey: trimmed }));
         tavilyInput = '';
-        tavilyPresent = true;
       }
       searchKeyMessage = { kind: 'notice', text: 'Saved.' };
     } catch (err) {
@@ -218,17 +212,15 @@
     }
   }
 
-  async function clearUserApiKey(provider: 'brave_search' | 'tavily') {
+  function clearUserApiKey(provider: 'brave_search' | 'tavily') {
     searchKeySaving = true;
     searchKeyMessage = null;
     try {
-      const res = await fetch(`/api/user/api-keys?provider=${encodeURIComponent(provider)}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Failed to clear key');
-      if (provider === 'brave_search') braveSearchPresent = false;
-      else tavilyPresent = false;
+      if (provider === 'brave_search') {
+        aiSettings.update((s) => ({ ...s, braveSearchApiKey: '' }));
+      } else {
+        aiSettings.update((s) => ({ ...s, tavilyApiKey: '' }));
+      }
       searchKeyMessage = { kind: 'notice', text: 'Cleared.' };
     } catch (err) {
       searchKeyMessage = {
@@ -240,10 +232,41 @@
     }
   }
 
-  let enabledModels = $state<Record<string, any>[]>([]);
+  /** Shape of rows returned by the admin enabled-models API. */
+  interface EnabledModelRow {
+    model_id: string;
+    model_name: string;
+    provider?: string;
+    category?: string;
+    description?: string;
+    is_enabled?: boolean;
+    is_free?: boolean;
+    gems_per_message?: number;
+    max_tokens?: number;
+    tool_support?: boolean;
+    metadata?: Record<string, unknown>;
+    sort_order?: number;
+  }
+
+  /** Provider catalog rows (OpenAI / Anthropic / OpenRouter all differ). */
+  interface ProviderModelRow {
+    id: string;
+    name?: string;
+    description?: string;
+    created?: number;
+    contextWindow?: number;
+    context_length?: number;
+    architecture?: { modality?: string };
+    provider?: string;
+    pricing?: { prompt?: string; completion?: string };
+    supportedParameters?: string[];
+    supported_parameters?: string[];
+  }
+
+  let enabledModels = $state<EnabledModelRow[]>([]);
   let enabledModelsLoading = $state(false);
   let modelSearchProvider = $state<ModelSearchProvider>('openrouter');
-  let providerModels = $state<Record<string, any>[]>([]);
+  let providerModels = $state<ProviderModelRow[]>([]);
   let providerModelsLoading = $state(false);
   let providerModelSearch = $state('');
   let modelAdminError = $state('');
@@ -288,7 +311,7 @@
     return modelId.startsWith(`${provider}/`) ? modelId : `${provider}/${modelId}`;
   }
 
-  function buildProviderImportPayload(provider: ModelSearchProvider, model: Record<string, any>) {
+  function buildProviderImportPayload(provider: ModelSearchProvider, model: ProviderModelRow) {
     const fullId = providerModelId(provider, model.id);
     const isFree = model.pricing?.prompt === '0' && model.pricing?.completion === '0';
 
@@ -389,7 +412,7 @@
     }
   }
 
-  async function importProviderModel(model: Record<string, any>) {
+  async function importProviderModel(model: ProviderModelRow) {
     const modelData = buildProviderImportPayload(modelSearchProvider, model);
     modelAdminError = '';
     modelAdminNotice = '';
@@ -438,12 +461,10 @@
     modelAdminError = '';
     modelAdminNotice = '';
     try {
-      await adminPost({
-        action: 'setProviderApiKey',
-        apiKey: credential,
-        credentialType,
-        provider
-      });
+      // Keys live only in localStorage (per-user namespaced via the settings
+      // store). Earlier versions also POSTed to /api/admin setProviderApiKey
+      // which stored a global encrypted row in app_settings — that endpoint
+      // is gone (it was the original guest-leak vector).
       updateProviderCredential(provider, credential, credentialType);
       const successMsg = `${labelByProvider[provider]} ${credentialLabel} saved`;
       modelAdminNotice = successMsg;
@@ -565,11 +586,13 @@
     loadEnabledModels();
     loadChatCompactionSettings();
     loadVoiceSettings();
-    loadUserApiKeys();
+    // Search-provider keys live in aiSettings now — no server fetch needed.
     // Load memories
     loadMemories();
 
-    return () => {};
+    return () => {
+      // No teardown needed — every subscription is HMR-aware via the store.
+    };
   });
 
   function updateProviderCredential(
@@ -578,7 +601,7 @@
     credentialType: ProviderCredential
   ) {
     const keyField = credentialType === 'auth_token' ? `${provider}AuthToken` : `${provider}ApiKey`;
-    aiSettings.update((s: any) => ({
+    aiSettings.update((s) => ({
       ...s,
       [keyField]: value
     }));
@@ -1150,6 +1173,7 @@
                       <div class="divide-y divide-border">
                         {#each filteredProviderModels as model (model.id)}
                           {@const imported = isProviderModelImported(model.id)}
+                          {@const ctx = model.contextWindow || model.context_length || 0}
                           <div class="flex items-center justify-between gap-3 px-3 py-3">
                             <div class="min-w-0 flex-1">
                               <div class="truncate text-[13px] font-medium">
@@ -1159,9 +1183,7 @@
                                 {model.id}
                               </div>
                               <div class="mt-1 text-[13px] text-muted-foreground">
-                                {model.contextWindow || model.context_length
-                                  ? `${((model.contextWindow || model.context_length) / 1000).toFixed(0)}k context`
-                                  : 'Context unknown'}
+                                {ctx ? `${(ctx / 1000).toFixed(0)}k context` : 'Context unknown'}
                               </div>
                             </div>
                             {#if imported}
@@ -1267,7 +1289,7 @@
                 </div>
               </div>
 
-              {#each TOOL_CATEGORIES as cat}
+              {#each TOOL_CATEGORIES as cat (cat.id)}
                 {@const catTools = toolsConfig.filter((t) => t.category === cat.id)}
                 {#if catTools.length > 0}
                   <div class="overflow-hidden rounded-md border border-border">
@@ -1276,7 +1298,7 @@
                       {cat.label}
                     </div>
                     <div class="divide-y divide-border">
-                      {#each catTools as t}
+                      {#each catTools as t (t.id)}
                         <button
                           type="button"
                           class="flex w-full items-center justify-between gap-4 px-3 py-3 text-left hover:bg-muted/40"
@@ -1408,7 +1430,7 @@
                 <div class="rounded-md border border-border p-3">
                   <div class="mb-2 text-[13px] font-medium">Save behavior</div>
                   <div class="grid gap-2">
-                    {#each ['conservative', 'balanced', 'aggressive'] as mode}
+                    {#each ['conservative', 'balanced', 'aggressive'] as mode (mode)}
                       <button
                         type="button"
                         class="rounded-md border px-3 py-2 text-left text-[13px] capitalize transition-colors {personalization.memorySaveMode ===
