@@ -33,11 +33,8 @@ import { getDb } from '$lib/server/db';
 import type { NeonAdapter } from '$lib/server/db/neon-adapter';
 import { workspaceFiles, users as usersTable } from '$lib/server/db/schema';
 import { PATH_RE, FOLDER_RE, deriveKind, type FileKind } from '$lib/server/workspace-paths';
-import {
-  MERMAID_DIAGRAM_DECLARATION,
-  findMermaidDeclarations,
-  validateSingleMermaidDocument
-} from '$lib/server/chat/mermaid';
+import { MERMAID_DIAGRAM_DECLARATION, findMermaidDeclarations } from '$lib/server/chat/mermaid';
+import { validateContentForKind } from '$lib/server/workspace-content-validation';
 import type { FileSystemTurnGuard, ToolContext } from './context';
 
 const drizzleDb = () => (getDb() as NeonAdapter).db;
@@ -45,7 +42,6 @@ const drizzleDb = () => (getDb() as NeonAdapter).db;
 const GUEST_QUOTA = 15;
 const USER_QUOTA = 30;
 
-const MARKDOWN_SIGNALS = /^(#{1,6}\s|\*\*|__|\[.*\]\(.*\)|^>\s|^-{3,}$|^\*{3,}$|^```)/m;
 const MERMAID_EDGE_PATTERN = /(<-->|<-\.->|<==>|<---|-->|-\.->|==>|---|\.\.>|--x|--o)/;
 
 async function userQuota(userId: string): Promise<number> {
@@ -66,53 +62,6 @@ function countMermaidEdgeLines(source: string): number {
       if (/^(classDef|class|style|linkStyle|subgraph|end)\b/i.test(line)) return false;
       return MERMAID_EDGE_PATTERN.test(line);
     }).length;
-}
-
-function validateContentForKind(
-  kind: FileKind,
-  content: string
-): { ok: true } | { ok: false; error: string; hint?: string } {
-  if (kind === 'mermaid') {
-    const trimmed = content.trim();
-    if (!trimmed) return { ok: true };
-    if (MARKDOWN_SIGNALS.test(trimmed)) {
-      return {
-        ok: false,
-        error:
-          'REJECTED: .mermaid content contains markdown formatting. Save markdown to a .md file instead.',
-        hint: 'Mermaid files only accept diagram syntax (graph/flowchart/sequenceDiagram/...).'
-      };
-    }
-    const v = validateSingleMermaidDocument(trimmed);
-    if (!v.valid) return { ok: false, error: v.error ?? 'Invalid Mermaid', hint: v.hint };
-    return { ok: true };
-  }
-  if (kind === 'md') {
-    const trimmed = content.trim();
-    if (!trimmed) return { ok: true };
-    if (MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
-      return {
-        ok: false,
-        error: 'REJECTED: .md content starts with a Mermaid diagram declaration.',
-        hint: 'Save diagram code to a .mermaid file. Use .md for prose only.'
-      };
-    }
-    return { ok: true };
-  }
-  if (kind === 'json') {
-    if (!content.trim()) return { ok: true };
-    try {
-      JSON.parse(content);
-      return { ok: true };
-    } catch (err) {
-      return {
-        ok: false,
-        error: `REJECTED: .json failed to parse: ${err instanceof Error ? err.message : String(err)}`
-      };
-    }
-  }
-  // yaml: no bundled parser, accept as-is.
-  return { ok: true };
 }
 
 function applyLinePatch(

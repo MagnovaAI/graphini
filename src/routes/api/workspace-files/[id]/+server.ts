@@ -8,6 +8,7 @@ import type { NeonAdapter } from '$lib/server/db/neon-adapter';
 import { workspaceFiles } from '$lib/server/db/schema';
 import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { PATH_RE, deriveKind } from '$lib/server/workspace-paths';
+import { validateContentForKind } from '$lib/server/workspace-content-validation';
 import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -42,22 +43,42 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
 
   const update: Record<string, unknown> = { updated_at: new Date() };
   if (content !== undefined) update.content = content;
+  let nextKind: ReturnType<typeof deriveKind> = null;
   if (path !== undefined) {
     if (!PATH_RE.test(path)) {
       return json({ error: 'Invalid path' }, { status: 400 });
     }
-    const kind = deriveKind(path);
-    if (!kind) {
+    nextKind = deriveKind(path);
+    if (!nextKind) {
       return json(
         { error: 'Unsupported file kind. Allowed: .md, .json, .yaml/.yml, .mermaid/.mmd' },
         { status: 400 }
       );
     }
     update.path = path;
-    update.kind = kind;
+    update.kind = nextKind;
   }
 
   const db = drizzleDb();
+
+  // Same content rules as the chat tool path. When only content is changing
+  // we need the current row's kind to validate against; when path is also
+  // changing, we use the new kind. Either way: validate before writing.
+  if (content !== undefined) {
+    const [current] = await db
+      .select({ kind: workspaceFiles.kind })
+      .from(workspaceFiles)
+      .where(and(eq(workspaceFiles.id, id), eq(workspaceFiles.user_id, user.id)));
+    if (!current) return json({ error: 'Not found' }, { status: 404 });
+    const effectiveKind = nextKind ?? (current.kind as ReturnType<typeof deriveKind>);
+    if (effectiveKind) {
+      const validation = validateContentForKind(effectiveKind, content);
+      if (!validation.ok) {
+        return json({ error: validation.error, hint: validation.hint }, { status: 400 });
+      }
+    }
+  }
+
   try {
     const result = await db
       .update(workspaceFiles)

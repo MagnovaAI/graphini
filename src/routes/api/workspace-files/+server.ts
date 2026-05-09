@@ -14,6 +14,7 @@ import type { NeonAdapter } from '$lib/server/db/neon-adapter';
 import { workspaceFiles } from '$lib/server/db/schema';
 import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { PATH_RE, deriveKind } from '$lib/server/workspace-paths';
+import { validateContentForKind } from '$lib/server/workspace-content-validation';
 import { json } from '@sveltejs/kit';
 import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -146,6 +147,13 @@ export const POST: RequestHandler = async ({ request }) => {
       { error: 'Unsupported file kind. Allowed: .md, .json, .yaml/.yml, .mermaid/.mmd' },
       { status: 400 }
     );
+  }
+  // Same content rules as the chat tool path. Without this guard a client
+  // could POST markdown into a `.mermaid` (rendering as raw text) or a
+  // mermaid declaration into `.md` (breaking the prose renderer).
+  const validation = validateContentForKind(kind, content);
+  if (!validation.ok) {
+    return json({ error: validation.error, hint: validation.hint }, { status: 400 });
   }
 
   try {

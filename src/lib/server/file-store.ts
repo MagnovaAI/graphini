@@ -32,6 +32,18 @@ export interface StoredFile {
 
 const fileStore = new Map<string, StoredFile>();
 
+/**
+ * Strip anything that could be interpreted as a path separator, control char,
+ * or shell metacharacter from a user-supplied filename before joining it onto
+ * UPLOAD_DIR. The UUID prefix already guarantees uniqueness; this just makes
+ * sure the suffix can't escape the directory or break tooling that later
+ * reads the path back. 80-char cap keeps temp filenames bounded.
+ */
+function sanitizeFilenameSegment(name: string): string {
+  const cleaned = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+  return cleaned || 'file';
+}
+
 export function storeFile(data: {
   sessionId: string;
   filename: string;
@@ -41,22 +53,22 @@ export function storeFile(data: {
   extractedText?: string;
 }): StoredFile {
   const id = crypto.randomUUID();
-  const filePath = path.join(UPLOAD_DIR, `${id}-${data.filename}`);
+  const filePath = path.join(UPLOAD_DIR, `${id}-${sanitizeFilenameSegment(data.filename)}`);
   fs.writeFileSync(filePath, data.buffer);
 
   const stored: StoredFile = {
-    id,
-    sessionId: data.sessionId,
-    filename: data.filename,
-    originalName: data.originalName,
-    mimeType: data.mimeType,
-    mediaType: data.mimeType,
-    type: data.mimeType.split('/')[0] || 'unknown',
-    size: data.buffer.length,
-    path: filePath,
-    extractedText: data.extractedText,
     createdAt: Date.now(),
-    storedAt: Date.now()
+    extractedText: data.extractedText,
+    filename: data.filename,
+    id,
+    mediaType: data.mimeType,
+    mimeType: data.mimeType,
+    originalName: data.originalName,
+    path: filePath,
+    sessionId: data.sessionId,
+    size: data.buffer.length,
+    storedAt: Date.now(),
+    type: data.mimeType.split('/')[0] || 'unknown'
   };
 
   fileStore.set(id, stored);
@@ -76,7 +88,9 @@ export function deleteFile(id: string): boolean {
   if (!file) return false;
   try {
     if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   fileStore.delete(id);
   return true;
 }
