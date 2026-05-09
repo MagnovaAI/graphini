@@ -2,7 +2,6 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { getDb } from '$lib/server/db';
-import { settingsManager } from '$lib/server/state-manager';
 import type { LanguageModel, ProviderMetadata } from 'ai';
 
 let runtimeOpenRouterApiKey = '';
@@ -14,36 +13,29 @@ export type ChatProvider = 'openrouter' | 'openai' | 'anthropic';
 export type ProviderCredentialType = 'api_key' | 'auth_token';
 const anthropicOAuthBetaHeader = 'oauth-2025-04-20';
 
+// Provider keys are NOT loaded from a global DB setting. Each user supplies
+// their own key (per-user KV row written via Settings) — guests included.
+// Env vars remain only as a developer escape hatch; they are intentionally not
+// the production source of truth.
+
 export async function loadOpenRouterApiKey() {
-  runtimeOpenRouterApiKey =
-    process.env.OPENROUTER_API_KEY ||
-    (await settingsManager.get<string | null>(null, 'ai_provider', 'openrouter_api_key', null)) ||
-    '';
+  runtimeOpenRouterApiKey = process.env.OPENROUTER_API_KEY || '';
   return runtimeOpenRouterApiKey;
 }
 
 export async function loadOpenAiApiKey() {
-  runtimeOpenAiApiKey =
-    process.env.OPENAI_API_KEY ||
-    (await settingsManager.get<string | null>(null, 'ai_provider', 'openai_api_key', null)) ||
-    '';
+  runtimeOpenAiApiKey = process.env.OPENAI_API_KEY || '';
   return runtimeOpenAiApiKey;
 }
 
 export async function loadAnthropicApiKey() {
-  runtimeAnthropicApiKey =
-    process.env.ANTHROPIC_API_KEY ||
-    (await settingsManager.get<string | null>(null, 'ai_provider', 'anthropic_api_key', null)) ||
-    '';
+  runtimeAnthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
   return runtimeAnthropicApiKey;
 }
 
 export async function loadAnthropicAuthToken() {
   runtimeAnthropicAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
-    process.env.ANTHROPIC_OAUTH_TOKEN ||
-    (await settingsManager.get<string | null>(null, 'ai_provider', 'anthropic_auth_token', null)) ||
-    '';
+    process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_OAUTH_TOKEN || '';
   return runtimeAnthropicAuthToken;
 }
 
