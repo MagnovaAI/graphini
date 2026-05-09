@@ -88,6 +88,9 @@ export interface AISettings {
   openrouterApiKey?: string;
   kiloApiKey?: string;
   geminiApiKey?: string;
+  /** Search-provider keys for the webSearch / iconSearch tools. */
+  braveSearchApiKey?: string;
+  tavilyApiKey?: string;
 }
 
 export const aiSettings =
@@ -95,6 +98,7 @@ export const aiSettings =
   new PersistentSetting<AISettings>('ai_settings', {
     anthropicApiKey: '',
     anthropicAuthToken: '',
+    braveSearchApiKey: '',
     favoriteModels: ['gpt-4o', 'anthropic/claude-3.5-sonnet', 'gemini-3-flash-preview'],
     geminiApiKey: '',
     kiloApiKey: '',
@@ -106,6 +110,7 @@ export const aiSettings =
     provider: 'openai',
     providerModel: 'gpt-4o',
     streamResponse: true,
+    tavilyApiKey: '',
     temperature: 0.9
   });
 hmrPreserve('aiSettings', () => aiSettings);
