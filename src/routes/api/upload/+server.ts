@@ -1,5 +1,7 @@
 import { storeFile } from '$lib/server/file-store';
 import { loadOpenRouterApiKey } from '$lib/server/chat/model';
+import { validateSessionOrGuest } from '$lib/server/auth';
+import { getClientKey, rateLimitResponse, uploadLimiter } from '$lib/server/rate-limit';
 import { error, json } from '@sveltejs/kit';
 import dotenv from 'dotenv';
 import type { RequestHandler } from './$types';
@@ -78,6 +80,14 @@ Be thorough and precise. This description will be used to recreate or reference 
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
+    // Auth + rate limit before reading the body so anonymous floods get
+    // rejected before we pay the multipart parsing / vision-model costs.
+    const rl = uploadLimiter.check(getClientKey(request));
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
+    const user = await validateSessionOrGuest(request).catch(() => null);
+    if (!user) return error(401, 'Authentication required to upload files.');
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
@@ -115,20 +125,20 @@ export const POST: RequestHandler = async ({ request }) => {
       const storedFile = storeFile({
         buffer: Buffer.from(buffer),
         extractedText: `[Image: ${filename}]\n${description}`,
-        sessionId,
         filename,
         mimeType: mediaType,
-        originalName: filename
+        originalName: filename,
+        sessionId
       });
 
       return json({
-        url: dataUrl,
-        mediaType,
-        filename,
-        type: 'image',
         extractedText: `[Image: ${filename}]\n${description}`,
         fileId: storedFile.id,
-        size: file.size
+        filename,
+        mediaType,
+        size: file.size,
+        type: 'image',
+        url: dataUrl
       });
     }
 
@@ -146,20 +156,20 @@ export const POST: RequestHandler = async ({ request }) => {
       const storedFile = storeFile({
         buffer: Buffer.from(text),
         extractedText,
-        sessionId,
         filename,
         mimeType: mediaType,
-        originalName: filename
+        originalName: filename,
+        sessionId
       });
 
       return json({
-        url: null,
-        mediaType,
-        filename,
-        type: 'document',
         extractedText,
         fileId: storedFile.id,
-        size: file.size
+        filename,
+        mediaType,
+        size: file.size,
+        type: 'document',
+        url: null
       });
     }
 
@@ -190,10 +200,10 @@ export const POST: RequestHandler = async ({ request }) => {
       const storedFile = storeFile({
         buffer,
         extractedText: extractedText || `[PDF: ${filename}]`,
-        sessionId,
         filename,
         mimeType: mediaType,
-        originalName: filename
+        originalName: filename,
+        sessionId
       });
 
       const summary =
@@ -202,14 +212,14 @@ export const POST: RequestHandler = async ({ request }) => {
           : `[PDF: ${filename}, ${(file.size / 1024).toFixed(1)}KB]`;
 
       return json({
-        url: null,
-        mediaType,
-        filename,
-        type: 'pdf',
         extractedText: extractedText ? `${summary}\n\n${extractedText}` : summary,
         fileId: storedFile.id,
+        filename,
+        mediaType,
         pageCount,
-        size: file.size
+        size: file.size,
+        type: 'pdf',
+        url: null
       });
     }
 

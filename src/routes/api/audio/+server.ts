@@ -6,11 +6,20 @@
 import { getDb } from '$lib/server/db';
 import { loadOpenRouterApiKey } from '$lib/server/chat/model';
 import { settingsManager, stateManager } from '$lib/server/state-manager';
+import { validateSessionOrGuest } from '$lib/server/auth';
+import { audioLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
+
+/**
+ * Cap audio uploads at 10MB. Audio is base64-encoded in memory before being
+ * forwarded to the speech model — without a cap, a single 100MB upload OOMs
+ * the worker (the encoded form is ~1.33x the binary size).
+ */
+const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const DEFAULT_VOICE_MODEL = 'google/gemini-2.0-flash-001';
@@ -40,32 +49,32 @@ async function ensureInternalModelsRegistered() {
     const db = getDb();
     const internalModels = [
       {
+        category: 'Internal',
+        description: 'Used for audio transcription and image processing',
+        gems_per_message: 0,
+        is_enabled: true,
+        is_free: false,
+        max_tokens: 8192,
+        metadata: {},
         model_id: 'google/gemini-2.0-flash-001',
         model_name: 'Gemini 2.0 Flash (Audio/Vision)',
         provider: 'openrouter',
-        category: 'Internal',
-        description: 'Used for audio transcription and image processing',
-        is_enabled: true,
-        is_free: false,
-        gems_per_message: 0,
-        max_tokens: 8192,
-        tool_support: false,
-        metadata: {},
-        sort_order: 900
+        sort_order: 900,
+        tool_support: false
       },
       {
+        category: 'Internal',
+        description: 'Used for audio transcription via Gemini API',
+        gems_per_message: 0,
+        is_enabled: true,
+        is_free: true,
+        max_tokens: 2048,
+        metadata: {},
         model_id: 'gemini-2.0-flash-lite',
         model_name: 'Gemini 2.0 Flash Lite (Audio)',
         provider: 'google',
-        category: 'Internal',
-        description: 'Used for audio transcription via Gemini API',
-        is_enabled: true,
-        is_free: true,
-        gems_per_message: 0,
-        max_tokens: 2048,
-        tool_support: false,
-        metadata: {},
-        sort_order: 901
+        sort_order: 901,
+        tool_support: false
       }
     ];
     for (const m of internalModels) {
@@ -111,8 +120,8 @@ async function transcribeWithGemini(
     }
     const data = await res.json();
     return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-  } catch (e: any) {
-    console.error('[Audio API] Gemini exception:', e?.message);
+  } catch (e: unknown) {
+    console.error('[Audio API] Gemini exception:', e instanceof Error ? e.message : e);
     return null;
   }
 }
@@ -156,13 +165,23 @@ async function transcribeWithOpenRouter(
     }
     const data = await res.json();
     return data?.choices?.[0]?.message?.content?.trim() || '';
-  } catch (e: any) {
-    console.error('[Audio API] OpenRouter exception:', e?.message);
+  } catch (e: unknown) {
+    console.error('[Audio API] OpenRouter exception:', e instanceof Error ? e.message : e);
     return null;
   }
 }
 
 export const POST: RequestHandler = async ({ request }) => {
+  // Auth + rate limit before reading the body so anonymous floods get
+  // rejected before we pay the multipart parsing / paid-provider costs.
+  const rl = audioLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
+  const user = await validateSessionOrGuest(request).catch(() => null);
+  if (!user) {
+    return json({ error: 'Authentication required to transcribe audio.' }, { status: 401 });
+  }
+
   // Register internal models in admin panel (fire-and-forget, runs once)
   ensureInternalModelsRegistered();
   try {
@@ -171,6 +190,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
     if (!audioFile) {
       return json({ error: 'No audio file provided' }, { status: 400 });
+    }
+
+    if (audioFile.size > MAX_AUDIO_SIZE) {
+      return json({ error: 'Audio file too large. Max 10MB allowed.' }, { status: 413 });
     }
 
     if (!GEMINI_API_KEY && !(await loadOpenRouterApiKey())) {
@@ -200,13 +223,16 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     return json({ text, success: true });
-  } catch (e: any) {
-    console.error('[Audio API] Error:', e?.message || e);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Audio transcription failed';
+    console.error('[Audio API] Error:', message);
     stateManager
-      .logError(e instanceof Error ? e : new Error(e?.message || 'Audio transcription failed'), {
+      .logError(e instanceof Error ? e : new Error(message), {
         metadata: { endpoint: '/api/audio' }
       })
-      .catch(() => {});
-    return json({ error: 'Transcription failed', details: e?.message }, { status: 500 });
+      .catch(() => {
+        // Best-effort error logging; swallow secondary failures.
+      });
+    return json({ error: 'Transcription failed', details: message }, { status: 500 });
   }
 };
