@@ -1,18 +1,34 @@
 /**
- * Reactive KV Store — Svelte 5 runes replacement for kvStore.ts
- * Uses $state for reactive sync status so UI components can respond to changes.
- * Supabase-backed via /api/kv with localStorage fallback.
+ * Reactive KV Store — local-only key/value storage with reactive sync flags.
+ *
+ * Uses Svelte 5 $state for `initialized` and `isAuthenticated` so UI
+ * components can bind to those flags directly. Backed by `localStorage`
+ * with an in-memory cache for synchronous reads.
+ *
+ * No server sync. Earlier versions of this store mirrored writes to /api/kv;
+ * that endpoint is removed as part of the local-settings revamp. Each user
+ * keeps their own settings on their own browser; nothing crosses the wire.
+ *
+ * Public API (preserved for callers across the client codebase):
+ *   - init({ force? })       async; loads localStorage into memCache.
+ *   - get(category, key)     sync read from memCache.
+ *   - set(category, key, v)  writes to memCache + localStorage.
+ *   - delete(category, key)  removes from both.
+ *   - getCategory(category)  all entries under one category.
+ *   - getAll()               every entry, for debug/export.
+ *   - flush()                no-op (kept so callers don't need to change).
+ *   - reset()                clears memCache + localStorage entries; runs on logout.
+ *
+ * `isAuthenticated` is kept as a reactive flag for backward compat with
+ * components that gated on it; it's always `true` once init has run.
  */
 
+import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
+
 const LS_PREFIX = 'kv::';
-const LOCAL_ONLY_CATEGORIES = new Set(['chat']);
 
 function cacheKey(category: string, key: string): string {
   return `${category}::${key}`;
-}
-
-function shouldSyncToServer(category: string): boolean {
-  return !LOCAL_ONLY_CATEGORIES.has(category);
 }
 
 function lsSet(ck: string, value: unknown): void {
@@ -33,10 +49,10 @@ function lsDel(ck: string): void {
   }
 }
 
-// Cheap-then-deep equality check used to skip redundant KV writes. Identical
-// references win immediately; primitives compare directly; for everything else
-// we fall back to JSON serialization, accepting that we'll pay the stringify
-// cost on a "diff" path but save it on every steady-state write.
+// Cheap-then-deep equality. Identical references win immediately; primitives
+// compare directly; for everything else we fall back to JSON serialization.
+// Used to skip redundant writes — without this, streaming chat parts would
+// rewrite the same payload on every tick.
 function shallowEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
@@ -49,123 +65,66 @@ function shallowEqual(a: unknown, b: unknown): boolean {
 }
 
 class KvStore {
-  // Reactive state — UI can bind to these directly
   initialized = $state(false);
+  /**
+   * Always true after init in the local-only model — no sign-in is needed
+   * to read/write the user's own browser storage. Kept reactive so existing
+   * components that gated on it keep working without changes.
+   */
   isAuthenticated = $state(false);
-  hasPending = $state(false);
-  lastSavedAt = $state<number | null>(null);
 
-  // Internal (non-reactive) state
   private memCache = new Map<string, unknown>();
-  private pendingWrites = new Map<string, { category: string; key: string; value: unknown }>();
-  private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private initPromise: Promise<void> | null = null;
 
-  constructor() {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', () => {
-        if (this.pendingWrites.size > 0 && this.isAuthenticated) {
-          const batch = Array.from(this.pendingWrites.values());
-          this.pendingWrites.clear();
-          this.hasPending = false;
-          navigator.sendBeacon(
-            '/api/kv',
-            new Blob([JSON.stringify({ batch })], { type: 'application/json' })
-          );
-        }
-      });
-    }
-  }
-
   /**
-   * Initialize the KV store. Loads localStorage first (instant), then fetches
-   * from /api/kv and merges server data on top.
+   * Load localStorage into the in-memory cache. Cheap and synchronous in
+   * practice — the async signature is preserved so callers (e.g. Chat.simple
+   * `await kv.init(...)`) don't change.
+   *
+   * `force: true` re-reads localStorage; useful after a logout/login swap if
+   * a different tab cleared the prefix while we were idle.
    */
   async init(options: { force?: boolean } = {}): Promise<void> {
     const force = options.force === true;
     if (this.initialized && !force) return;
     if (this.initPromise && !force) return this.initPromise;
-    if (this.initPromise && force) await this.initPromise;
 
     this.initPromise = (async () => {
-      // Load localStorage first for instant availability
+      if (force) this.memCache.clear();
       this.lsLoadAll();
-
-      try {
-        const res = await fetch('/api/kv', { cache: 'no-store', credentials: 'include' });
-        if (res.ok) {
-          const data = await res.json();
-          const entries = data.entries || [];
-          for (const e of entries) {
-            const ck = cacheKey(e.category, e.key);
-            this.memCache.set(ck, e.value);
-            lsSet(ck, e.value);
-          }
-          this.isAuthenticated = true;
-        } else {
-          this.isAuthenticated = false;
-        }
-      } catch {
-        // Silently fail — localStorage data is already loaded
-      }
-
       this.initialized = true;
+      this.isAuthenticated = true;
       this.initPromise = null;
     })();
 
     return this.initPromise;
   }
 
-  /**
-   * Get a value from the KV store (sync read from memory cache).
-   */
+  /** Sync read from the in-memory cache. */
   get<T = unknown>(category: string, key: string): T | null {
     const v = this.memCache.get(cacheKey(category, key));
     return v !== undefined ? (v as T) : null;
   }
 
   /**
-   * Set a value. Updates memCache + localStorage immediately,
-   * then schedules a debounced flush to server. Skips redundant writes when
-   * the new value is identical to the cached one — avoids re-stringifying
-   * large arrays (chat messages, parts, artifacts) on every streaming tick.
+   * Write to memCache + localStorage. Skips when the new value matches the
+   * cached one — without this, streaming chat parts would rewrite the same
+   * (large) payload on every tick.
    */
   set(category: string, key: string, value: unknown): void {
     const ck = cacheKey(category, key);
     if (this.memCache.has(ck) && shallowEqual(this.memCache.get(ck), value)) return;
     this.memCache.set(ck, value);
     lsSet(ck, value);
-    if (!shouldSyncToServer(category)) return;
-    this.pendingWrites.set(ck, { category, key, value });
-    this.hasPending = true;
-    this.scheduleFlush();
   }
 
-  /**
-   * Delete a value from the KV store.
-   */
   delete(category: string, key: string): void {
     const ck = cacheKey(category, key);
     this.memCache.delete(ck);
     lsDel(ck);
-    this.pendingWrites.delete(ck);
-    this.hasPending = this.pendingWrites.size > 0;
-
-    if (!shouldSyncToServer(category)) return;
-    if (!this.isAuthenticated) return;
-
-    fetch(`/api/kv?category=${encodeURIComponent(category)}&key=${encodeURIComponent(key)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-      keepalive: true
-    }).catch(() => {
-      /* silent */
-    });
   }
 
-  /**
-   * Get all entries for a category.
-   */
+  /** Every entry under one category, returned as a plain object. */
   getCategory<T = unknown>(category: string): Record<string, T> {
     const result: Record<string, T> = {};
     const prefix = category + '::';
@@ -178,9 +137,7 @@ class KvStore {
     return result;
   }
 
-  /**
-   * Get all entries (for admin/debug).
-   */
+  /** Every entry, for debug/export. */
   getAll(): { category: string; key: string; value: unknown }[] {
     const result: { category: string; key: string; value: unknown }[] = [];
     for (const [k, v] of this.memCache.entries()) {
@@ -191,49 +148,18 @@ class KvStore {
   }
 
   /**
-   * Flush all pending writes to server immediately.
+   * No-op in the local-only model. Kept so existing callers
+   * (`await kv.flush()`, `kv.flush()`) don't break.
    */
   async flush(): Promise<void> {
-    if (this.pendingWrites.size === 0) return;
-    if (!this.isAuthenticated) {
-      this.pendingWrites.clear();
-      this.hasPending = false;
-      return;
-    }
-
-    const batch = Array.from(this.pendingWrites.values()).filter((entry) =>
-      shouldSyncToServer(entry.category)
-    );
-    this.pendingWrites.clear();
-    if (batch.length === 0) {
-      this.hasPending = false;
-      return;
-    }
-
-    try {
-      await fetch('/api/kv', {
-        body: JSON.stringify({ batch }),
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        keepalive: true,
-        method: 'POST'
-      });
-      this.lastSavedAt = Date.now();
-      this.hasPending = false;
-    } catch {
-      // Re-queue on failure
-      for (const entry of batch) {
-        this.pendingWrites.set(cacheKey(entry.category, entry.key), entry);
-      }
-      this.hasPending = this.pendingWrites.size > 0;
-    }
+    // No server queue to flush — writes are synchronous to localStorage.
   }
 
   /**
-   * Reset the KV store (for logout). Clears all data and state.
+   * Wipe every kv entry (memory + localStorage). Called on logout so the
+   * next user landing on this browser starts fresh.
    */
   reset(): void {
-    // Clear localStorage kv entries
     if (typeof localStorage !== 'undefined') {
       const toRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -244,29 +170,12 @@ class KvStore {
     }
 
     this.memCache.clear();
-    this.pendingWrites.clear();
-
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-
     this.initialized = false;
     this.isAuthenticated = false;
-    this.hasPending = false;
-    this.lastSavedAt = null;
     this.initPromise = null;
   }
 
   // --- Private helpers ---
-
-  private scheduleFlush(): void {
-    if (this.flushTimer) clearTimeout(this.flushTimer);
-    this.flushTimer = setTimeout(() => {
-      this.flushTimer = null;
-      this.flush();
-    }, 1500);
-  }
 
   private lsLoadAll(): void {
     if (typeof localStorage === 'undefined') return;
@@ -280,14 +189,12 @@ class KvStore {
             if (raw !== null) this.memCache.set(ck, JSON.parse(raw));
           }
         } catch {
-          /* ignore */
+          /* corrupt entry — skip */
         }
       }
     }
   }
 }
-
-import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
 
 export const kv: KvStore = hmrRestore('kvStore') ?? new KvStore();
 hmrPreserve('kvStore', () => kv);
