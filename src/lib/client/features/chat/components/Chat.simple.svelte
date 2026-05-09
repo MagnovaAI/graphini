@@ -59,6 +59,8 @@
   import { workspaceStore } from '$lib/client/stores/workspace.svelte';
   import { kv } from '$lib/client/stores/kvStore.svelte';
   import { modelsStore } from '$lib/client/stores/models.svelte';
+  import { aiSettings } from '$lib/client/stores/settings.svelte';
+  import { providerKeyHeaders } from '$lib/client/util/provider-keys';
   import ProviderIcon from '$lib/client/features/chat/components/ProviderIcon.svelte';
   import ToolSimpleChip from '$lib/client/features/chat/components/ToolSimpleChip.svelte';
   import {
@@ -1134,7 +1136,11 @@
     try {
       const formData = new FormData();
       formData.append('audio', blob, 'recording.webm');
-      const res = await fetch('/api/audio', { method: 'POST', body: formData });
+      const res = await fetch('/api/audio', {
+        method: 'POST',
+        body: formData,
+        headers: providerKeyHeaders(aiSettings.value)
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.text) {
@@ -1492,7 +1498,7 @@
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...providerKeyHeaders(aiSettings.value) },
         body: JSON.stringify({
           currentDiagram: '',
           currentMarkdown: '',
@@ -1542,7 +1548,7 @@
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...providerKeyHeaders(aiSettings.value) },
         body: JSON.stringify({
           currentDiagram: '',
           currentMarkdown: '',
@@ -1699,7 +1705,11 @@
       formData.append('file', blob, file.filename || 'attachment');
       formData.append('sessionId', sessionId);
       formData.append('supportsImages', selectedModel?.imageSupport ? 'true' : 'false');
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+        headers: providerKeyHeaders(aiSettings.value)
+      });
       if (!res.ok) {
         const message = await res.text().catch(() => '');
         console.error('Upload failed:', res.status, message);
@@ -1896,7 +1906,7 @@
       const activeEngine = getActiveWorkspaceEngine();
       return fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...providerKeyHeaders(aiSettings.value) },
         body: JSON.stringify({
           activeFileId: filesStore.activeId,
           activeTabEngine: activeEngine,
