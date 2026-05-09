@@ -1,6 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { resolveSearchKeyFor, type SearchProvider } from '$lib/server/chat/search';
+import { resolveSearchKey, type SearchProvider } from '$lib/server/chat/search';
 import type { ToolContext } from './context';
 
 interface SearchResult {
@@ -37,7 +37,8 @@ async function searchWithBrave(
     signal: AbortSignal.timeout(8000)
   });
 
-  if (res.status === 401 || res.status === 403) return { ok: false, status: res.status, reason: 'invalid_key' };
+  if (res.status === 401 || res.status === 403)
+    return { ok: false, status: res.status, reason: 'invalid_key' };
   if (res.status === 429) return { ok: false, status: 429, reason: 'rate_limited' };
   if (!res.ok) return { ok: false, status: res.status, reason: 'request_failed' };
 
@@ -60,15 +61,16 @@ async function searchWithTavily(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       api_key: apiKey,
-      query,
-      search_depth: 'basic',
+      include_answer: false,
       max_results: 5,
-      include_answer: false
+      query,
+      search_depth: 'basic'
     }),
     signal: AbortSignal.timeout(8000)
   });
 
-  if (res.status === 401 || res.status === 403) return { ok: false, status: res.status, reason: 'invalid_key' };
+  if (res.status === 401 || res.status === 403)
+    return { ok: false, status: res.status, reason: 'invalid_key' };
   if (res.status === 429) return { ok: false, status: 429, reason: 'rate_limited' };
   if (!res.ok) return { ok: false, status: res.status, reason: 'request_failed' };
 
@@ -87,7 +89,7 @@ const labelByProvider: Record<SearchProvider, string> = {
   tavily: 'Tavily'
 };
 
-export function createWebSearchTool({ userId }: ToolContext) {
+export function createWebSearchTool({ keys }: ToolContext) {
   return tool({
     description:
       'Search the web. Uses the user\'s configured search provider (Tavily preferred when available, Brave Search otherwise). Returns titles, snippets, and URLs. If no provider key is configured, returns success:false with error:"missing_search_key" — in that case, ASK the user to add a Tavily or Brave key in Settings → API Keys instead of retrying.',
@@ -99,15 +101,15 @@ export function createWebSearchTool({ userId }: ToolContext) {
         .describe('Brief reason why you are searching — shown to the user')
     }),
     execute: async ({ query, reason }) => {
-      const resolved = await resolveSearchKeyFor(userId ?? null);
+      const resolved = resolveSearchKey(keys);
       if (!resolved) {
         return {
-          success: false,
           error: 'missing_search_key',
+          message:
+            'No web-search API key configured for this user. Ask the user to add a Tavily key (https://tavily.com, free tier 1000 queries/month) or a Brave Search key (https://brave.com/search/api/, free tier 2000 queries/month) in Settings → API Keys. Do not retry until they have.',
           query,
           reason,
-          message:
-            'No web-search API key configured for this user. Ask the user to add a Tavily key (https://tavily.com, free tier 1000 queries/month) or a Brave Search key (https://brave.com/search/api/, free tier 2000 queries/month) in Settings → API Keys. Do not retry until they have.'
+          success: false
         };
       }
 
@@ -120,41 +122,41 @@ export function createWebSearchTool({ userId }: ToolContext) {
         if (!result.ok) {
           if (result.reason === 'invalid_key') {
             return {
-              success: false,
               error: 'invalid_search_key',
+              message: `${labelByProvider[resolved.provider]} rejected the configured key. Ask the user to update it in Settings → API Keys.`,
               provider: resolved.provider,
               query,
               reason,
-              message: `${labelByProvider[resolved.provider]} rejected the configured key. Ask the user to update it in Settings → API Keys.`
+              success: false
             };
           }
           if (result.reason === 'rate_limited') {
             return {
-              success: false,
               error: 'search_rate_limited',
+              message: `${labelByProvider[resolved.provider]} rate limit reached for this user. Try again in a moment, or ask the user to upgrade their plan.`,
               provider: resolved.provider,
               query,
               reason,
-              message: `${labelByProvider[resolved.provider]} rate limit reached for this user. Try again in a moment, or ask the user to upgrade their plan.`
+              success: false
             };
           }
           return {
-            success: false,
             error: 'search_request_failed',
             provider: resolved.provider,
-            status: result.status,
             query,
-            reason
+            reason,
+            status: result.status,
+            success: false
           };
         }
 
         return {
-          success: true,
           provider: resolved.provider,
           query,
           reason: reason || `Searching ${labelByProvider[resolved.provider]} for "${query}"`,
           resultCount: result.results.length,
           results: result.results,
+          success: true,
           summary:
             result.results.length > 0
               ? `Found ${result.results.length} result(s) for "${query}"`
@@ -162,11 +164,11 @@ export function createWebSearchTool({ userId }: ToolContext) {
         };
       } catch (e: unknown) {
         return {
-          success: false,
           error: e instanceof Error ? e.message : 'search_failed',
           provider: resolved.provider,
           query,
-          reason
+          reason,
+          success: false
         };
       }
     }
