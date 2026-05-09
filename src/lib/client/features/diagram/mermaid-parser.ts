@@ -59,9 +59,14 @@ export const parse = async (code: string) => {
   }
 
   // Use the same code shape the renderer parses, so validation === render.
-  // Importing the renderer registers icon packs, layout loaders, and zenuml.
-  const enhancedCode = buildEnhancedCode(code);
-  await import('./mermaid-renderer');
+  // Importing the renderer registers icon packs, layout loaders, and zenuml,
+  // and gives us the broken-icon-annotation stripper. Without the strip the
+  // parser sees raw `Node@{ img: "broken-url" }` lines while the renderer
+  // strips them — and the canvas reports "Diagram has syntax errors" on
+  // diagrams that actually render fine.
+  const { stripBrokenIconAnnotations } = await import('./mermaid-renderer');
+  let enhancedCode = buildEnhancedCode(code);
+  enhancedCode = await stripBrokenIconAnnotations(enhancedCode);
 
   // Suppress console.error/warn during mermaid.parse to eliminate noise
   const originalError = console.error;

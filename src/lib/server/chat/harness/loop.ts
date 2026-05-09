@@ -48,22 +48,23 @@ export function runChatStream({
       // remaining render error back to the user, so don't overclaim here.
       if (lastStep && 'errorChecker' in allTools && stepReturnedValidErrorCheck(lastStep)) {
         return {
-          system: `${system}\n\nVALIDATION: errorChecker found no structural issues. If the user reports the canvas still shows an error, trust their report — the canvas renderer is the source of truth — and repair via diagramPatch or diagramWrite. Otherwise give a concise final answer.`
+          system: `${system}\n\nVALIDATION: errorChecker found no structural issues. If the user reports the canvas still shows an error, trust their report — the canvas renderer is the source of truth — and repair via fileSystem patch or update. Otherwise give a concise final answer.`
         } as never;
       }
       if (lastStep && 'errorChecker' in allTools && stepReturnedInvalidErrorCheck(lastStep)) {
         return {
-          system: `${system}\n\nVALIDATION FAILED: errorChecker found Mermaid errors. Do not claim the diagram is fixed. Repair with diagramRead/diagramPatch (or diagramWrite if the patch range is unclear), then validate again. If you cannot fix it, say the remaining error plainly.`
+          system: `${system}\n\nVALIDATION FAILED: errorChecker found Mermaid errors. Do not claim the diagram is fixed. Repair with fileSystem read/patch (or fileSystem update if the patch range is unclear), then validate again. If you cannot fix it, say the remaining error plainly.`
         } as never;
       }
+      // After a successful fileSystem write to a .mermaid file, prompt validation.
       if (
         lastStep &&
         'errorChecker' in allTools &&
-        stepCalledTool(lastStep, ['diagramWrite', 'diagramPatch']) &&
-        stepSucceededTool(lastStep, ['diagramWrite', 'diagramPatch'])
+        stepCalledTool(lastStep, ['fileSystem']) &&
+        stepSucceededTool(lastStep, ['fileSystem'])
       ) {
         return {
-          system: `${system}\n\nVALIDATION STEP: The previous step wrote or patched Mermaid. Call errorChecker next before doing anything else.`
+          system: `${system}\n\nVALIDATION STEP: The previous step ran fileSystem. If it touched a .mermaid file (create/update/patch), call errorChecker next before doing anything else.`
         } as never;
       }
       return undefined;

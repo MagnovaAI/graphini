@@ -4,6 +4,9 @@ import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
 // ── Types ──
 
 export type PanelId = 'canvas' | 'document' | 'code' | 'chat';
+export type ViewerPanelId = Exclude<PanelId, 'chat'>;
+/** The three viewer panels are mutually exclusive — only one shows at a time. */
+export const VIEWER_PANEL_IDS: ViewerPanelId[] = ['canvas', 'document', 'code'];
 export const VISIBLE_PANEL_SWITCHER_IDS: PanelId[] = ['code', 'canvas'];
 
 export interface PanelConfig {
@@ -146,6 +149,30 @@ class PanelManager {
     this.panels[id].visible = false;
     this.panels = { ...this.panels };
     this.debouncedSave();
+  }
+
+  /**
+   * Show exactly one viewer panel (canvas / code / document) and hide the
+   * other two. Chat is independent and untouched. Enforces the two-window
+   * layout: chat (optional) + one viewer.
+   */
+  showViewer(id: ViewerPanelId): void {
+    for (const v of VIEWER_PANEL_IDS) this.panels[v].visible = v === id;
+    this.panels = { ...this.panels };
+    this.debouncedSave();
+  }
+
+  /** Hide every viewer panel (chat-only mode). */
+  hideAllViewers(): void {
+    for (const v of VIEWER_PANEL_IDS) this.panels[v].visible = false;
+    this.panels = { ...this.panels };
+    this.debouncedSave();
+  }
+
+  /** The currently-visible viewer, or null when none is open. */
+  currentViewer(): ViewerPanelId | null {
+    for (const v of VIEWER_PANEL_IDS) if (this.panels[v].visible) return v;
+    return null;
   }
 
   setWidth(id: PanelId, width: number): void {

@@ -1,8 +1,7 @@
-import { diagramStore } from '$lib/server/chat/state';
 import { parseMermaidNodes, validateSingleMermaidDocument } from '$lib/server/chat/mermaid';
 import { tool } from 'ai';
 import { z } from 'zod';
-import type { ToolContext } from './context';
+import { resolveMermaidTarget, type ToolContext } from './context';
 
 const palettes = {
   earth: [
@@ -74,20 +73,31 @@ function buildMissingDeclarationRepair(lines: string[]) {
   };
 }
 
-export function createStyleSearchTool({ sessionId }: ToolContext) {
+export function createStyleSearchTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Search and preview Mermaid style directives without mutating the diagram. Use before diagramPatch when the user asks for colors, themes, styling, or visual polish. Return patch suggestions, then choose and apply only the needed lines with diagramPatch.',
+      'Search and preview Mermaid style directives without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use before fileSystem patch when the user asks for colors, themes, styling, or visual polish. Return patch suggestions, then choose and apply only the needed lines via fileSystem patch.',
     inputSchema: z.object({
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Path to the .mermaid file to inspect. Defaults to the active workspace file when omitted; required when the active file is not a .mermaid.'
+        ),
       palette: z
         .enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome'])
         .optional()
         .describe('Palette to preview. Defaults to vibrant.'),
       limit: z.number().int().min(1).max(30).optional().describe('Maximum nodes to style.')
     }),
-    execute: async ({ palette = 'vibrant', limit = 30 }) => {
-      const diagram = diagramStore.get(sessionId) || '';
-      if (!diagram.trim()) return { success: false, message: 'No diagram to inspect' };
+    execute: async ({ path, palette = 'vibrant', limit = 30 }) => {
+      const resolved = await resolveMermaidTarget(target, userId, path);
+      if (!resolved.ok) {
+        return { success: false, message: resolved.reason, hint: resolved.hint };
+      }
+      const diagram = resolved.content;
+      if (!diagram.trim())
+        return { success: false, message: `No content in ${resolved.path} to inspect` };
 
       const lines = diagram.split('\n');
       const validation = validateSingleMermaidDocument(diagram);

@@ -4,6 +4,7 @@
  */
 
 import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
+import { toast } from 'svelte-sonner';
 
 interface ConversationItem {
   id: string;
@@ -60,6 +61,10 @@ async function createConversation(title?: string): Promise<ConversationItem | nu
       state.list = [conv, ...state.list];
       state.activeId = conv.id;
       return conv;
+    }
+    if (res.status === 402 || res.status === 409) {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data?.message ?? 'Could not create chat.');
     }
   } catch {
     /* ignore */

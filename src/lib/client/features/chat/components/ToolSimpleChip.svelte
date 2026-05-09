@@ -17,17 +17,26 @@
     status: 'running' | 'done';
     details?: string[];
     searchResults?: SearchResult[];
+    toolInput?: { path?: unknown; from?: unknown };
   }
 
-  let { toolName, titlePending, titleDone, subtitle, status, details, searchResults }: Props =
-    $props();
+  let {
+    toolName,
+    titlePending,
+    titleDone,
+    subtitle,
+    status,
+    details,
+    searchResults,
+    toolInput
+  }: Props = $props();
 
   let isExpanded = $state(false);
 
   const hasSearchResults = $derived((searchResults?.length ?? 0) > 0);
   const hasDetails = $derived(hasSearchResults || (details?.length ?? 0) > 0);
   const isPending = $derived(status === 'running');
-  const Icon = $derived(toolIcon(toolName));
+  const Icon = $derived(toolIcon(toolName, toolInput));
 
   function toggle() {
     if (!hasDetails) return;

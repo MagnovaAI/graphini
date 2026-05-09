@@ -1,34 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
-import {
-  codeStore,
-  diagramStore,
-  markdownStore,
-  memoryStore,
-  planStore,
-  subagentStore
-} from '$lib/server/chat/state';
-import {
-  buildDiagramReview,
-  findMermaidDeclarations,
-  parseMermaidNodes,
-  validateSingleMermaidDocument
-} from '$lib/server/chat/mermaid';
-import { detectCodeLanguage, validateCodeArtifact } from '$lib/server/chat/code-artifacts';
-import { openrouterFastChat } from '$lib/server/chat/model';
-import { instructionsForSubagent } from '$lib/server/chat/subagents';
-import { generateText, tool } from 'ai';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { findMermaidDeclarations, validateSingleMermaidDocument } from '$lib/server/chat/mermaid';
+import { tool } from 'ai';
 import { z } from 'zod';
-import { resolveIconForNode } from './icon-resolver';
-
-const execFileAsync = promisify(execFile);
-
-interface ToolContext {
-  modelId?: string;
-  sessionId: string;
-}
+import { resolveMermaidTarget, type ToolContext } from './context';
 
 // NOTE: We intentionally do NOT run `mermaid.parse` server-side.
 //
@@ -40,15 +13,37 @@ interface ToolContext {
 // tool returns structural checks plus the diagram content and lets the
 // client be the source of truth.
 
-export function createErrorCheckerTool({ modelId, sessionId }: ToolContext) {
+export function createErrorCheckerTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Validate the current Mermaid diagram syntax. Returns any syntax errors found. Use this when the user reports rendering issues or after making complex edits.',
-    inputSchema: z.object({}),
-    execute: async () => {
-      const diagram = diagramStore.get(sessionId) || '';
+      'Validate Mermaid diagram syntax. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use this when the user reports rendering issues or after making complex edits.',
+    inputSchema: z.object({
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Path to the .mermaid file to validate. Defaults to the active workspace file when omitted; required when the active file is not a .mermaid.'
+        )
+    }),
+    execute: async ({ path }) => {
+      const resolved = await resolveMermaidTarget(target, userId, path);
+      if (!resolved.ok) {
+        return {
+          errors: [],
+          hint: resolved.hint,
+          message: resolved.reason,
+          success: true,
+          valid: true
+        };
+      }
+      const diagram = resolved.content;
       if (!diagram.trim()) {
-        return { success: true, valid: true, errors: [], message: 'No diagram to validate' };
+        return {
+          success: true,
+          valid: true,
+          errors: [],
+          message: `No content in ${resolved.path} to validate`
+        };
       }
 
       const errors: { line: number; message: string }[] = [];
@@ -188,6 +183,7 @@ export function createErrorCheckerTool({ modelId, sessionId }: ToolContext) {
         errors,
         message:
           errors.length === 0 ? 'Diagram syntax looks valid' : `Found ${errors.length} issue(s)`,
+        path: resolved.path,
         success: errors.length === 0,
         valid: errors.length === 0
       };

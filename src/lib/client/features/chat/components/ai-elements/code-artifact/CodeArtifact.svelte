@@ -323,11 +323,24 @@
     </div>
   </div>
 
-  <!-- Error banner -->
+  <!--
+    Error banner. Mermaid parse errors are multi-line with caret indicators
+    pointing at the offending column — rendering them in a <p> collapses the
+    whitespace and the carets stop lining up. <pre> preserves the structure
+    so the user sees the same diagnostic the parser printed.
+  -->
   {#if isError && !isCollapsed && errors.length > 0}
-    <div class="mt-1 px-2">
-      {#each errors as err (err)}
-        <p class="text-[13px] leading-relaxed text-red-600 dark:text-red-400">{err}</p>
+    <div class="mt-2 space-y-1.5 px-2">
+      {#each errors as err, i (i)}
+        <div
+          class="flex gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-700 dark:bg-red-500/15 dark:text-red-300">
+          <span
+            class="mt-[2px] inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-[11px] leading-none font-bold">
+            !
+          </span>
+          <pre
+            class="m-0 flex-1 overflow-x-auto font-mono text-[12px] leading-[1.55] break-words whitespace-pre-wrap">{err.trim()}</pre>
+        </div>
       {/each}
     </div>
   {/if}

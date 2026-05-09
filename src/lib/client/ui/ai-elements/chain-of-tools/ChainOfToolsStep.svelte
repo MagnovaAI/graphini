@@ -120,7 +120,7 @@
     <div class="connector absolute top-5 -bottom-2 left-1/2 -mx-px w-px bg-muted-foreground/50">
     </div>
   </div>
-  <div class="flex-1 space-y-2">
+  <div class="min-w-0 flex-1 space-y-2">
     <div class="flex w-full items-baseline gap-2">
       <span class={cn('font-medium text-foreground/75', status === 'active' && 'thinking-shimmer')}>
         {label}

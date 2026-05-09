@@ -25,37 +25,9 @@ export interface ToolConfig {
 
 const DEFAULT_TOOLS: ToolConfig[] = [
   {
-    category: 'diagram',
-    description: 'Read current diagram content from the editor',
-    enabled: true,
-    id: 'diagramRead',
-    label: 'diagramRead'
-  },
-  {
-    category: 'diagram',
-    description: 'Write or replace the entire diagram',
-    enabled: true,
-    id: 'diagramWrite',
-    label: 'diagramWrite'
-  },
-  {
-    category: 'diagram',
-    description: 'Apply surgical edits to specific lines',
-    enabled: true,
-    id: 'diagramPatch',
-    label: 'diagramPatch'
-  },
-  {
-    category: 'diagram',
-    description: 'Clear the entire diagram',
-    enabled: true,
-    id: 'diagramDelete',
-    label: 'diagramDelete'
-  },
-  {
     category: 'icons',
     description:
-      'Search local and Iconify web icons for diagram nodes; the model applies chosen icons via diagramPatch',
+      'Search local and Iconify web icons for diagram nodes; the model applies chosen icons via fileSystem patch',
     enabled: true,
     id: 'iconSearch',
     label: 'Icon Tool'
@@ -73,20 +45,6 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     enabled: true,
     id: 'askQuestions',
     label: 'Question Tool'
-  },
-  {
-    category: 'diagram',
-    description: 'Read content from the markdown editor',
-    enabled: true,
-    id: 'markdownRead',
-    label: 'markdownRead'
-  },
-  {
-    category: 'diagram',
-    description: 'Write content to the markdown editor',
-    enabled: true,
-    id: 'markdownWrite',
-    label: 'markdownWrite'
   },
   {
     category: 'diagram',
@@ -122,6 +80,13 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     enabled: true,
     id: 'fileManager',
     label: 'fileManager'
+  },
+  {
+    category: 'files',
+    description: 'Browse and edit the workspace file tree (md, json, yaml, mermaid)',
+    enabled: true,
+    id: 'fileSystem',
+    label: 'File System'
   },
   {
     category: 'files',

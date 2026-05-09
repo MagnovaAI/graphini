@@ -1,40 +1,18 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
-import {
-  codeStore,
-  diagramStore,
-  markdownStore,
-  memoryStore,
-  planStore,
-  subagentStore
-} from '$lib/server/chat/state';
-import {
-  buildDiagramReview,
-  findMermaidDeclarations,
-  parseMermaidNodes,
-  validateSingleMermaidDocument
-} from '$lib/server/chat/mermaid';
-import { detectCodeLanguage, validateCodeArtifact } from '$lib/server/chat/code-artifacts';
-import { openrouterFastChat } from '$lib/server/chat/model';
-import { instructionsForSubagent } from '$lib/server/chat/subagents';
-import { generateText, tool } from 'ai';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { tool } from 'ai';
 import { z } from 'zod';
-import { resolveIconForNode } from './icon-resolver';
+import { persistFileContentById, resolveMermaidTarget, type ToolContext } from './context';
 
-const execFileAsync = promisify(execFile);
-
-interface ToolContext {
-  modelId?: string;
-  sessionId: string;
-}
-
-export function createAutoStylerTool({ modelId, sessionId }: ToolContext) {
+export function createAutoStylerTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Automatically style all nodes and subgraphs in the diagram with harmonious grouped colors. Applies fill, border, and text colors. Use when the user asks to "make it colorful", "style the diagram", or "add colors".',
+      'Automatically style all nodes and subgraphs in a Mermaid diagram with harmonious grouped colors. Pass `path` to target a specific .mermaid file; defaults to the active file when none is given. Use when the user asks to "make it colorful", "style the diagram", or "add colors".',
     inputSchema: z.object({
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Path to the .mermaid file to style. Defaults to the active workspace file when omitted; required when the active file is not a .mermaid.'
+        ),
       palette: z
         .enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome'])
         .optional()
@@ -44,10 +22,14 @@ export function createAutoStylerTool({ modelId, sessionId }: ToolContext) {
         .optional()
         .describe('If true, only style nodes that have no existing style. Default false.')
     }),
-    execute: async ({ palette = 'vibrant', preserveExisting = false }) => {
-      const diagram = diagramStore.get(sessionId) || '';
+    execute: async ({ path, palette = 'vibrant', preserveExisting = false }) => {
+      const resolved = await resolveMermaidTarget(target, userId, path);
+      if (!resolved.ok) {
+        return { success: false, message: resolved.reason, hint: resolved.hint };
+      }
+      const diagram = resolved.content;
       if (!diagram.trim()) {
-        return { success: false, message: 'No diagram to style' };
+        return { success: false, message: `No content in ${resolved.path} to style` };
       }
 
       // Check if diagram type supports style directives
@@ -210,15 +192,16 @@ export function createAutoStylerTool({ modelId, sessionId }: ToolContext) {
       }
 
       const newDiagram = cleanedLines.join('\n') + '\n' + styleLines.join('\n');
-      diagramStore.set(sessionId, newDiagram);
+      if (userId) await persistFileContentById(resolved.id, userId, newDiagram);
 
       return {
         content: newDiagram,
         nodesStyled: nodeIds.length,
         palette,
+        path: resolved.path,
         subgraphsStyled: subgraphIds.length,
         success: true,
-        summary: `Styled ${nodeIds.length} nodes and ${subgraphIds.length} subgraphs with ${palette} palette`
+        summary: `Styled ${nodeIds.length} nodes and ${subgraphIds.length} subgraphs with ${palette} palette in ${resolved.path}`
       };
     }
   });

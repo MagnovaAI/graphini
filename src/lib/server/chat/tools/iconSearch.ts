@@ -1,8 +1,7 @@
-import { diagramStore } from '$lib/server/chat/state';
 import { parseMermaidNodes, validateSingleMermaidDocument } from '$lib/server/chat/mermaid';
 import { tool } from 'ai';
 import { z } from 'zod';
-import type { ToolContext } from './context';
+import { resolveMermaidTarget, type ToolContext } from './context';
 import { resolveIconCandidatesForNode, type IconColorMode, type IconSource } from './icon-resolver';
 
 interface IconCandidateSuggestion {
@@ -65,10 +64,10 @@ function filterNodesForIconSearch(
   return { nodes, usedQueryFallback: true };
 }
 
-export function createIconSearchTool({ sessionId }: ToolContext) {
+export function createIconSearchTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Search local and verified Iconify icon candidates for Mermaid diagram nodes without mutating the diagram. Supports color/noncolor icon modes. Use before diagramPatch when the user asks for icons or logos. Return patch suggestions, then choose and apply only the needed node annotation lines with diagramPatch.',
+      'Search local and verified Iconify icon candidates for Mermaid diagram nodes without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Supports color/noncolor icon modes. Use before fileSystem patch when the user asks for icons or logos. Return patch suggestions, then choose and apply only the needed node annotation lines via fileSystem patch.',
     inputSchema: z.object({
       colorMode: z
         .enum(['any', 'color', 'noncolor'])
@@ -84,6 +83,12 @@ export function createIconSearchTool({ sessionId }: ToolContext) {
         ),
       limit: z.number().int().min(1).max(30).optional().describe('Maximum nodes to inspect.'),
       nodeIds: z.array(z.string()).optional().describe('Specific node IDs to search icons for.'),
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Path to the .mermaid file to inspect. Defaults to the active workspace file when omitted; required when the active file is not a .mermaid.'
+        ),
       query: z.string().optional().describe('Optional keyword filter for node id or label text.'),
       webLimit: z
         .number()
@@ -94,6 +99,7 @@ export function createIconSearchTool({ sessionId }: ToolContext) {
         .describe('Maximum verified Iconify web candidates to include per node.')
     }),
     execute: async ({
+      path,
       colorMode = 'any',
       includeWebSuggestions = false,
       limit = 20,
@@ -101,8 +107,13 @@ export function createIconSearchTool({ sessionId }: ToolContext) {
       query,
       webLimit = 2
     }) => {
-      const diagram = diagramStore.get(sessionId) || '';
-      if (!diagram.trim()) return { success: false, message: 'No diagram to inspect' };
+      const resolved = await resolveMermaidTarget(target, userId, path);
+      if (!resolved.ok) {
+        return { success: false, message: resolved.reason, hint: resolved.hint };
+      }
+      const diagram = resolved.content;
+      if (!diagram.trim())
+        return { success: false, message: `No content in ${resolved.path} to inspect` };
 
       const lines = diagram.split('\n');
       const validation = validateSingleMermaidDocument(diagram);

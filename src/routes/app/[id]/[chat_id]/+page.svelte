@@ -27,6 +27,7 @@
   import { canvasStatus } from '$lib/client/stores/canvasStatus.svelte';
   // autosave replaced by workspace auto-save
   import { conversationsStore } from '$lib/client/stores/conversations.svelte';
+  import { filesStore } from '$lib/client/stores/files.svelte';
   import { workspaceStore } from '$lib/client/stores/workspace.svelte';
   import { kv } from '$lib/client/stores/kvStore.svelte';
   import { panels, type PanelId } from '$lib/client/stores/panels.svelte';
@@ -57,8 +58,12 @@
 
   const panZoomState = new PanZoomState();
 
-  // Workspace loading from route param
+  // Workspace loading from route param. The full-page splash now only gates
+  // on auth (workspace + chat hydrate in the background from cache), but we
+  // still toggle this flag on the very first load so external callers /
+  // tests can observe loading state if needed.
   let wsLoading = $state(true);
+  void wsLoading;
   let wsError = $state<string | null>(null);
 
   let width = $state(0);
@@ -114,7 +119,21 @@
   let zoomLevel = $state(100);
 
   const storedEngine = $derived(workspaceStore.workspace?.document?.engine ?? 'mermaid');
-  const activeDiagramEngine = $derived(detectEngine($inputStateStore.code || '', storedEngine));
+  // Engine is driven by the active workspace file's kind when one is open.
+  // No content sniffing across types — a .md file never renders as Mermaid,
+  // a .json file never falls back to YAML, etc. Scratch mode (no active
+  // file) falls back to the legacy content-detect for backward compatibility.
+  const fileKindEngine = $derived.by((): DiagramEngine | null => {
+    const k = filesStore.activeFile?.kind;
+    if (k === 'md') return 'markdown';
+    if (k === 'mermaid') return 'mermaid';
+    if (k === 'json') return 'json';
+    if (k === 'yaml') return 'yaml';
+    return null;
+  });
+  const activeDiagramEngine = $derived(
+    fileKindEngine ?? detectEngine($inputStateStore.code || '', storedEngine)
+  );
   const EngineIcon = $derived.by(() => {
     switch (activeDiagramEngine) {
       case 'json':
@@ -137,15 +156,43 @@
         return activeDiagramEngine;
     }
   });
+  // Active workspace file (chosen from the Files sidebar). When set, the
+  // Canvas/Code panel headers swap their generic "Canvas | mmd" chrome for
+  // the file's color icon + name + extension.
+  const activeFile = $derived(filesStore.activeFile);
+  const activeFileIcon = $derived.by(() => {
+    if (!activeFile) return null;
+    switch (activeFile.kind) {
+      case 'md':
+        return '/icons/file-md.svg';
+      case 'json':
+        return '/icons/file-json.svg';
+      case 'yaml':
+        return '/icons/file-yaml.svg';
+      case 'mermaid':
+        return '/icons/file-mermaid.svg';
+      default:
+        return null;
+    }
+  });
+  const activeFileName = $derived.by(() => {
+    if (!activeFile) return '';
+    return activeFile.path.split('/').pop() ?? activeFile.path;
+  });
+
   const isMermaidDiagram = $derived(activeDiagramEngine === 'mermaid');
-  const isMarkdownDocument = $derived(activeDiagramEngine === 'markdown');
+  // Markdown viewer is gated on the active workspace file's kind, not on
+  // engine sniffing — `selectWorkspaceFile` deliberately doesn't push .md
+  // content into the diagram code store, so `activeDiagramEngine` will not
+  // detect markdown when the user opens a .md file.
+  const isMarkdownDocument = $derived(activeFile?.kind === 'md');
   const isDocumentPanelRenderable = $derived(isMarkdownDocument);
-  const hasMandatoryFileViewer = $derived(
-    activeDiagramEngine === 'mermaid' ||
-      activeDiagramEngine === 'markdown' ||
-      activeDiagramEngine === 'json' ||
-      activeDiagramEngine === 'yaml'
-  );
+  // Mandatory file viewer = "we have an active workspace file the user is
+  // editing". Scratch mode (no active file) has no viewer — it stays
+  // chat-only. Without this guard the fallback $effect below would force
+  // Canvas open when the leftover code-store content happens to sniff as
+  // mermaid, even though the user never opened a file.
+  const hasMandatoryFileViewer = $derived(activeFile !== null);
   const hasWorkspaceContentPanel = $derived(
     panels.panels.canvas.visible || panels.panels.code.visible || panels.panels.document.visible
   );
@@ -169,8 +216,12 @@
   // Metadata cache: each conversation has an immutable workspace_id + user_id,
   // so we never need to refetch /api/conversations/:id for chats we've already
   // resolved this session. Skipping that fetch is what makes rapid switches /
-  // deletes feel instant instead of a network roundtrip per click.
+  // deletes feel instant instead of a network roundtrip per click. The
+  // caches are non-reactive — they back imperative async fetches, not
+  // template state — so plain Map is intentional here.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const conversationMetaCache = new Map<string, { workspaceId: string; ownerId: string }>();
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const inflightMetaFetches = new Map<string, Promise<void>>();
 
   function prefetchConversation(chatId: string): void {
@@ -213,14 +264,25 @@
     const signal = loadAbort.signal;
     const isStale = () => gen !== loadGeneration;
 
+    // Set the active id immediately so cached UI state (sidebar highlight,
+    // conversationsStore) flips to this chat without waiting for any fetches.
+    conversationsStore.setActive(chatId);
+    // Kick off the chat-component message load in parallel — the component
+    // reads its localStorage cache synchronously and the DB fetch refreshes
+    // in the background, so this doesn't block anything but starts earlier.
+    if (chatComponent) {
+      void chatComponent.loadConversation(chatId);
+    } else {
+      pendingChatLoadId = chatId;
+    }
+
     if (isInitialChatLoad) wsLoading = true;
     wsError = '';
     try {
       let workspaceId: string | undefined;
       let conversationOwner: string | undefined;
 
-      // If a hover-triggered prefetch is already in flight for this chat,
-      // await it instead of firing a duplicate request.
+      // Hover prefetch may already be running — reuse that.
       const inflight = inflightMetaFetches.get(chatId);
       if (inflight) await inflight;
       if (isStale()) return;
@@ -230,6 +292,11 @@
         workspaceId = cached.workspaceId;
         conversationOwner = cached.ownerId;
       } else {
+        // Hot path: fetch conversation metadata. Workspace load can't start
+        // until we know the workspace_id. (We could speculate that the
+        // current workspaceStore.workspace.id is correct and start loading
+        // anyway, but a wrong-workspace flash is worse than the few ms we'd
+        // save in the rare cross-workspace switch.)
         const res = await fetch(`/api/conversations/${encodeURIComponent(chatId)}`, {
           credentials: 'include',
           signal
@@ -268,16 +335,6 @@
         if (isStale()) return;
         if (!ok) wsError = workspaceStore.state.error || 'Failed to load workspace';
       }
-
-      conversationsStore.setActive(chatId);
-      // Defer the chat load if the panel hasn't mounted yet; an effect below
-      // picks it up the moment chatComponent becomes available. Avoids the
-      // old 50ms-tick busy-wait that capped first-load latency at 1.5s.
-      if (chatComponent) {
-        await chatComponent.loadConversation(chatId);
-      } else {
-        pendingChatLoadId = chatId;
-      }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') return;
       if (isStale()) return;
@@ -296,6 +353,11 @@
     if (!chatId || !ownerId) return;
     conversationsStore.setActive(chatId);
     void loadChat(chatId, ownerId);
+    // Files are user-scoped, not chat-scoped, but a chat switch is the most
+    // reliable signal that the user might be picking up where another session
+    // left off — refresh the tree so newly-created files from other tabs or
+    // recent agent runs show up immediately.
+    void filesStore.fetchAll();
   });
 
   // Drains the pending chat-load the moment the Chat component mounts.
@@ -338,6 +400,41 @@
     }
   });
 
+  // Code panel autosave: every active file kind (md/mermaid/json/yaml) is
+  // edited in the Code panel via $inputStateStore.code. Debounce edits and
+  // PATCH /api/workspace-files/[id] so the file row stays in sync.
+  // Skipped for scratch mode (no active file).
+  let activeFileSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastSavedActiveFileId: string | null = null;
+  let lastSavedActiveFileContent = '';
+  $effect(() => {
+    const file = filesStore.activeFile;
+    if (!file) return;
+    // Reset the save baseline when the user switches files so we don't
+    // overwrite the new file's row with the previous file's pending edits.
+    if (file.id !== lastSavedActiveFileId) {
+      if (activeFileSaveTimer) {
+        clearTimeout(activeFileSaveTimer);
+        activeFileSaveTimer = null;
+      }
+      lastSavedActiveFileId = file.id;
+      lastSavedActiveFileContent = file.content;
+      return;
+    }
+    const code = $inputStateStore.code ?? '';
+    if (code === file.content || code === lastSavedActiveFileContent) {
+      lastSavedActiveFileContent = code;
+      return;
+    }
+    if (activeFileSaveTimer) clearTimeout(activeFileSaveTimer);
+    activeFileSaveTimer = setTimeout(async () => {
+      // Bail if the user has switched files between debounce and fire.
+      if (filesStore.activeId !== file.id) return;
+      const result = await filesStore.update(file.id, { content: code });
+      if (!('error' in result)) lastSavedActiveFileContent = code;
+    }, 500);
+  });
+
   const setupPanZoomObserver = () => {
     panZoomState.onPanZoomChange = (pan, zoom) => {
       updateCodeStore({ pan, zoom });
@@ -365,9 +462,10 @@
   onMount(() => {
     panels.setWorkspaceOrder();
     panels.show('chat');
-    panels.show('code');
-    panels.hide('canvas');
-    panels.hide('document');
+    // Two-window rule: chat is one independent switch; the viewer side
+    // (canvas / code / document) is a single-select group. Scratch mode shows
+    // chat only — `selectWorkspaceFile` opens a viewer when a file is picked.
+    panels.hideAllViewers();
 
     // Conversation/workspace loading lives in the $effect above so it re-runs
     // whenever $page.params.chat_id changes (e.g. clicking "New chat" or a
@@ -376,8 +474,14 @@
     setupPanZoomObserver();
 
     const setup = async () => {
-      await initHandler();
-      if (authStore.isLoggedIn) await conversationsStore.fetch();
+      // Run independent fetches in parallel so refresh latency = max(slowest)
+      // instead of the sum. initHandler doesn't need to block conversation/
+      // file fetches; both the conversations and files stores are per-user
+      // and can populate in parallel.
+      const initP = initHandler();
+      const convosP = authStore.isLoggedIn ? conversationsStore.fetch() : Promise.resolve();
+      const filesP = filesStore.fetchAll();
+      await Promise.allSettled([initP, convosP, filesP]);
       window.addEventListener('appinstalled', () => logEvent('pwaInstalled', { isMobile }));
     };
     setup();
@@ -672,34 +776,34 @@
     document.title = `${name} — Graphini`;
   });
 
-  // Track activation order to evict oldest when exceeding max-2
-  let panelActivationOrder = $state<PanelId[]>(['chat', 'code']);
+  // (panelActivationOrder removed — the two-window rule is now enforced
+  // directly via panels.showViewer / panels.currentViewer; no eviction
+  // queue needed.)
 
+  /**
+   * Two-window rule:
+   *  - Chat is an independent toggle. It cannot be hidden if doing so would
+   *    leave the workspace with zero panels.
+   *  - Canvas / Document / Code form a single-select viewer group. Picking
+   *    one shows it and hides the other two via panels.showViewer().
+   */
   function handleTogglePanel(panel: PanelId) {
-    const isVisible = panels.panels[panel].visible;
-    const visiblePanels = (['chat', 'canvas', 'code'] as PanelId[]).filter(
-      (p) => panels.panels[p].visible
-    );
-
-    if (isVisible) {
-      // Hiding — only allow if at least one will remain
-      if (visiblePanels.length <= 1) return;
-      panels.hide(panel);
-      panelActivationOrder = panelActivationOrder.filter((p) => p !== panel);
+    if (panel === 'chat') {
+      const isVisible = panels.panels.chat.visible;
+      if (isVisible) {
+        // Refuse to leave the user staring at nothing — always keep at least
+        // one panel visible. If no viewer is open, the chat toggle is a no-op.
+        if (panels.currentViewer() === null) return;
+        panels.hide('chat');
+      } else {
+        panels.show('chat');
+      }
       return;
     }
-
-    // Showing — if 2 already visible, hide the oldest
-    if (visiblePanels.length >= 2) {
-      const toHide = panelActivationOrder.find((p) => visiblePanels.includes(p));
-      if (toHide) {
-        panels.hide(toHide);
-        panelActivationOrder = panelActivationOrder.filter((p) => p !== toHide);
-      }
-    }
-    panels.show(panel);
-    if (panel === 'canvas') panels.hide('document');
-    panelActivationOrder = [...panelActivationOrder.filter((p) => p !== panel), panel];
+    // Viewer button — single-select. Clicking the active viewer is a no-op
+    // (we never end up with zero viewers when chat is also hidden).
+    if (panels.currentViewer() === panel) return;
+    panels.showViewer(panel as 'canvas' | 'document' | 'code');
   }
 
   async function startNewChat() {
@@ -722,8 +826,42 @@
     await goto(`/app/${userId}/${id}`);
   }
 
+  /**
+   * Open a workspace file. Each kind gets its own dedicated viewer set;
+   * we never reuse one viewer for another kind, and we never rely on
+   * engine auto-detection — the file extension is the source of truth.
+   *
+   *   - .md      → Document panel only (markdown renderer). Canvas/Code
+   *                stay on the active diagram, untouched.
+   *   - .mermaid → Canvas (Mermaid view) + Code (Monaco mermaid).
+   *   - .json    → Canvas (JSON view)    + Code (Monaco json).
+   *   - .yaml    → Canvas (YAML view)    + Code (Monaco yaml).
+   *
+   * Non-markdown kinds replace the active diagram source via the existing
+   * code-store pipeline. Markdown does NOT touch the diagram pipeline.
+   */
+  async function selectWorkspaceFile(id: string) {
+    const file = filesStore.getById(id);
+    if (!file) return;
+    filesStore.setActive(id);
+
+    // Push the file content into the shared code store regardless of kind;
+    // the Code panel edits it and the right-side viewer (Canvas / Document)
+    // is picked by the file's kind, not by content sniffing. This way a .md
+    // file never accidentally renders as Mermaid because the engine resolver
+    // is locked to `activeFile.kind`.
+    updateCodeStore({ code: file.content, updateDiagram: file.kind !== 'md' });
+    workspaceStore.markDirty();
+
+    // Two-window rule: open exactly one viewer. Default is the rendered
+    // preview for the file's kind — Document for .md, Canvas for everything
+    // else. The user can flip to Code via the sidebar viewer switcher.
+    panels.showViewer(file.kind === 'md' ? 'document' : 'canvas');
+  }
+
   // Track in-flight deletes so a user mashing the trash icon doesn't fire a
-  // second DELETE for the same row before the first resolves.
+  // second DELETE for the same row before the first resolves. Non-reactive.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const pendingDeletes = new Set<string>();
 
   async function deleteConversation(id: string) {
@@ -757,18 +895,22 @@
   });
 
   $effect(() => {
-    if (
-      hasMandatoryFileViewer &&
-      !panels.panels.chat.visible &&
-      !panels.panels.canvas.visible &&
-      !panels.panels.code.visible
-    ) {
-      panels.show('canvas');
+    // If the user closes both Chat and the viewer while a file is open, we
+    // re-open the kind-appropriate viewer so the workspace never goes blank.
+    if (hasMandatoryFileViewer && !panels.panels.chat.visible && panels.currentViewer() === null) {
+      panels.showViewer(isMarkdownDocument ? 'document' : 'canvas');
     }
   });
 </script>
 
-{#if !authStore.isInitialized || authStore.isLoading || wsLoading}
+{#if !authStore.isInitialized || authStore.isLoading}
+  <!--
+    Splash is reserved for the auth handshake only. Workspace and chat data
+    are fetched in the background; the chat panel renders immediately from
+    its localStorage cache (`kv`), and the canvas/code/document panels are
+    file-driven so they no-op until a file is opened. Refreshes feel instant
+    instead of waiting on three sequential network round-trips.
+  -->
   <div class="flex h-screen items-center justify-center bg-background">
     <div class="flex flex-col items-center gap-3 text-muted-foreground">
       <Loader2Spin class="size-6 animate-spin text-primary" />
@@ -802,7 +944,8 @@
           onDeleteConversation={deleteConversation}
           onPrefetchConversation={prefetchConversation}
           onTogglePanel={handleTogglePanel}
-          onOpenSettings={() => (isSettingsModalOpen = true)} />
+          onOpenSettings={() => (isSettingsModalOpen = true)}
+          onSelectFile={selectWorkspaceFile} />
       {/snippet}
       <div class="flex min-h-0 flex-1 overflow-hidden" role="main">
         {#each panels.order as panelId (panelId)}
@@ -819,10 +962,28 @@
                       {#if leftmostVisiblePanel === 'canvas'}
                         <SidebarTrigger class="-ml-1" />
                       {/if}
-                      <EngineIcon class="size-4 text-muted-foreground" />
-                      <span class="text-[13px] font-semibold text-foreground">Canvas</span>
-                      <span class="text-[13px] text-muted-foreground/60">|</span>
-                      <span class="text-[13px] text-muted-foreground">{engineShort}</span>
+                      <!--
+                        Filename block: must be allowed to shrink so a long
+                        path doesn't wrap onto a second line and blow up the
+                        header height. `min-w-0` enables flex children to go
+                        below their intrinsic content width; `max-w-[40%]`
+                        caps the chrome so the toolbar buttons stay aligned.
+                      -->
+                      <div
+                        class="flex max-w-[40%] min-w-0 shrink items-center gap-2"
+                        title={activeFile ? activeFileName : 'Canvas'}>
+                        {#if activeFile && activeFileIcon}
+                          <img src={activeFileIcon} alt="" class="size-4 shrink-0" />
+                          <span class="truncate text-[13px] font-semibold text-foreground">
+                            {activeFileName}
+                          </span>
+                        {:else}
+                          <EngineIcon class="size-4 shrink-0 text-muted-foreground" />
+                          <span class="text-[13px] font-semibold text-foreground">Canvas</span>
+                          <span class="text-[13px] text-muted-foreground/60">|</span>
+                          <span class="text-[13px] text-muted-foreground">{engineShort}</span>
+                        {/if}
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -901,17 +1062,23 @@
                         onclick={clearDiagram}><Eraser class="size-4" /></Button>
                       <div class="ml-auto">
                         {#if isMermaidDiagram && viewRenderError}
+                          <!--
+                            Error badge — same compact shape as the
+                            rendering/ready indicators below. The full error
+                            is in the title attribute (hover) and click runs
+                            the auto-fix flow.
+                          -->
                           <button
                             type="button"
-                            class="flex max-w-[260px] cursor-pointer items-center gap-2 rounded-full border border-destructive/20 bg-destructive/10 px-2 py-1 transition-colors hover:bg-destructive/10"
+                            aria-label="Diagram error — click to auto-fix"
+                            class="flex cursor-pointer items-center justify-center rounded-full bg-destructive/10 p-2 transition-colors hover:bg-destructive/20"
                             title="Click to auto-fix: {viewRenderError}"
                             onclick={async () => {
                               const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
                               await handleSendChatMessage(msg, { isRepair: true });
                             }}>
-                            <span class="size-1.5 shrink-0 rounded-full bg-destructive/10"></span>
-                            <span class="truncate text-[13px] font-medium text-destructive"
-                              >{viewRenderError}</span>
+                            <span class="block size-1.5 shrink-0 rounded-full bg-destructive"
+                            ></span>
                           </button>
                         {:else if isViewRendering}
                           <div class="rounded-full bg-warning/10 p-2" title="Rendering…">
@@ -933,7 +1100,9 @@
                     {/if}
                   </div>
                 {/if}
-                <!-- Diagram View -->
+                <!-- Diagram View — three real canvases by engine.
+                     Markdown does NOT render here; it lives only in the
+                     Document panel. -->
                 <div class="relative flex-1 overflow-hidden">
                   {#if isMermaidDiagram}
                     <View
@@ -942,24 +1111,7 @@
                       {gridStyle}
                       bind:isRendering={isViewRendering}
                       bind:renderError={viewRenderError} />
-                  {:else if isMarkdownDocument}
-                    <div class="h-full overflow-auto bg-background p-8">
-                      <article
-                        class="mx-auto min-h-full max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-sm">
-                        <div class="mb-5 flex items-center gap-2 border-b border-border pb-3">
-                          <FileText class="size-4 text-muted-foreground" />
-                          <span class="text-[13px] font-semibold text-foreground"
-                            >{activeDiagramTitle}</span>
-                          <span
-                            class="rounded-full bg-muted px-2 py-1 text-[13px] text-muted-foreground"
-                            >Markdown</span>
-                        </div>
-                        <pre
-                          class="font-sans text-[13px] leading-7 whitespace-pre-wrap text-foreground/90">{$inputStateStore.code ||
-                            'Start writing in the Code panel.'}</pre>
-                      </article>
-                    </div>
-                  {:else}
+                  {:else if activeDiagramEngine === 'json' || activeDiagramEngine === 'yaml'}
                     <StructuredGraphView
                       engine={activeDiagramEngine}
                       {panZoomState}
@@ -1011,20 +1163,29 @@
                 <div class="flex h-full flex-col bg-background">
                   <div
                     class="box-content flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
-                    <div class="flex items-center gap-2">
+                    <div
+                      class="flex min-w-0 flex-1 items-center gap-2"
+                      title={activeFile ? activeFileName : 'Code'}>
                       {#if leftmostVisiblePanel === 'code'}
                         <SidebarTrigger class="-ml-1" />
                       {/if}
-                      <EngineIcon class="size-4 text-muted-foreground" />
-                      <span class="text-[13px] font-semibold text-foreground">Code</span>
-                      <span class="text-[13px] text-muted-foreground/60">|</span>
-                      <span class="text-[13px] text-muted-foreground">
-                        {#if isMermaidDiagram && $stateStore.editorMode === 'config'}
-                          config
-                        {:else}
-                          {engineShort}
-                        {/if}
-                      </span>
+                      {#if activeFile && activeFileIcon}
+                        <img src={activeFileIcon} alt="" class="size-4 shrink-0" />
+                        <span class="truncate text-[13px] font-semibold text-foreground">
+                          {activeFileName}
+                        </span>
+                      {:else}
+                        <EngineIcon class="size-4 shrink-0 text-muted-foreground" />
+                        <span class="text-[13px] font-semibold text-foreground">Code</span>
+                        <span class="text-[13px] text-muted-foreground/60">|</span>
+                        <span class="text-[13px] text-muted-foreground">
+                          {#if isMermaidDiagram && $stateStore.editorMode === 'config'}
+                            config
+                          {:else}
+                            {engineShort}
+                          {/if}
+                        </span>
+                      {/if}
                     </div>
                     {#if isMermaidDiagram}
                       <div class="flex items-center gap-1">

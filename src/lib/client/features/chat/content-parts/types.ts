@@ -57,6 +57,11 @@ export type ContentPart =
       status: 'running' | 'done';
       details?: string[];
       /**
+       * Parsed tool input — used by per-kind icon resolution for the unified
+       * `fileSystem` tool (icon depends on the file extension in `path`).
+       */
+      toolInput?: { path?: unknown; from?: unknown; operation?: unknown };
+      /**
        * Structured search results, when the tool produced them (webSearch).
        * Renderers should prefer this over `details` when present.
        */

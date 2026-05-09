@@ -15,7 +15,7 @@ export function validateSingleMermaidDocument(
   if (!MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
     return {
       error:
-        'REJECTED: Content does not start with a valid Mermaid diagram type. Use markdownWrite for documentation/prose. Redo with valid Mermaid code that starts with a diagram type like "graph TD", "flowchart LR", "sequenceDiagram", etc.',
+        'REJECTED: Content does not start with a valid Mermaid diagram type. Save documentation/prose to a .md file via fileSystem. Redo with valid Mermaid code that starts with a diagram type like "graph TD", "flowchart LR", "sequenceDiagram", etc.',
       hint: 'Mermaid content must start with exactly one diagram declaration.',
       valid: false
     };

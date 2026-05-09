@@ -1,5 +1,5 @@
 import { validateSessionOrGuest } from '$lib/server/auth';
-import { GUEST_CONVERSATION_LIMIT } from '$lib/server/auth/limits';
+import { GUEST_CONVERSATION_LIMIT, USER_CONVERSATION_LIMIT } from '$lib/server/auth/limits';
 import { getDb } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -63,8 +63,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
     const db = getDb();
 
+    const count = await db.countConversations(user.id, { include_archived: true });
     if (user.is_guest === true) {
-      const count = await db.countConversations(user.id, { include_archived: true });
       if (count >= GUEST_CONVERSATION_LIMIT) {
         return json(
           {
@@ -74,6 +74,18 @@ export const POST: RequestHandler = async ({ request }) => {
             used: count
           },
           { status: 402 }
+        );
+      }
+    } else {
+      if (count >= USER_CONVERSATION_LIMIT) {
+        return json(
+          {
+            error: 'conversation_limit_reached',
+            message: `Chat quota reached (${count}/${USER_CONVERSATION_LIMIT}) — delete one to continue.`,
+            limit: USER_CONVERSATION_LIMIT,
+            used: count
+          },
+          { status: 409 }
         );
       }
     }

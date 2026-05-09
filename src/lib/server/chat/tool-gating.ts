@@ -1,29 +1,20 @@
 /**
  * Tool exposure for chat turns.
  *
- * Earlier versions of this file tried to keyword-gate the tool catalog by
- * matching the user's message against regex patterns ("wantsIcons",
- * "wantsNewDiagram", etc.). That approach silently locked the model out of
- * tools whenever phrasing didn't match — e.g. "make the diagram 30 nodes
- * bigger" never reached `diagramWrite` because no regex caught the verb.
- *
- * The model is the better classifier. Expose every tool, and let the user's
- * settings panel be the only source of truth for opt-outs.
+ * Every tool is exposed to the model on every turn. The user's settings panel
+ * is the only source of truth for opt-outs; an earlier keyword-based gate was
+ * removed because it silently locked the model out of tools when phrasing
+ * didn't match a regex.
  */
 
 export const REQUESTABLE_TOOL_NAMES = [
   'askQuestions',
   'autoStyler',
   'dataAnalyzer',
-  'diagramDelete',
-  'diagramPatch',
-  'diagramRead',
-  'diagramWrite',
   'errorChecker',
   'fileManager',
+  'fileSystem',
   'iconSearch',
-  'markdownRead',
-  'markdownWrite',
   'styleSearch',
   'thinking',
   'webSearch'
@@ -52,7 +43,7 @@ function wantsToolInventoryFollowUp(
     .map((item) => (typeof item.content === 'string' ? item.content : ''))
     .join('\n');
 
-  return /\b(tools?|capabilities|diagramRead|errorChecker)\b/i.test(recentText);
+  return /\b(tools?|capabilities|fileSystem|errorChecker)\b/i.test(recentText);
 }
 
 /**

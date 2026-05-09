@@ -1,16 +1,15 @@
 import {
   ChartBar,
-  Eye,
+  FileCode,
+  FileJson,
   FileText,
+  FolderTree,
   Globe,
   Lightbulb,
   MessageCircleQuestion,
   Paintbrush,
   Palette,
-  Pencil,
-  Scissors,
   ShieldCheck,
-  Trash2,
   Wrench
 } from 'lucide-svelte';
 import type { Component } from 'svelte';
@@ -25,20 +24,47 @@ const ICON_BY_TOOL: Record<string, IconComponent> = {
   askQuestions: i(MessageCircleQuestion),
   autoStyler: i(Paintbrush),
   dataAnalyzer: i(ChartBar),
-  diagramDelete: i(Trash2),
-  diagramPatch: i(Scissors),
-  diagramRead: i(Eye),
-  diagramWrite: i(Pencil),
   errorChecker: i(ShieldCheck),
   fileManager: i(FileText),
+  fileSystem: i(FolderTree),
   iconSearch: i(Palette),
-  markdownRead: i(Eye),
-  markdownWrite: i(Pencil),
   styleSearch: i(Paintbrush),
   thinking: i(Lightbulb),
   webSearch: i(Globe)
 };
 
-export function toolIcon(toolName: string): IconComponent {
+const ICON_BY_FILE_KIND: Record<string, IconComponent> = {
+  json: i(FileJson),
+  md: i(FileText),
+  mermaid: i(FileCode),
+  mmd: i(FileCode),
+  yaml: i(FileJson),
+  yml: i(FileJson)
+};
+
+/**
+ * Resolve the icon for a tool call. For `fileSystem`, the icon varies by the
+ * file extension in the `path` argument so the chain-of-tools display reflects
+ * what the model is actually editing (.md, .json, .yaml, .mermaid).
+ */
+export function toolIcon(
+  toolName: string,
+  input?: { path?: unknown; from?: unknown }
+): IconComponent {
+  if (toolName === 'fileSystem' && input) {
+    const candidate =
+      typeof input.path === 'string'
+        ? input.path
+        : typeof input.from === 'string'
+          ? input.from
+          : '';
+    const dot = candidate.lastIndexOf('.');
+    if (dot >= 0) {
+      const ext = candidate.slice(dot + 1).toLowerCase();
+      const byKind = ICON_BY_FILE_KIND[ext];
+      if (byKind) return byKind;
+    }
+    return ICON_BY_TOOL.fileSystem;
+  }
   return ICON_BY_TOOL[toolName] ?? i(Wrench);
 }

@@ -124,7 +124,7 @@ async function fetchAndCacheSvgIcon(
 // are free.
 const ICON_ANNOTATION_LINE = /^\s*[A-Za-z][\w]*\s*@\{[^}]*\bimg:\s*"([^"]+)"[^}]*\}\s*$/;
 
-async function stripBrokenIconAnnotations(code: string): Promise<string> {
+export async function stripBrokenIconAnnotations(code: string): Promise<string> {
   const lines = code.split('\n');
   const seen = new Set<string>();
   const urls: string[] = [];

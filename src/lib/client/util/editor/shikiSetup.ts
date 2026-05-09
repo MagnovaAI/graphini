@@ -20,16 +20,16 @@ export function getSharedHighlighter(): Promise<Highlighter> {
   highlighterPromise = (async () => {
     try {
       const mermaidGrammar = await buildStandaloneMermaidGrammar().catch((err) => {
-        console.warn(
-          '[shiki] mermaid grammar load failed; continuing without it:',
-          err
-        );
+        console.warn('[shiki] mermaid grammar load failed; continuing without it:', err);
         return null;
       });
       const langs: unknown[] = ['json', 'yaml', 'markdown'];
       if (mermaidGrammar) langs.unshift(mermaidGrammar);
       const hl = await createHighlighter({
-        themes: ['dark-plus', 'light-plus'],
+        // dark-plus / light-plus are the Monaco-shiki bridge's hardcoded
+        // themes; the GitHub themes are used by the markdown DocumentPanel
+        // so prose code blocks match the broader GitHub look.
+        themes: ['dark-plus', 'light-plus', 'github-dark', 'github-light'],
         langs: langs as never
       });
       highlighter = hl;
@@ -42,6 +42,38 @@ export function getSharedHighlighter(): Promise<Highlighter> {
     }
   })();
   return highlighterPromise;
+}
+
+/**
+ * Lazy-load a shiki language into the shared highlighter so callers can
+ * highlight code blocks without forcing every grammar to be bundled at init
+ * time. Returns true on success, false when the language isn't bundled or
+ * the load failed (caller should fall back to plain text).
+ */
+const inFlightLangLoads = new Map<string, Promise<boolean>>();
+export async function ensureShikiLanguage(lang: string): Promise<boolean> {
+  if (!lang) return false;
+  const hl = await getSharedHighlighter();
+  if (hl.getLoadedLanguages().includes(lang)) return true;
+  const cached = inFlightLangLoads.get(lang);
+  if (cached) return cached;
+  const promise = (async () => {
+    try {
+      const { bundledLanguages } = await import('shiki/langs');
+      const loader = (bundledLanguages as Record<string, () => Promise<{ default: unknown[] }>>)[
+        lang
+      ];
+      if (!loader) return false;
+      const mod = await loader();
+      await hl.loadLanguage(mod.default as never);
+      return true;
+    } catch (err) {
+      console.warn(`[shiki] failed to load language "${lang}":`, err);
+      return false;
+    }
+  })();
+  inFlightLangLoads.set(lang, promise);
+  return promise;
 }
 
 // Shiki bundles a `mermaid` grammar that's designed to inject inside markdown
@@ -58,7 +90,7 @@ async function buildStandaloneMermaidGrammar(): Promise<unknown> {
   const arr = mod.default;
   // Deep clone so we don't mutate the cached module.
   const grammar = JSON.parse(JSON.stringify(arr[0])) as {
-    patterns: Array<{ include: string }>;
+    patterns: { include: string }[];
     repository: Record<string, { patterns?: unknown[] }>;
     injectionSelector?: string;
     scopeName?: string;
@@ -70,7 +102,7 @@ async function buildStandaloneMermaidGrammar(): Promise<unknown> {
   // The bundled grammar nests the actual rules under `repository.mermaid.patterns`.
   const inner = grammar.repository?.mermaid?.patterns;
   if (Array.isArray(inner) && inner.length > 0) {
-    grammar.patterns = inner as Array<{ include: string }>;
+    grammar.patterns = inner as { include: string }[];
   }
   // Force a sane root scope. The bundled grammar uses
   // 'markdown.mermaid.codeblock' (designed for markdown injection), which
@@ -107,36 +139,36 @@ export async function setupShiki(monaco: typeof Monaco): Promise<void> {
       'editor.background': '#ffffff',
       'editor.foreground': '#0a0a0a',
       'editor.lineHighlightBackground': '#f5f5f5',
-      'editorLineNumber.foreground': '#d4d4d4',
-      'editorLineNumber.activeForeground': '#0a0a0a',
-      'editorWidget.background': '#ffffff',
-      'editorWidget.border': '#e5e5e5',
-      'editorSuggestWidget.background': '#ffffff',
-      'editorSuggestWidget.border': '#e5e5e5',
       'editorHoverWidget.background': '#ffffff',
       'editorHoverWidget.border': '#e5e5e5',
+      'editorLineNumber.activeForeground': '#0a0a0a',
+      'editorLineNumber.foreground': '#d4d4d4',
+      'editorSuggestWidget.background': '#ffffff',
+      'editorSuggestWidget.border': '#e5e5e5',
+      'editorWidget.background': '#ffffff',
+      'editorWidget.border': '#e5e5e5',
       // Match the global app scrollbar (transparent until hover, then ~25%/50% muted-foreground).
       'scrollbar.shadow': '#00000000',
+      'scrollbarSlider.activeBackground': '#64748bcc',
       'scrollbarSlider.background': '#64748b40',
-      'scrollbarSlider.hoverBackground': '#64748b80',
-      'scrollbarSlider.activeBackground': '#64748bcc'
+      'scrollbarSlider.hoverBackground': '#64748b80'
     },
     dark: {
       'editor.background': '#141414',
       'editor.foreground': '#ededed',
       'editor.lineHighlightBackground': '#1c1c1c',
-      'editorLineNumber.foreground': '#3a3a3a',
-      'editorLineNumber.activeForeground': '#ededed',
-      'editorWidget.background': '#141414',
-      'editorWidget.border': '#262626',
-      'editorSuggestWidget.background': '#141414',
-      'editorSuggestWidget.border': '#262626',
       'editorHoverWidget.background': '#141414',
       'editorHoverWidget.border': '#262626',
+      'editorLineNumber.activeForeground': '#ededed',
+      'editorLineNumber.foreground': '#3a3a3a',
+      'editorSuggestWidget.background': '#141414',
+      'editorSuggestWidget.border': '#262626',
+      'editorWidget.background': '#141414',
+      'editorWidget.border': '#262626',
       'scrollbar.shadow': '#00000000',
+      'scrollbarSlider.activeBackground': '#a0a0a0cc',
       'scrollbarSlider.background': '#a0a0a040',
-      'scrollbarSlider.hoverBackground': '#a0a0a080',
-      'scrollbarSlider.activeBackground': '#a0a0a0cc'
+      'scrollbarSlider.hoverBackground': '#a0a0a080'
     }
   };
   patchTheme(monaco, 'light-plus', overrides.light);

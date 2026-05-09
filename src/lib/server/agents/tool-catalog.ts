@@ -1,11 +1,6 @@
 import { z } from 'zod';
 import { emptyObjectSchema, objectSchema, type McpToolDescriptor } from './mcp';
 
-const lineRangeInput = z.object({
-  endLine: z.number().int().min(1).optional(),
-  startLine: z.number().int().min(1).optional()
-});
-
 export type GraphiniAgentId =
   | 'orchestrator'
   | 'diagram-engineer'
@@ -45,38 +40,6 @@ export const graphiniMcpTools = [
     title: 'Ask Questions'
   },
   {
-    annotations: { readOnlyHint: true, title: 'Diagram Read' },
-    description: 'Read the current Mermaid diagram content, optionally limited to a line range.',
-    inputSchema: objectSchema(lineRangeInput),
-    name: 'diagramRead',
-    title: 'Diagram Read'
-  },
-  {
-    annotations: { destructiveHint: true, title: 'Diagram Write' },
-    description: 'Replace the full active Mermaid diagram. Input must be Mermaid syntax only.',
-    inputSchema: objectSchema(
-      z.object({
-        content: z.string().min(1),
-        purpose: z.string().optional()
-      })
-    ),
-    name: 'diagramWrite',
-    title: 'Diagram Write'
-  },
-  {
-    annotations: { destructiveHint: true, title: 'Diagram Patch' },
-    description: 'Replace a specific 1-based line range in the active Mermaid diagram.',
-    inputSchema: objectSchema(
-      z.object({
-        content: z.string().min(1),
-        endLine: z.number().int().min(1),
-        startLine: z.number().int().min(1)
-      })
-    ),
-    name: 'diagramPatch',
-    title: 'Diagram Patch'
-  },
-  {
     annotations: { readOnlyHint: true, title: 'Data Analyzer' },
     description:
       'Perform computational analysis on uploaded CSV or tabular files: frequencies, grouping, filters, top values, crosstabs, and correlations.',
@@ -104,13 +67,6 @@ export const graphiniMcpTools = [
     ),
     name: 'dataAnalyzer',
     title: 'Data Analyzer'
-  },
-  {
-    annotations: { destructiveHint: true, idempotentHint: true, title: 'Diagram Delete' },
-    description: 'Clear the active Mermaid diagram.',
-    inputSchema: emptyObjectSchema(),
-    name: 'diagramDelete',
-    title: 'Diagram Delete'
   },
   {
     annotations: { readOnlyHint: true, title: 'Error Checker' },
@@ -163,25 +119,6 @@ export const graphiniMcpTools = [
     title: 'Icon Search'
   },
   {
-    annotations: { readOnlyHint: true, title: 'Markdown Read' },
-    description: 'Read the document panel markdown content.',
-    inputSchema: emptyObjectSchema(),
-    name: 'markdownRead',
-    title: 'Markdown Read'
-  },
-  {
-    annotations: { destructiveHint: true, title: 'Markdown Write' },
-    description: 'Write or append markdown prose to the document panel.',
-    inputSchema: objectSchema(
-      z.object({
-        append: z.boolean().optional(),
-        content: z.string().min(1)
-      })
-    ),
-    name: 'markdownWrite',
-    title: 'Markdown Write'
-  },
-  {
     annotations: { openWorldHint: true, readOnlyHint: true, title: 'Web Search' },
     description:
       'Search the web for current documentation, product facts, or technical references.',
@@ -229,23 +166,44 @@ export const graphiniMcpTools = [
     ),
     name: 'fileManager',
     title: 'File Manager'
+  },
+  {
+    annotations: { destructiveHint: true, readOnlyHint: false, title: 'File System' },
+    description:
+      'Single tool for all workspace file operations on the per-user file tree (.md, .json, .yaml, .mermaid). Operations: list, read, create, update, patch, delete, moveFolder, deleteFolder. Mandatory ordering: list before create, read before patch (same turn). Quotas: 15 files for guests, 30 for signed-in users.',
+    inputSchema: objectSchema(
+      z.object({
+        content: z.string().optional(),
+        endLine: z.number().int().min(1).optional(),
+        from: z.string().optional(),
+        operation: z.enum([
+          'list',
+          'read',
+          'create',
+          'update',
+          'patch',
+          'delete',
+          'moveFolder',
+          'deleteFolder'
+        ]),
+        path: z.string().optional(),
+        startLine: z.number().int().min(1).optional(),
+        to: z.string().optional()
+      })
+    ),
+    name: 'fileSystem',
+    title: 'File System'
   }
 ] satisfies McpToolDescriptor[];
 
 export const agentToolNames = {
-  critic: ['diagramRead', 'markdownRead', 'errorChecker'],
+  critic: ['fileSystem', 'errorChecker'],
   'data-agent': ['fileManager', 'dataAnalyzer'],
-  'diagram-engineer': [
-    'diagramRead',
-    'diagramWrite',
-    'diagramPatch',
-    'diagramDelete',
-    'errorChecker'
-  ],
-  'document-agent': ['markdownRead', 'markdownWrite', 'fileManager'],
+  'diagram-engineer': ['fileSystem', 'errorChecker'],
+  'document-agent': ['fileSystem', 'fileManager'],
   orchestrator: ['askQuestions', 'thinking'],
   'research-agent': ['webSearch', 'fileManager'],
-  'visual-polish': ['diagramRead', 'diagramPatch', 'styleSearch', 'iconSearch', 'errorChecker']
+  'visual-polish': ['fileSystem', 'styleSearch', 'iconSearch', 'errorChecker']
 } satisfies Record<GraphiniAgentId, string[]>;
 
 export function listMcpTools(): McpToolDescriptor[] {

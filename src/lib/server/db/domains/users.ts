@@ -106,6 +106,11 @@ export async function upsertUserFromFirebase(
     .onConflictDoUpdate({
       target: schema.users.firebase_uid,
       set: {
+        // Upstream wins when it sends a value, DB value wins when upstream
+        // sends null. COALESCE(new, old) — `new` is checked first, so a
+        // freshly-synced display_name/avatar from magnova-auth overwrites
+        // a stale row, but we don't clobber existing data during a sync
+        // that didn't include those fields.
         display_name: sql`COALESCE(${data.display_name ?? null}, ${schema.users.display_name})`,
         avatar_url: sql`COALESCE(${data.avatar_url ?? null}, ${schema.users.avatar_url})`,
         last_login_at: new Date()

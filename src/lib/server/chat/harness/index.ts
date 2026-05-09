@@ -1,5 +1,7 @@
 import { validateSessionOrGuest } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
+import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { workspaceFiles } from '$lib/server/db/schema';
 import {
   hasProviderCredentialFor,
   loadProviderApiKeys,
@@ -8,24 +10,22 @@ import {
   resolveChatModelFor
 } from '$lib/server/chat/model';
 import type { ChatProvider } from '$lib/server/chat/model';
-import { codeStore, diagramStore, markdownStore } from '$lib/server/chat/state';
 import { isToolInventoryRequest } from '$lib/server/chat/tool-gating';
 import { createDiagramTools } from '$lib/server/chat/tools';
 import { error } from '@sveltejs/kit';
 import type { ToolSet } from 'ai';
+import { and, eq } from 'drizzle-orm';
 import { buildChatContext, contextWindowForModel, estimateTokens } from './context-window';
+import { formatStreamError } from './error-format';
 import { runChatStream } from './loop';
-import { getPersistedEnabledTools } from './settings';
+import { getPersistedDisabledTools } from './settings';
 import { buildLeanSystemPrompt } from './system-prompt';
 import { trackUsage } from './usage';
-import type { WorkspaceToolContext } from './types';
+import type { ActiveFileContext, WorkspaceToolContext } from './types';
 
 interface ChatRequestBody {
   message?: string;
   model?: string;
-  currentDiagram?: string;
-  currentCode?: string;
-  currentMarkdown?: string;
   messages?: unknown;
   sessionId?: string;
   conversationId?: string;
@@ -35,6 +35,9 @@ interface ChatRequestBody {
   activeTabName?: string;
   activeTabEngine?: string;
   workspaceTabs?: unknown;
+  /** ID of a workspace file the user has selected. When present, file-aware
+   *  tools route reads and writes through that file. */
+  activeFileId?: string | null;
 }
 
 function buildWorkspaceContext(body: ChatRequestBody): {
@@ -69,26 +72,35 @@ function buildWorkspaceContext(body: ChatRequestBody): {
   return { activeEngine, workspaceContext };
 }
 
-function persistActiveTabSource(
-  sessionId: string,
-  activeEngine: string,
-  body: ChatRequestBody
-): string {
-  const activeSource =
-    typeof body.currentCode === 'string'
-      ? body.currentCode
-      : typeof body.currentDiagram === 'string'
-        ? body.currentDiagram
-        : '';
-  if (activeEngine === 'mermaid') {
-    diagramStore.set(sessionId, activeSource);
-  } else {
-    codeStore.set(sessionId, activeSource);
-  }
-  if (body.currentMarkdown !== undefined) {
-    markdownStore.set(sessionId, body.currentMarkdown);
-  }
-  return activeSource;
+/**
+ * Resolve `activeFileId` to a row this user owns. Returns null when the id is
+ * missing, malformed, or doesn't belong to the user — file-aware tools then
+ * have nothing to operate on.
+ */
+async function resolveActiveFile(
+  userId: string,
+  activeFileId: string | null | undefined
+): Promise<{ context: ActiveFileContext; content: string } | null> {
+  if (!activeFileId) return null;
+  const db = (getDb() as NeonAdapter).db;
+  const [row] = await db
+    .select({
+      id: workspaceFiles.id,
+      path: workspaceFiles.path,
+      kind: workspaceFiles.kind,
+      content: workspaceFiles.content
+    })
+    .from(workspaceFiles)
+    .where(and(eq(workspaceFiles.id, activeFileId), eq(workspaceFiles.user_id, userId)));
+  if (!row) return null;
+  return {
+    context: {
+      id: row.id,
+      path: row.path,
+      kind: row.kind as ActiveFileContext['kind']
+    },
+    content: row.content
+  };
 }
 
 export async function runChatTurn(request: Request): Promise<Response> {
@@ -125,7 +137,10 @@ export async function runChatTurn(request: Request): Promise<Response> {
   }
 
   const { activeEngine, workspaceContext } = buildWorkspaceContext(body);
-  const activeSource = persistActiveTabSource(turnSessionId, activeEngine, body);
+  // Active file (when set) is the source of truth for file-aware tools.
+  const activeFile = await resolveActiveFile(user.id, body.activeFileId).catch(() => null);
+  if (activeFile) workspaceContext.activeFile = activeFile.context;
+  const activeSource = activeFile?.content ?? '';
 
   const recentMessages = Array.isArray(uiMessages)
     ? uiMessages
@@ -140,13 +155,32 @@ export async function runChatTurn(request: Request): Promise<Response> {
   // the user is asking us to inventory our tools, in which case we override
   // the disables for that one turn so we can answer truthfully.
   const toolInventoryRequest = isToolInventoryRequest(message, { recentMessages });
-  const toolCatalog = createDiagramTools(turnSessionId, actualModelId, workspaceContext, userId);
-  const clientEnabledSet = Array.isArray(enabledTools) ? new Set(enabledTools as string[]) : null;
-  const persistedEnabledSet = await getPersistedEnabledTools(userId);
-  const enabledSet = persistedEnabledSet ?? clientEnabledSet;
+  // Per-turn guard for the unified fileSystem tool (read-before-patch,
+  // list-before-create). Reset every chat turn.
+  const fileSystemGuard = { listed: false, readPaths: new Set<string>() };
+  const toolCatalog = createDiagramTools(
+    turnSessionId,
+    actualModelId,
+    workspaceContext,
+    userId,
+    fileSystemGuard
+  );
+  // Denylist semantics: any tool the user has explicitly disabled is
+  // filtered out. Tools that are missing from the persisted config (because
+  // they shipped after the user last touched settings — e.g. `fileSystem`
+  // after the diagram*/markdown* consolidation) default to enabled. The
+  // client `enabledTools` array is treated as the inverse: tools NOT in
+  // that array are considered explicitly disabled by the current session.
+  const persistedDisabledSet = await getPersistedDisabledTools(userId);
+  const allToolNames = Object.keys(toolCatalog);
+  const clientDisabledSet =
+    Array.isArray(enabledTools) && enabledTools.every((t) => typeof t === 'string')
+      ? new Set(allToolNames.filter((name) => !(enabledTools as string[]).includes(name)))
+      : null;
+  const disabledSet = persistedDisabledSet ?? clientDisabledSet ?? new Set<string>();
   const filteredTools: Partial<typeof toolCatalog> = {};
   for (const [key, value] of Object.entries(toolCatalog)) {
-    if (!toolInventoryRequest && enabledSet && !enabledSet.has(key)) continue;
+    if (!toolInventoryRequest && disabledSet.has(key)) continue;
     (filteredTools as Record<string, typeof value>)[key] = value;
   }
   const allTools = filteredTools as typeof toolCatalog;
@@ -189,6 +223,13 @@ export async function runChatTurn(request: Request): Promise<Response> {
       'Access-Control-Allow-Methods': 'GET, POST',
       'Access-Control-Allow-Headers': 'Content-Type'
     },
-    sendReasoning: true
+    sendReasoning: true,
+    // The AI SDK's default error handler scrubs provider errors to a generic
+    // "An error occurred" string. Surface the real message instead — most
+    // upstream failures (model deprecated, paid model gated, rate limit,
+    // bad API key) carry a useful, user-actionable line in error.data /
+    // error.responseBody. Falling back to message keeps generic Errors
+    // intact (e.g. fetch aborts).
+    onError: (error) => formatStreamError(error)
   });
 }

@@ -1,36 +1,16 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
-import {
-  codeStore,
-  diagramStore,
-  markdownStore,
-  memoryStore,
-  planStore,
-  subagentStore
-} from '$lib/server/chat/state';
-import {
-  buildDiagramReview,
-  findMermaidDeclarations,
-  parseMermaidNodes,
-  validateSingleMermaidDocument
-} from '$lib/server/chat/mermaid';
-import { detectCodeLanguage, validateCodeArtifact } from '$lib/server/chat/code-artifacts';
-import { openrouterFastChat } from '$lib/server/chat/model';
-import { instructionsForSubagent } from '$lib/server/chat/subagents';
-import { generateText, tool } from 'ai';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { getFileById } from '$lib/server/file-store';
+import { tool } from 'ai';
 import { z } from 'zod';
-import { resolveIconForNode } from './icon-resolver';
-
-const execFileAsync = promisify(execFile);
 
 interface ToolContext {
   modelId?: string;
   sessionId: string;
 }
 
-export function createDataAnalyzerTool({ modelId, sessionId }: ToolContext) {
+export function createDataAnalyzerTool(context: ToolContext) {
+  // Tool reads from getFileById directly; the ToolContext is accepted for
+  // shape parity with the rest of the catalog.
+  void context;
   return tool({
     description: `Perform computational analysis on CSV/tabular data from uploaded files. Use this when the user asks to analyze data, find patterns, frequencies, trends, top values, or any computation on uploaded CSV/Excel files.
 

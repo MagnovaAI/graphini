@@ -51,14 +51,24 @@ export function detectEngine(source: string, fallback: DiagramEngine = 'mermaid'
     if (MERMAID_KEYWORDS.includes(head)) return 'mermaid';
   }
 
-  // YAML front-matter or key: value pairs
+  // Markdown FIRST. Markdown bodies frequently contain `key: value` looking
+  // lines (e.g. "Note: foo", glossary terms, examples), so checking yaml
+  // before markdown was misclassifying real .md files as .yaml — which then
+  // made the Code panel header read "yaml" after a refresh.
+  // Strong markdown signals: ATX/Setext headings, fenced code, blockquotes,
+  // bullet lists with leading whitespace.
+  const looksLikeMarkdown =
+    /^#{1,6}\s/m.test(trimmed) ||
+    /^={3,}\s*$/m.test(trimmed) ||
+    /^-{3,}\s*$/m.test(trimmed.replace(/^---\n/, '')) ||
+    /^```/m.test(trimmed) ||
+    /^>\s/m.test(trimmed) ||
+    /^\s*[-*+]\s+\S/m.test(trimmed);
+  if (looksLikeMarkdown) return 'markdown';
+
+  // YAML front-matter or key: value pairs (after we've ruled out markdown).
   if (trimmed.startsWith('---\n') || /^[A-Za-z_][\w-]*\s*:/m.test(trimmed)) {
     return 'yaml';
-  }
-
-  // Markdown heuristics: starts with #, *, -, or has ## header
-  if (/^#{1,6}\s/m.test(trimmed) || /^\s*[-*+]\s/m.test(trimmed)) {
-    return 'markdown';
   }
 
   return fallback;

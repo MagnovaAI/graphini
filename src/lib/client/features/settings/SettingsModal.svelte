@@ -4,7 +4,12 @@
   import * as Dialog from '$lib/client/ui/dialog';
   import { Input } from '$lib/client/ui/input';
   import { adminFetch, adminPost } from '$lib/client/features/settings/model-admin';
-  import { aiSettings, personalizationSettings, TOOL_CATEGORIES, toolsStore } from '$lib/client/stores';
+  import {
+    aiSettings,
+    personalizationSettings,
+    TOOL_CATEGORIES,
+    toolsStore
+  } from '$lib/client/stores';
   import { uiSettings, type UISettings } from '$lib/client/stores/settings.svelte';
   import { kv } from '$lib/client/stores/kvStore.svelte';
   import { loadModelsFromAPI } from '$lib/client/stores/modelStore.svelte';
@@ -38,6 +43,7 @@
   } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { setMode } from 'mode-watcher';
+  import { toast } from 'svelte-sonner';
 
   // Memory state
   let memories = $state<{ key: string; value: string; savedAt: string }[]>([]);
@@ -216,10 +222,10 @@
     searchKeySaving = true;
     searchKeyMessage = null;
     try {
-      const res = await fetch(
-        `/api/user/api-keys?provider=${encodeURIComponent(provider)}`,
-        { method: 'DELETE', credentials: 'include' }
-      );
+      const res = await fetch(`/api/user/api-keys?provider=${encodeURIComponent(provider)}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
       if (!res.ok) throw new Error('Failed to clear key');
       if (provider === 'brave_search') braveSearchPresent = false;
       else tavilyPresent = false;
@@ -344,15 +350,42 @@
   }
 
   async function deleteEnabledModel(modelId: string) {
-    if (!confirm(`Delete model ${modelId}?`)) return;
+    // Snapshot the row so the undo action can re-import it. Falls back to
+    // the bare id when the row isn't loaded yet.
+    const snapshot = enabledModels.find((m) => m.model_id === modelId) ?? null;
     modelAdminError = '';
     modelAdminNotice = '';
     try {
       await adminPost({ action: 'deleteEnabledModel', modelId });
       await loadEnabledModels();
       await loadModelsFromAPI();
+      modelAdminNotice = `Deleted ${modelId}`;
+      toast(`Deleted ${modelId}`, {
+        duration: 6000,
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            try {
+              await adminPost({
+                action: 'upsertEnabledModel',
+                ...(snapshot ?? { model_id: modelId, model_name: modelId, is_enabled: true })
+              });
+              await loadEnabledModels();
+              await loadModelsFromAPI();
+              modelAdminNotice = `Restored ${modelId}`;
+              toast.success(`Restored ${modelId}`);
+            } catch (err) {
+              const m = err instanceof Error ? err.message : 'Failed to restore model';
+              modelAdminError = m;
+              toast.error(m);
+            }
+          }
+        }
+      });
     } catch (error) {
-      modelAdminError = error instanceof Error ? error.message : 'Failed to delete model';
+      const m = error instanceof Error ? error.message : 'Failed to delete model';
+      modelAdminError = m;
+      toast.error(m);
     }
   }
 
@@ -366,10 +399,13 @@
         modelData
       });
       modelAdminNotice = `Imported ${model.name || model.id}`;
+      toast.success(`Imported ${model.name || model.id}`);
       await loadEnabledModels();
       await loadModelsFromAPI();
     } catch (error) {
-      modelAdminError = error instanceof Error ? error.message : 'Failed to import model';
+      const m = error instanceof Error ? error.message : 'Failed to import model';
+      modelAdminError = m;
+      toast.error(m);
     }
   }
 
@@ -409,16 +445,20 @@
         provider
       });
       updateProviderCredential(provider, credential, credentialType);
-      modelAdminNotice = `${labelByProvider[provider]} ${credentialLabel} saved`;
+      const successMsg = `${labelByProvider[provider]} ${credentialLabel} saved`;
+      modelAdminNotice = successMsg;
+      toast.success(successMsg);
       if (provider === 'anthropic' && credentialType === 'api_key') anthropicApiKeyInput = '';
       if (provider === 'anthropic' && credentialType === 'auth_token') anthropicAuthTokenInput = '';
       if (provider === 'openai') openAiApiKeyInput = '';
       if (provider === 'openrouter') openRouterApiKeyInput = '';
     } catch (error) {
-      modelAdminError =
+      const m =
         error instanceof Error
           ? error.message
           : `Failed to save ${labelByProvider[provider]} ${credentialLabel}`;
+      modelAdminError = m;
+      toast.error(m);
     } finally {
       apiKeySaving = false;
     }
@@ -462,9 +502,11 @@
         value: model
       });
       modelAdminNotice = 'Chat summarizer model saved';
+      toast.success('Chat summarizer model saved');
     } catch (error) {
-      modelAdminError =
-        error instanceof Error ? error.message : 'Failed to save chat summarizer model';
+      const m = error instanceof Error ? error.message : 'Failed to save chat summarizer model';
+      modelAdminError = m;
+      toast.error(m);
     } finally {
       chatCompactionSettingsSaving = false;
     }
@@ -507,8 +549,11 @@
         value: model
       });
       modelAdminNotice = 'Voice model saved';
+      toast.success('Voice model saved');
     } catch (error) {
-      modelAdminError = error instanceof Error ? error.message : 'Failed to save voice model';
+      const m = error instanceof Error ? error.message : 'Failed to save voice model';
+      modelAdminError = m;
+      toast.error(m);
     } finally {
       voiceSettingsSaving = false;
     }
@@ -726,7 +771,7 @@
                   </div>
                   <div class="flex gap-2">
                     <Input
-                      class="h-8 font-mono text-[12px]"
+                      class="h-8 text-[13px]"
                       type="password"
                       autocomplete="off"
                       placeholder="sk-or-v1-..."
@@ -749,7 +794,7 @@
                   </div>
                   <div class="flex gap-2">
                     <Input
-                      class="h-8 font-mono text-[12px]"
+                      class="h-8 text-[13px]"
                       type="password"
                       autocomplete="off"
                       placeholder="sk-proj-..."
@@ -775,7 +820,7 @@
                   <div class="space-y-2">
                     <div class="flex gap-2">
                       <Input
-                        class="h-8 font-mono text-[12px]"
+                        class="h-8 text-[13px]"
                         type="password"
                         autocomplete="off"
                         placeholder="sk-ant-..."
@@ -791,7 +836,7 @@
                     </div>
                     <div class="flex gap-2">
                       <Input
-                        class="h-8 font-mono text-[12px]"
+                        class="h-8 text-[13px]"
                         type="password"
                         autocomplete="off"
                         placeholder="OAuth/OAT token"
@@ -828,7 +873,7 @@
                     </div>
                     <div class="flex gap-2">
                       <Input
-                        class="h-8 font-mono text-[12px]"
+                        class="h-8 text-[13px]"
                         type="password"
                         autocomplete="off"
                         placeholder="tvly-..."
@@ -866,7 +911,7 @@
                     </div>
                     <div class="flex gap-2">
                       <Input
-                        class="h-8 font-mono text-[12px]"
+                        class="h-8 text-[13px]"
                         type="password"
                         autocomplete="off"
                         placeholder="BSA..."
@@ -944,7 +989,7 @@
                 <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <div class="space-y-2">
                     <Input
-                      class="h-8 font-mono text-[12px]"
+                      class="h-8 text-[13px]"
                       list="chat-compaction-model-options"
                       placeholder="Leave unset to use the active chat model"
                       bind:value={chatCompactionModelInput}
@@ -1011,7 +1056,7 @@
                           <div class="flex items-center justify-between gap-3 px-3 py-3">
                             <div class="min-w-0 flex-1">
                               <div class="truncate text-[13px] font-medium">{model.model_name}</div>
-                              <div class="truncate font-mono text-[12px] text-muted-foreground">
+                              <div class="truncate text-[12px] text-muted-foreground">
                                 {model.model_id}
                               </div>
                               <div class="mt-1 flex flex-wrap gap-1">
@@ -1110,7 +1155,7 @@
                               <div class="truncate text-[13px] font-medium">
                                 {model.name || model.id}
                               </div>
-                              <div class="truncate font-mono text-[12px] text-muted-foreground">
+                              <div class="truncate text-[12px] text-muted-foreground">
                                 {model.id}
                               </div>
                               <div class="mt-1 text-[13px] text-muted-foreground">
@@ -1175,7 +1220,7 @@
                 <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <div class="space-y-2">
                     <Input
-                      class="h-8 font-mono text-[12px]"
+                      class="h-8 text-[13px]"
                       list="voice-model-options"
                       placeholder="google/gemini-2.0-flash-001"
                       bind:value={voiceModelInput}
@@ -1226,7 +1271,8 @@
                 {@const catTools = toolsConfig.filter((t) => t.category === cat.id)}
                 {#if catTools.length > 0}
                   <div class="overflow-hidden rounded-md border border-border">
-                    <div class="border-b border-border bg-muted/20 px-3 py-2 text-[13px] font-medium">
+                    <div
+                      class="border-b border-border bg-muted/20 px-3 py-2 text-[13px] font-medium">
                       {cat.label}
                     </div>
                     <div class="divide-y divide-border">
@@ -1283,7 +1329,9 @@
                       </span>
                     </button>
                   {:else}
-                    <div class="p-8 text-center text-[13px] text-muted-foreground">No rules yet.</div>
+                    <div class="p-8 text-center text-[13px] text-muted-foreground">
+                      No rules yet.
+                    </div>
                   {/each}
                 </div>
               </div>

@@ -1,393 +1,204 @@
 <script lang="ts">
-  import { documentMarkdownStore } from '$lib/client/stores/documentStore.svelte';
-  import { workspaceStore } from '$lib/client/stores/workspace.svelte';
-  import { cn } from '$lib/client/util';
-  import { Code2, Eye, FileText } from 'lucide-svelte';
-  import { marked } from 'marked';
+  /**
+   * Document panel — preview-only renderer for the active .md workspace file.
+   *
+   * Rendering stack:
+   *  - `@humanspeak/svelte-markdown` — Svelte component, renders markdown
+   *    via per-token components. Streaming-aware. Allows raw HTML through
+   *    its `Html` renderer (sanitized).
+   *  - `markedFootnote` extension for footnote support.
+   *  - Post-render shiki pass for fenced code blocks (GitHub themes,
+   *    languages lazy-loaded). Same shiki instance used everywhere.
+   *  - Tailwind Typography `prose` for layout/spacing, with CSS-variable
+   *    overrides bound to the design tokens.
+   */
+  import { filesStore } from '$lib/client/stores/files.svelte';
+  import { inputStateStore } from '$lib/client/util/state/state';
+  import { ensureShikiLanguage, getSharedHighlighter } from '$lib/client/util/editor/shikiSetup';
+  import { FileText } from 'lucide-svelte';
   import { mode } from 'mode-watcher';
-  import * as monaco from 'monaco-editor';
-  import monacoEditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
-  import { onDestroy, onMount } from 'svelte';
+  import SvelteMarkdown from '@humanspeak/svelte-markdown';
+  import { markedFootnote } from '@humanspeak/svelte-markdown/extensions';
 
-  // Configure marked for safe rendering
-  marked.setOptions({ breaks: true, gfm: true });
+  const activeFile = $derived(filesStore.activeFile);
+  const activeFileName = $derived.by(() => {
+    if (!activeFile) return 'Untitled';
+    return activeFile.path.split('/').pop() ?? activeFile.path;
+  });
 
-  let viewMode = $state<'rendered' | 'source'>('rendered');
-  let markdownContent = $state('');
+  const markdownContent = $derived($inputStateStore.code ?? '');
 
-  let currentFileId = $state('_default');
-  let currentFileName = $state('Untitled');
+  // SvelteMarkdown emits per-token components, so the rendered DOM lives
+  // inside the wrapper article. We attach a $effect that walks fenced code
+  // blocks and replaces them with shiki-highlighted markup.
+  let articleEl = $state<HTMLElement | null>(null);
 
-  // Monaco editor refs
-  let editorContainer: HTMLDivElement | undefined = $state();
-  let monacoEditor: monaco.editor.IStandaloneCodeEditor | undefined;
-  let mdModel: monaco.editor.ITextModel | undefined;
-  let currentEditorText = '';
-  let resizeObserver: ResizeObserver | undefined;
-
-  // Load markdown for current workspace
-  function loadMarkdown() {
-    const ws = workspaceStore.workspace;
-    if (ws?.document?.documentMarkdown) {
-      markdownContent = ws.document.documentMarkdown;
-    } else {
-      markdownContent = `# ${currentFileName}\n\nWrite your documentation here.\n`;
-    }
-    // Sync to Monaco if it exists
-    if (monacoEditor && markdownContent !== currentEditorText) {
-      currentEditorText = markdownContent;
-      monacoEditor.setValue(markdownContent);
+  async function highlightCodeBlocks(root: HTMLElement, theme: 'github-dark' | 'github-light') {
+    const codes = root.querySelectorAll<HTMLElement>('pre:not([data-shiki-done]) > code');
+    if (codes.length === 0) return;
+    const hl = await getSharedHighlighter().catch(() => null);
+    if (!hl) return;
+    for (const codeEl of codes) {
+      const pre = codeEl.parentElement as HTMLPreElement | null;
+      if (!pre || pre.dataset.shikiDone) continue;
+      const langClass = [...codeEl.classList].find((c) => c.startsWith('language-'));
+      const lang = langClass ? langClass.slice('language-'.length).trim() : '';
+      const code = codeEl.textContent ?? '';
+      pre.dataset.shikiDone = '1';
+      if (!code || !lang) continue;
+      const ok = await ensureShikiLanguage(lang);
+      if (!ok) continue;
+      try {
+        const html = hl.codeToHtml(code, { lang, theme });
+        const wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        const newPre = wrap.firstElementChild as HTMLElement | null;
+        if (!newPre) continue;
+        newPre.dataset.shikiDone = '1';
+        pre.replaceWith(newPre);
+      } catch {
+        /* keep original <pre> on failure */
+      }
     }
   }
 
-  // Save markdown via workspace store
-  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-  function saveMarkdown() {
-    if (saveTimeout) clearTimeout(saveTimeout);
-    const content = markdownContent;
-    saveTimeout = setTimeout(() => {
-      documentMarkdownStore.set(content);
-      workspaceStore.setActiveDiagramDocumentMarkdown(content);
-    }, 400);
-  }
-
-  // Watch for file changes
+  // Re-run highlighting when content changes or theme flips.
   $effect(() => {
-    const activeDiagram = workspaceStore.diagrams.find(
-      (diagram) => diagram.id === workspaceStore.activeDiagramId
-    );
-    const newId =
-      workspaceStore.workspace?.id && workspaceStore.activeDiagramId
-        ? `${workspaceStore.workspace.id}:${workspaceStore.activeDiagramId}`
-        : workspaceStore.workspace?.id || '_default';
-    const newName = activeDiagram?.title || workspaceStore.workspace?.title || 'Untitled';
-    if (newId !== currentFileId) {
-      currentFileId = newId;
-      currentFileName = newName;
-      loadMarkdown();
-    }
-  });
-
-  onDestroy(() => {
-    if (saveTimeout) clearTimeout(saveTimeout);
-    resizeObserver?.disconnect();
-    try {
-      mdModel?.dispose();
-    } catch {}
-    try {
-      monacoEditor?.dispose();
-    } catch {}
-  });
-
-  // React to external markdown updates (from chat markdownWrite tool)
-  let ignoreExternalUpdate = false;
-  $effect(() => {
-    const externalMd = documentMarkdownStore.value;
-    if (ignoreExternalUpdate) return;
-    if (externalMd && externalMd !== markdownContent) {
-      markdownContent = externalMd;
-      workspaceStore.setActiveDiagramDocumentMarkdown(externalMd);
-      // Sync to Monaco
-      if (monacoEditor && markdownContent !== currentEditorText) {
-        currentEditorText = markdownContent;
-        monacoEditor.setValue(markdownContent);
-      }
-    }
-  });
-
-  // Initial load handled in onMount to avoid state_referenced_locally
-  // (markdownContent is $state and must be referenced inside closures)
-
-  // Initialize Monaco editor for markdown
-  function initMonacoEditor() {
-    if (!editorContainer || monacoEditor) return;
-
-    self.MonacoEnvironment = {
-      getWorker() {
-        return new monacoEditorWorker();
-      }
-    };
-
-    mdModel = monaco.editor.createModel(markdownContent, 'markdown');
-
-    monacoEditor = monaco.editor.create(editorContainer, {
-      model: mdModel,
-      minimap: { enabled: false },
-      overviewRulerLanes: 0,
-      fontSize: 12,
-      lineHeight: 20,
-      fontFamily:
-        'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-      padding: { top: 16, bottom: 16 },
-      scrollBeyondLastLine: false,
-      renderLineHighlight: 'none' as const,
-      lineNumbers: 'off' as const,
-      glyphMargin: false,
-      folding: false,
-      lineDecorationsWidth: 16,
-      lineNumbersMinChars: 0,
-      wordWrap: 'on' as const,
-      wrappingIndent: 'same' as const,
-      cursorBlinking: 'smooth' as const,
-      cursorSmoothCaretAnimation: 'on' as const,
-      smoothScrolling: true,
-      bracketPairColorization: { enabled: false },
-      guides: { indentation: false, bracketPairs: false },
-      codeLens: false,
-      quickSuggestions: false,
-      suggestOnTriggerCharacters: false,
-      scrollbar: {
-        vertical: 'auto' as const,
-        horizontal: 'hidden' as const,
-        useShadows: false
-      }
+    void markdownContent;
+    void $mode;
+    if (!articleEl) return;
+    const theme = $mode === 'dark' ? 'github-dark' : 'github-light';
+    // Defer one frame so SvelteMarkdown has finished mounting tokens.
+    queueMicrotask(() => {
+      if (articleEl) void highlightCodeBlocks(articleEl, theme);
     });
-
-    currentEditorText = markdownContent;
-
-    monacoEditor.onDidChangeModelContent(({ isFlush }) => {
-      const newText = monacoEditor?.getValue();
-      if (!newText || currentEditorText === newText || isFlush) return;
-      currentEditorText = newText;
-      markdownContent = newText;
-      saveMarkdown();
-    });
-
-    // Theme sync - use the same mermaid theme as the code editor to avoid global theme leak
-    let currentMode: string | undefined;
-    const unsub = mode.subscribe((m) => (currentMode = m));
-    unsub();
-    if (currentMode) {
-      monaco.editor.setTheme(`mermaid${currentMode === 'dark' ? '-dark' : ''}`);
-    }
-
-    resizeObserver = new ResizeObserver((entries) => {
-      monacoEditor?.layout({
-        height: entries[0].contentRect.height,
-        width: entries[0].contentRect.width
-      });
-    });
-    resizeObserver.observe(editorContainer);
-  }
-
-  onMount(() => {
-    // Run initial load: sync from localStorage first, then try DB
-    loadMarkdown();
-    ignoreExternalUpdate = true;
-    documentMarkdownStore.set(markdownContent);
-    ignoreExternalUpdate = false;
-    // Document content is loaded from workspace store (no separate DB fetch needed)
-
-    // Theme subscription - use mermaid theme to avoid leaking to code editor
-    const unsubMode = mode.subscribe((m) => {
-      if (monacoEditor) {
-        monaco.editor.setTheme(`mermaid${m === 'dark' ? '-dark' : ''}`);
-      }
-    });
-
-    return () => {
-      unsubMode();
-    };
   });
-
-  // Initialize Monaco when switching to source view
-  $effect(() => {
-    if (viewMode === 'source' && editorContainer && !monacoEditor) {
-      // Small delay to ensure DOM is ready
-      requestAnimationFrame(() => initMonacoEditor());
-    }
-    // Sync content when switching to source
-    if (viewMode === 'source' && monacoEditor && markdownContent !== currentEditorText) {
-      currentEditorText = markdownContent;
-      monacoEditor.setValue(markdownContent);
-    }
-  });
-
-  // ── Markdown Renderer (using marked library) ──
-  function renderMarkdown(md: string): string {
-    if (!md.trim())
-      return '<p class="text-[13px] text-muted-foreground italic">No content yet. Switch to Source to start writing.</p>';
-    try {
-      return marked.parse(md) as string;
-    } catch {
-      return `<p class="text-[13px] text-foreground/75">${md}</p>`;
-    }
-  }
-
-  let renderedHtml = $derived.by(() => renderMarkdown(markdownContent));
 </script>
 
 <div class="flex h-full flex-col bg-card">
-  <!-- Header -->
+  <!-- Header: same chrome as Canvas/Code so users see which file is rendering. -->
   <div class="flex h-10 items-center justify-between border-b border-border/30 px-3">
-    <div class="flex items-center gap-2">
-      <FileText class="size-4 text-muted-foreground" />
-      <span class="text-[13px] font-semibold text-foreground">Document</span>
-      <span class="rounded bg-muted/50 px-2 py-1 text-[13px] text-muted-foreground">.md</span>
-    </div>
-    <!-- View mode toggle -->
-    <div class="flex items-center rounded-md border border-border/30 bg-muted/20 p-1">
-      <button
-        type="button"
-        class={cn(
-          'flex items-center gap-1 rounded-sm px-2 py-1 text-[13px] font-medium transition-all',
-          viewMode === 'rendered'
-            ? 'bg-background text-foreground shadow-sm'
-            : 'text-muted-foreground hover:text-foreground'
-        )}
-        onclick={() => (viewMode = 'rendered')}>
-        <Eye class="size-3" />
-        Preview
-      </button>
-      <button
-        type="button"
-        class={cn(
-          'flex items-center gap-1 rounded-sm px-2 py-1 text-[13px] font-medium transition-all',
-          viewMode === 'source'
-            ? 'bg-background text-foreground shadow-sm'
-            : 'text-muted-foreground hover:text-foreground'
-        )}
-        onclick={() => (viewMode = 'source')}>
-        <Code2 class="size-3" />
-        Source
-      </button>
+    <div
+      class="flex min-w-0 flex-1 items-center gap-2"
+      title={activeFile ? activeFileName : 'Document'}>
+      {#if activeFile}
+        <img src="/icons/file-md.svg" alt="" class="size-4 shrink-0" />
+        <span class="truncate text-[13px] font-semibold text-foreground">{activeFileName}</span>
+      {:else}
+        <FileText class="size-4 shrink-0 text-muted-foreground" />
+        <span class="text-[13px] font-semibold text-foreground">Document</span>
+      {/if}
     </div>
   </div>
 
   <!-- Content -->
   <div class="flex-1 overflow-hidden">
-    {#if viewMode === 'rendered'}
-      <div class="scrollbar-thin h-full overflow-y-auto px-8 py-6">
-        <article class="doc-prose mx-auto max-w-none">
-          {@html renderedHtml}
+    <div class="scrollbar-thin h-full overflow-y-auto px-8 py-6">
+      {#if markdownContent.trim()}
+        <article
+          bind:this={articleEl}
+          class="doc-prose prose prose-sm dark:prose-invert max-w-none">
+          <SvelteMarkdown
+            source={markdownContent}
+            extensions={[markedFootnote()]}
+            options={{ headerIds: true, gfm: true, breaks: true }} />
         </article>
-      </div>
-    {:else}
-      <div class="h-full w-full overflow-hidden">
-        <div bind:this={editorContainer} class="h-full w-full"></div>
-      </div>
-    {/if}
+      {:else}
+        <p class="text-[13px] text-muted-foreground italic">
+          No content yet. Type in the Code panel.
+        </p>
+      {/if}
+    </div>
   </div>
 </div>
 
 <style>
+  /* Tailwind Typography (`prose`) handles type scale + spacing. We override
+   * its CSS variables so colors track the app's design tokens. The token
+   * format in this project is mixed (hsl(...) wrapped values in light mode,
+   * hex in dark mode), so we use the variables directly with `color-mix`
+   * for any opacity tinting — this works regardless of the source format. */
   :global(.doc-prose) {
-    color: hsl(var(--foreground) / 0.8);
-    font-size: 0.8125rem;
-    line-height: 1.7;
+    --tw-prose-body: color-mix(in oklab, var(--foreground), transparent 14%);
+    --tw-prose-headings: var(--foreground);
+    --tw-prose-lead: color-mix(in oklab, var(--foreground), transparent 25%);
+    --tw-prose-links: var(--primary);
+    --tw-prose-bold: var(--foreground);
+    --tw-prose-counters: var(--muted-foreground);
+    --tw-prose-bullets: color-mix(in oklab, var(--border), transparent 0%);
+    --tw-prose-hr: color-mix(in oklab, var(--border), transparent 60%);
+    --tw-prose-quotes: color-mix(in oklab, var(--foreground), transparent 30%);
+    --tw-prose-quote-borders: color-mix(in oklab, var(--primary), transparent 50%);
+    --tw-prose-captions: var(--muted-foreground);
+    --tw-prose-code: var(--foreground);
+    --tw-prose-pre-code: var(--foreground);
+    --tw-prose-pre-bg: color-mix(in oklab, var(--muted), transparent 50%);
+    --tw-prose-th-borders: color-mix(in oklab, var(--border), transparent 50%);
+    --tw-prose-td-borders: color-mix(in oklab, var(--border), transparent 70%);
+    --tw-prose-invert-body: color-mix(in oklab, var(--foreground), transparent 14%);
+    --tw-prose-invert-headings: var(--foreground);
+    --tw-prose-invert-lead: color-mix(in oklab, var(--foreground), transparent 25%);
+    --tw-prose-invert-links: var(--primary);
+    --tw-prose-invert-bold: var(--foreground);
+    --tw-prose-invert-counters: var(--muted-foreground);
+    --tw-prose-invert-bullets: var(--border);
+    --tw-prose-invert-hr: color-mix(in oklab, var(--border), transparent 60%);
+    --tw-prose-invert-quotes: color-mix(in oklab, var(--foreground), transparent 30%);
+    --tw-prose-invert-quote-borders: color-mix(in oklab, var(--primary), transparent 50%);
+    --tw-prose-invert-captions: var(--muted-foreground);
+    --tw-prose-invert-code: var(--foreground);
+    --tw-prose-invert-pre-code: var(--foreground);
+    --tw-prose-invert-pre-bg: color-mix(in oklab, var(--muted), transparent 50%);
+    --tw-prose-invert-th-borders: color-mix(in oklab, var(--border), transparent 50%);
+    --tw-prose-invert-td-borders: color-mix(in oklab, var(--border), transparent 70%);
   }
-  :global(.doc-prose h1) {
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    margin-bottom: 0.75rem;
-  }
-  :global(.doc-prose h2) {
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    margin-top: 1.5rem;
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.375rem;
-    border-bottom: 1px solid hsl(var(--border) / 0.2);
-  }
-  :global(.doc-prose h3) {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-    margin-top: 1.25rem;
-    margin-bottom: 0.375rem;
-  }
-  :global(.doc-prose h4) {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-    margin-top: 1rem;
-    margin-bottom: 0.25rem;
-  }
-  :global(.doc-prose p) {
-    margin: 0.375rem 0;
-  }
-  :global(.doc-prose ul, .doc-prose ol) {
-    margin: 0.5rem 0;
-    padding-left: 1.25rem;
-  }
-  :global(.doc-prose ul) {
-    list-style-type: disc;
-  }
-  :global(.doc-prose ol) {
-    list-style-type: decimal;
-  }
-  :global(.doc-prose li) {
-    margin: 0.125rem 0;
-  }
-  :global(.doc-prose code) {
-    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, monospace;
-    font-size: 0.6875rem;
-    background: hsl(var(--muted) / 0.7);
-    border: 1px solid hsl(var(--border) / 0.2);
+
+  /* Inline code: pill that uses tokens, not prose's default fixed greys. */
+  :global(.doc-prose :not(pre) > code) {
+    background: color-mix(in oklab, var(--muted), transparent 35%);
+    border: 1px solid color-mix(in oklab, var(--border), transparent 70%);
     border-radius: 0.375rem;
-    padding: 0.125rem 0.375rem;
+    padding: 0.05rem 0.35rem;
+    font-weight: 500;
   }
-  :global(.doc-prose pre) {
-    background: hsl(var(--muted) / 0.6);
-    border: 1px solid hsl(var(--border) / 0.2);
+  :global(.doc-prose :not(pre) > code::before),
+  :global(.doc-prose :not(pre) > code::after) {
+    content: '';
+  }
+
+  /* shiki <pre> blocks (replace the default <pre> after post-render highlight). */
+  :global(.doc-prose pre.shiki) {
+    background: var(--shiki-bg, color-mix(in oklab, var(--muted), transparent 60%)) !important;
+    border: 1px solid color-mix(in oklab, var(--border), transparent 70%);
     border-radius: 0.5rem;
-    padding: 0.875rem;
+    padding: 0.875rem 1rem;
     overflow-x: auto;
-    margin: 0.75rem 0;
+    font-size: 0.78rem;
+    line-height: 1.55;
   }
-  :global(.doc-prose pre code) {
-    background: none;
-    border: none;
+  :global(.doc-prose pre.shiki code) {
+    background: transparent;
     padding: 0;
-    font-size: 0.6875rem;
-    line-height: 1.6;
-    white-space: pre;
+    border: 0;
+    font-weight: 400;
   }
-  :global(.doc-prose blockquote) {
-    border-left: 2px solid hsl(var(--primary) / 0.4);
-    padding-left: 0.75rem;
-    margin: 0.5rem 0;
-    font-style: italic;
-    color: hsl(var(--foreground) / 0.6);
-  }
-  :global(.doc-prose a) {
-    color: hsl(var(--primary));
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  :global(.doc-prose hr) {
-    border-color: hsl(var(--border) / 0.3);
-    margin: 1rem 0;
-  }
-  :global(.doc-prose img) {
-    max-width: 100%;
-    border-radius: 0.5rem;
-    border: 1px solid hsl(var(--border) / 0.2);
-    margin: 0.5rem 0;
-  }
-  :global(.doc-prose table) {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.75rem 0;
-    font-size: 0.75rem;
-  }
-  :global(.doc-prose th, .doc-prose td) {
-    border: 1px solid hsl(var(--border) / 0.3);
-    padding: 0.375rem 0.625rem;
-    text-align: left;
-  }
+
+  /* Tables — give the header a subtle surface so borders read in both themes. */
   :global(.doc-prose th) {
-    background: hsl(var(--muted) / 0.5);
-    font-weight: 600;
+    background: color-mix(in oklab, var(--muted), transparent 60%);
   }
-  :global(.doc-prose strong) {
-    font-weight: 600;
-    color: hsl(var(--foreground));
+
+  /* Task list checkboxes inherit the design system */
+  :global(.doc-prose input[type='checkbox']) {
+    accent-color: var(--primary);
+    margin-right: 0.4em;
   }
-  :global(.doc-prose del) {
-    text-decoration: line-through;
-    color: hsl(var(--muted-foreground));
+
+  /* Footnotes look better with a top divider */
+  :global(.doc-prose .footnotes) {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid color-mix(in oklab, var(--border), transparent 60%);
+    font-size: 0.85em;
   }
 </style>

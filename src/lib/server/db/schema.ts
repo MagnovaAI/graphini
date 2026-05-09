@@ -431,6 +431,32 @@ export const diagramWorkspaces = pgTable(
   ]
 );
 
+// === WORKSPACE FILES ===
+//
+// Per-user file system: a flat list of rows whose `path` (forward-slash
+// hierarchy) is unique per user. Folders are derived from paths — no
+// dedicated folder rows. Quotas are enforced server-side at insert time
+// (15 for guests, 30 for signed-in users).
+
+export const workspaceFiles = pgTable(
+  'workspace_files',
+  {
+    content: text('content').notNull().default(''),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: text('kind', { enum: ['md', 'json', 'yaml', 'mermaid'] }).notNull(),
+    path: text('path').notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' })
+  },
+  (t) => [
+    uniqueIndex('idx_workspace_files_user_path').on(t.user_id, t.path),
+    index('idx_workspace_files_user').on(t.user_id, t.updated_at)
+  ]
+);
+
 // === FILE VERSIONS ===
 
 export const fileVersions = pgTable(

@@ -213,9 +213,24 @@ export async function validateSession(request: Request): Promise<User | null> {
     const db = getDb();
     let user = await db.getUserByFirebaseUid(firebaseUid);
 
-    if (!user) {
-      // Auto-sync: fetch profile from magnova-auth and create locally
-      user = await syncUserFromMagnovaAuth(firebaseUid);
+    // Auto-sync from magnova-auth in two cases:
+    //   1. user row doesn't exist yet (first-time Google login)
+    //   2. user row exists but is missing display name OR avatar — happens
+    //      to legacy rows that were created before we started reading those
+    //      fields off the upstream session response. Refilling them on the
+    //      first authenticated request after the fix lands means existing
+    //      users see their Google profile without having to log out + back in.
+    const needsBackfill = !!user && (!user.avatar_url || !user.display_name);
+    if (!user || needsBackfill) {
+      const synced = await syncUserFromMagnovaAuth(firebaseUid);
+      if (synced) {
+        user = synced;
+        // Bust the cache hit we'd otherwise get on the next request — the
+        // cached `cached` value above was an older row without avatar/name.
+        await cache.delete(cacheKey).catch(() => {
+          /* cache delete failure is non-fatal */
+        });
+      }
     }
 
     if (user && user.is_active) {
@@ -253,15 +268,48 @@ async function syncUserFromMagnovaAuth(firebaseUid: string): Promise<User | null
       method: 'GET',
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(firebaseUid)}` }
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[auth] magnova-auth /api/auth/session returned ${res.status}`);
+      return null;
+    }
     const data = await res.json();
     const remote = data.user;
-    if (!remote?.email) return null;
+    if (!remote?.email) {
+      console.warn('[auth] magnova-auth session has no user.email; payload keys:', {
+        topLevel: Object.keys(data ?? {}),
+        userKeys: remote ? Object.keys(remote) : null
+      });
+      return null;
+    }
+
+    // magnova-auth (auth.magnova.ai) federates Google OAuth. Different
+    // versions of the upstream service return the avatar under different
+    // names — accept all of them so the user's Google profile picture
+    // shows up in the sidebar regardless of which key the gateway emits.
+    const avatarUrl =
+      (typeof remote.avatar_url === 'string' && remote.avatar_url) ||
+      (typeof remote.picture === 'string' && remote.picture) ||
+      (typeof remote.photoURL === 'string' && remote.photoURL) ||
+      (typeof remote.photo_url === 'string' && remote.photo_url) ||
+      (typeof remote.image === 'string' && remote.image) ||
+      null;
+    const displayName =
+      remote.display_name ?? remote.name ?? remote.given_name ?? remote.full_name ?? null;
+
+    // First call diagnostic so we can see what fields the gateway actually
+    // sent us. If avatar/name are still empty, paste this log line and we
+    // know which field to add to the resolver above.
+    console.log('[auth] magnova-auth user sync', {
+      email: remote.email,
+      keys: Object.keys(remote),
+      resolvedAvatar: avatarUrl,
+      resolvedName: displayName
+    });
 
     const db = getDb();
     return db.upsertUserFromFirebase({
-      avatar_url: remote.avatar_url ?? null,
-      display_name: remote.display_name ?? remote.name ?? null,
+      avatar_url: avatarUrl,
+      display_name: displayName,
       email: remote.email,
       firebase_uid: firebaseUid
     });
@@ -422,13 +470,7 @@ export async function findGuestUserForRequest(request: Request): Promise<User | 
  * successful guest -> real-account merge.
  */
 export function clearGuestCookieHeader(secure = false): string {
-  const attrs = [
-    `${GUEST_COOKIE_NAME}=`,
-    'Path=/',
-    'Max-Age=0',
-    'SameSite=Lax',
-    'HttpOnly'
-  ];
+  const attrs = [`${GUEST_COOKIE_NAME}=`, 'Path=/', 'Max-Age=0', 'SameSite=Lax', 'HttpOnly'];
   if (secure) attrs.push('Secure');
   return attrs.join('; ');
 }

@@ -55,6 +55,7 @@
   import { canvasStatus } from '$lib/client/stores/canvasStatus.svelte';
   import { authStore } from '$lib/client/stores/auth.svelte';
   import { documentMarkdownStore } from '$lib/client/stores/documentStore.svelte';
+  import { filesStore } from '$lib/client/stores/files.svelte';
   import { workspaceStore } from '$lib/client/stores/workspace.svelte';
   import { kv } from '$lib/client/stores/kvStore.svelte';
   import { modelsStore } from '$lib/client/stores/models.svelte';
@@ -667,7 +668,14 @@
   function updateToolSimple(
     assistantIdx: number,
     toolCallId: string | undefined,
-    update: { subtitle?: string; details?: string[]; status?: 'running' | 'done' }
+    update: {
+      subtitle?: string;
+      details?: string[];
+      status?: 'running' | 'done';
+      toolInput?: { path?: unknown; from?: unknown; operation?: unknown };
+      titlePending?: string;
+      titleDone?: string;
+    }
   ): void {
     const simpleId = `tool-simple-${toolCallId ?? currentToolCallId}`;
     const parts = messageParts[assistantIdx] || [];
@@ -677,9 +685,31 @@
         ...parts[idx],
         ...(update.subtitle !== undefined ? { subtitle: update.subtitle } : {}),
         ...(update.details !== undefined ? { details: update.details } : {}),
-        ...(update.status !== undefined ? { status: update.status } : {})
+        ...(update.status !== undefined ? { status: update.status } : {}),
+        ...(update.toolInput !== undefined ? { toolInput: update.toolInput } : {}),
+        ...(update.titlePending !== undefined ? { titlePending: update.titlePending } : {}),
+        ...(update.titleDone !== undefined ? { titleDone: update.titleDone } : {})
       };
       messageParts[assistantIdx] = [...parts];
+    }
+  }
+
+  /** Try to parse the streaming tool-input JSON to extract `operation`/`path`
+   *  for tool-icons to use. JSON may be incomplete; tolerate failures. */
+  function parsePartialToolInput(
+    raw: string
+  ): { operation?: string; path?: string; from?: string } | undefined {
+    if (!raw) return undefined;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // Best-effort: extract just operation/path via simple regex on the
+      // partial JSON so the icon can update before the call completes.
+      const op = raw.match(/"operation"\s*:\s*"([^"]+)"/);
+      const p = raw.match(/"path"\s*:\s*"([^"]+)"/);
+      const f = raw.match(/"from"\s*:\s*"([^"]+)"/);
+      if (!op && !p && !f) return undefined;
+      return { operation: op?.[1], path: p?.[1], from: f?.[1] };
     }
   }
   let reasoningStarted = $state<Record<string, number>>({});
@@ -747,7 +777,12 @@
   }
 
   function messageKey(message: Record<string, unknown>, index: number) {
-    return String(message.id ?? `${message.role ?? 'message'}:${message.timestamp ?? index}`);
+    // Include `index` as a tiebreaker so duplicate ids (which can briefly
+    // happen when an optimistic message coexists with the persisted one) don't
+    // crash the runtime with each_key_duplicate. Chat is append-only so the
+    // index is stable for a given message.
+    const base = message.id ?? `${message.role ?? 'message'}:${message.timestamp ?? 'no-ts'}`;
+    return `${String(base)}:${index}`;
   }
 
   function attachmentKey(attachment: Record<string, unknown>, index: number) {
@@ -1863,6 +1898,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          activeFileId: filesStore.activeId,
           activeTabEngine: activeEngine,
           activeTabId: activeTab?.id,
           activeTabName: activeTab?.title,
@@ -2251,6 +2287,162 @@
                           scrollToBottom();
                         }
                       }
+                    } else if (currentToolName === 'fileSystem') {
+                      // Restore the rich Code Artifact / markdown card UX for
+                      // fileSystem calls that touch a renderable file. The
+                      // operation+path live in the streaming JSON, so we
+                      // promote the simple chip into an artifact (mermaid)
+                      // or markdown card the moment we can read them.
+                      const partial = parsePartialToolInput(currentToolInputJson);
+                      const op = typeof partial?.operation === 'string' ? partial.operation : '';
+                      const path = typeof partial?.path === 'string' ? partial.path : '';
+                      const lower = path.toLowerCase();
+                      const isMermaid = lower.endsWith('.mermaid') || lower.endsWith('.mmd');
+                      const isMd = lower.endsWith('.md');
+                      const isWrite = op === 'update' || op === 'patch' || op === 'create';
+
+                      if (isWrite && isMermaid) {
+                        const artifactId = getArtifactIdForToolCall(
+                          `fileSystem-${op}`,
+                          currentToolCallId
+                        );
+                        // Promote: drop the simple chip, ensure the artifact
+                        // part exists in this message.
+                        const parts = messageParts[assistantIndex] || [];
+                        const simpleId = `tool-simple-${currentToolCallId}`;
+                        const sIdx = parts.findIndex(
+                          (p) => p.type === 'tool-simple' && p.id === simpleId
+                        );
+                        let dirty = false;
+                        if (sIdx >= 0) {
+                          parts.splice(sIdx, 1);
+                          dirty = true;
+                        }
+                        if (
+                          !parts.some((p) => p.type === 'artifact' && p.artifactId === artifactId)
+                        ) {
+                          parts.push({ type: 'artifact', artifactId });
+                          dirty = true;
+                        }
+                        if (dirty) messageParts[assistantIndex] = [...parts];
+
+                        if (!artifactMap[artifactId]) {
+                          const prevCode = $stateStore.code || '';
+                          artifactMap[artifactId] = {
+                            code: '',
+                            errors: undefined,
+                            hasErrors: false,
+                            id: artifactId,
+                            isStreaming: true,
+                            language: 'mermaid',
+                            operation:
+                              op === 'patch' ? 'patch' : op === 'create' ? 'create' : 'update',
+                            previousCode: prevCode,
+                            title:
+                              op === 'patch'
+                                ? 'Diagram Patch'
+                                : op === 'create'
+                                  ? 'Diagram Create'
+                                  : 'Diagram Update'
+                          };
+                          artifactMap = { ...artifactMap };
+                        }
+
+                        const rawCode = parseStreamingContent(currentToolInputJson);
+                        if (rawCode !== null && rawCode.trim() && artifactMap[artifactId]) {
+                          artifactMap[artifactId] = {
+                            ...artifactMap[artifactId],
+                            code: rawCode
+                          };
+                          artifactMap = { ...artifactMap };
+                          // Live canvas preview for create/update only — patch
+                          // streams replacement lines, not a full doc, so we
+                          // wait for the tool result to apply the final code.
+                          if (op !== 'patch') {
+                            if (streamCanvasTimer) clearTimeout(streamCanvasTimer);
+                            streamCanvasTimer = setTimeout(() => {
+                              if (
+                                rawCode.trim() &&
+                                mermaidDeclarationPattern.test(rawCode.trim())
+                              ) {
+                                inputStateStore.update((s) => ({
+                                  ...s,
+                                  code: rawCode,
+                                  updateDiagram: getActiveWorkspaceEngine() === 'mermaid'
+                                }));
+                                diagramPreviewApplied = true;
+                              }
+                            }, 120);
+                          }
+                          scrollToBottom();
+                        }
+                      } else if (isWrite && isMd) {
+                        // Promote chip → streaming markdown card for .md writes.
+                        const mdId = `md-${currentToolCallId || Date.now()}`;
+                        const parts = messageParts[assistantIndex] || [];
+                        const simpleId = `tool-simple-${currentToolCallId}`;
+                        const sIdx = parts.findIndex(
+                          (p) => p.type === 'tool-simple' && p.id === simpleId
+                        );
+                        let dirty = false;
+                        if (sIdx >= 0) {
+                          parts.splice(sIdx, 1);
+                          dirty = true;
+                        }
+                        const mdIdx = parts.findIndex(
+                          (p) => p.type === 'markdown' && p.id === mdId
+                        );
+                        const rawMd = parseStreamingContent(currentToolInputJson);
+                        if (mdIdx < 0) {
+                          parts.push({
+                            content: rawMd ?? '',
+                            id: mdId,
+                            isStreaming: true,
+                            lines: rawMd ? rawMd.split('\n').length : 0,
+                            operation: 'write',
+                            type: 'markdown'
+                          });
+                          dirty = true;
+                        } else if (rawMd !== null) {
+                          parts[mdIdx] = {
+                            ...parts[mdIdx],
+                            content: rawMd,
+                            lines: rawMd.split('\n').length
+                          } as ContentPart;
+                          dirty = true;
+                        }
+                        if (dirty) messageParts[assistantIndex] = [...parts];
+                        if (rawMd && rawMd.trim()) documentMarkdownStore.set(rawMd);
+                        scrollToBottom();
+                      } else {
+                        // Non-write op or non-renderable path — fall through
+                        // to the generic tool-simple subtitle/title update.
+                        const display = deriveToolInputDisplay(
+                          currentToolName,
+                          currentToolInputJson
+                        );
+                        const toolInput = partial;
+                        const operationVerbs = toolInput?.operation
+                          ? toolVerbs(currentToolName, { operation: toolInput.operation })
+                          : null;
+                        const pathSubtitle =
+                          typeof toolInput?.path === 'string' && toolInput.path
+                            ? toolInput.path
+                            : undefined;
+                        updateToolSimple(assistantIndex, currentToolCallId, {
+                          ...display,
+                          ...(pathSubtitle !== undefined && display.subtitle === undefined
+                            ? { subtitle: pathSubtitle }
+                            : {}),
+                          ...(toolInput ? { toolInput } : {}),
+                          ...(operationVerbs
+                            ? {
+                                titlePending: operationVerbs.pending,
+                                titleDone: operationVerbs.done
+                              }
+                            : {})
+                        });
+                      }
                     } else if (currentToolName === 'thinking') {
                       // Stream the Chain of Thought as input deltas arrive so
                       // each thought appears live, not only after the call
@@ -2273,10 +2465,41 @@
                         }
                       }
                     } else {
-                      // Live subtitle/details for tool-simple
+                      // Live subtitle/details for tool-simple. For fileSystem
+                      // calls also refresh titlePending/titleDone once we can
+                      // parse the operation out of the partial input — that
+                      // way the chip shows "Patching foo.mermaid" instead of
+                      // the generic "Working with files".
                       const display = deriveToolInputDisplay(currentToolName, currentToolInputJson);
-                      if (display.subtitle !== undefined || display.details !== undefined) {
-                        updateToolSimple(assistantIndex, currentToolCallId, display);
+                      const toolInput = parsePartialToolInput(currentToolInputJson);
+                      const operationVerbs =
+                        currentToolName === 'fileSystem' && toolInput?.operation
+                          ? toolVerbs(currentToolName, { operation: toolInput.operation })
+                          : null;
+                      const pathSubtitle =
+                        currentToolName === 'fileSystem' &&
+                        typeof toolInput?.path === 'string' &&
+                        toolInput.path
+                          ? toolInput.path
+                          : undefined;
+                      const subtitle = display.subtitle ?? pathSubtitle;
+                      if (
+                        subtitle !== undefined ||
+                        display.details !== undefined ||
+                        toolInput ||
+                        operationVerbs
+                      ) {
+                        updateToolSimple(assistantIndex, currentToolCallId, {
+                          ...display,
+                          ...(subtitle !== undefined ? { subtitle } : {}),
+                          ...(toolInput ? { toolInput } : {}),
+                          ...(operationVerbs
+                            ? {
+                                titlePending: operationVerbs.pending,
+                                titleDone: operationVerbs.done
+                              }
+                            : {})
+                        });
                       }
                     }
                   } else if (data.type === 'tool-output-available') {
@@ -2386,6 +2609,179 @@
                               handleSubmit({ text: fixPrompt });
                             }
                           }, 1000);
+                        }
+                      }
+                    }
+
+                    // fileSystem tool: when create/update/patch succeeds, switch the
+                    // workspace to the touched file so Canvas/Code/Document panels
+                    // immediately reflect the new content. Also refresh the files
+                    // list so the sidebar shows the new file. For .mermaid writes
+                    // we finalize the streaming Code Artifact card and run a
+                    // mermaid.parse() validation pass; for .md we finalize the
+                    // streaming markdown card.
+                    // Any successful fileSystem call mutates the workspace tree
+                    // (delete / moveFolder / deleteFolder change paths but
+                    // don't carry a file in the result, so the rich
+                    // create/update/patch handler below skips them). Always
+                    // refetch the list so the sidebar tree reflects reality.
+                    if (toolName === 'fileSystem' && output && output.success === true) {
+                      void filesStore.fetchAll();
+                      // If the deleted file was the active one, drop the
+                      // selection so the workspace falls back to chat-only.
+                      if (
+                        output.deleted !== undefined &&
+                        typeof output.path === 'string' &&
+                        filesStore.activeFile?.path === output.path
+                      ) {
+                        filesStore.setActive(null);
+                      }
+                    }
+
+                    if (
+                      toolName === 'fileSystem' &&
+                      output &&
+                      output.success === true &&
+                      output.file &&
+                      typeof output.file.content === 'string' &&
+                      typeof output.file.path === 'string' &&
+                      typeof output.file.kind === 'string' &&
+                      (output.mode === 'create' ||
+                        output.mode === 'update' ||
+                        output.mode === 'patch')
+                    ) {
+                      const touched = output.file as {
+                        id: string;
+                        path: string;
+                        kind: 'md' | 'json' | 'yaml' | 'mermaid';
+                        content: string;
+                      };
+                      const op = output.mode as 'create' | 'update' | 'patch';
+
+                      // Refresh the sidebar list so a newly-created file shows up,
+                      // and updated/patched files reflect their new updated_at.
+                      filesStore.fetchAll().then(() => {
+                        filesStore.setActive(touched.id);
+                      });
+                      // Push content into the shared code store so the Code panel
+                      // and Canvas pipeline render the new source. Skip the
+                      // diagram-update path for .md files (Canvas is hidden anyway).
+                      // Reset pan/zoom so the canvas fits the new diagram —
+                      // otherwise a large generated diagram inherits the
+                      // previous zoom and overflows the viewport.
+                      // Skip for `patch` so the user's current zoom focus on
+                      // a specific area survives a small targeted edit.
+                      const shouldFit = op !== 'patch';
+                      updateCodeStore({
+                        code: touched.content,
+                        updateDiagram: touched.kind !== 'md',
+                        ...(shouldFit ? { pan: undefined, zoom: undefined } : {})
+                      });
+                      workspaceStore.markDirty();
+                      const { panels } = await import('$lib/client/stores/panels.svelte');
+                      // Two-window rule: chat stays as-is, viewer is a
+                      // single-select group. Default to the rendered preview
+                      // (Document for .md, Canvas otherwise). The user can
+                      // flip to Code via the sidebar's viewer switcher.
+                      if (touched.kind === 'md') {
+                        documentMarkdownStore.set(touched.content);
+                        panels.showViewer('document');
+                      } else {
+                        panels.showViewer('canvas');
+                      }
+                      diagramMutationSucceeded = true;
+
+                      // Finalize streaming card for the operation.
+                      if (touched.kind === 'mermaid') {
+                        const aid = getArtifactIdForToolCall(`fileSystem-${op}`, data.toolCallId);
+                        artifactMap[aid] = {
+                          ...(artifactMap[aid] ?? {
+                            id: aid,
+                            previousCode: $stateStore.code || '',
+                            language: 'mermaid'
+                          }),
+                          code: touched.content,
+                          isStreaming: false,
+                          language: 'mermaid',
+                          operation: op,
+                          title:
+                            op === 'patch'
+                              ? 'Diagram Patch'
+                              : op === 'create'
+                                ? 'Diagram Create'
+                                : 'Diagram Update'
+                        };
+                        artifactMap = { ...artifactMap };
+                        const parts = messageParts[assistantIndex] || [];
+                        if (!parts.some((p) => p.type === 'artifact' && p.artifactId === aid)) {
+                          // Drop the chip if it lingered (e.g. the input was
+                          // too small to trigger a delta-side promotion).
+                          const simpleId = `tool-simple-${data.toolCallId || currentToolCallId}`;
+                          const sIdx = parts.findIndex(
+                            (p) => p.type === 'tool-simple' && p.id === simpleId
+                          );
+                          if (sIdx >= 0) parts.splice(sIdx, 1);
+                          parts.push({ type: 'artifact', artifactId: aid });
+                          messageParts[assistantIndex] = [...parts];
+                        }
+
+                        // Real syntax validation against the renderer pipeline.
+                        if (touched.content.trim().length > 0) {
+                          try {
+                            await mermaidParse(touched.content);
+                          } catch (parseErr: unknown) {
+                            const errMsg =
+                              (parseErr instanceof Error ? parseErr.message : String(parseErr)) ||
+                              'Invalid Mermaid syntax';
+                            artifactMap[aid] = {
+                              ...artifactMap[aid],
+                              hasErrors: true,
+                              errors: [errMsg],
+                              title: 'Errors Found'
+                            };
+                            artifactMap = { ...artifactMap };
+                            if (autoFixTimeout) clearTimeout(autoFixTimeout);
+                            autoFixTimeout = setTimeout(() => {
+                              autoFixTimeout = null;
+                              if (!isLoading) {
+                                handleSubmit({
+                                  text: `The diagram you just wrote has a syntax error: "${errMsg}". Please fix it.`
+                                });
+                              }
+                            }, 1000);
+                          }
+                        }
+                      } else if (touched.kind === 'md') {
+                        // Finalize streaming markdown card.
+                        const mdId = `md-${data.toolCallId || currentToolCallId}`;
+                        const parts = messageParts[assistantIndex] || [];
+                        const mdIdx = parts.findIndex(
+                          (p) => p.type === 'markdown' && p.id === mdId
+                        );
+                        if (mdIdx >= 0 && parts[mdIdx].type === 'markdown') {
+                          parts[mdIdx] = {
+                            ...parts[mdIdx],
+                            content: touched.content,
+                            lines: touched.content.split('\n').length,
+                            isStreaming: false
+                          } as ContentPart;
+                          messageParts[assistantIndex] = [...parts];
+                        } else {
+                          // Drop chip + add finalized markdown card.
+                          const simpleId = `tool-simple-${data.toolCallId || currentToolCallId}`;
+                          const sIdx = parts.findIndex(
+                            (p) => p.type === 'tool-simple' && p.id === simpleId
+                          );
+                          if (sIdx >= 0) parts.splice(sIdx, 1);
+                          parts.push({
+                            content: touched.content,
+                            id: mdId,
+                            isStreaming: false,
+                            lines: touched.content.split('\n').length,
+                            operation: 'write',
+                            type: 'markdown'
+                          });
+                          messageParts[assistantIndex] = [...parts];
                         }
                       }
                     }
@@ -2507,13 +2903,17 @@
                       // Side effects: apply autoStyler output to the active diagram.
                       // (Icon application is no longer auto-applied — iconSearch
                       // returns candidates only and the model applies them with
-                      // diagramPatch so the canvas updates through the normal flow.)
+                      // a fileSystem patch so the canvas updates through the normal flow.)
                       if (
                         toolName === 'autoStyler' &&
                         output.content &&
                         typeof output.content === 'string'
                       ) {
                         applyToolSourceToActiveTab(output.content, output);
+                        // autoStyler writes through to the active workspace
+                        // file via persistActiveFileContent on the server.
+                        // Refresh the tree so updated_at / sort order reflect.
+                        void filesStore.fetchAll();
                       }
                       scrollToBottom();
                     }
@@ -2638,10 +3038,33 @@
                     return;
                   } else if (data.type === 'error') {
                     restoreUncommittedDiagramPreview();
+                    // Extract the error message from any of the shapes the
+                    // Vercel AI SDK and older custom streams have used:
+                    //   v5+   → `{ type: 'error', errorText: string }`
+                    //   older → `{ type: 'error', error: string }`
+                    //   ...   → `{ type: 'error', error: { message } }`
+                    // Log the raw payload when none of those produce text so
+                    // we can see what the SDK actually sent us next time.
+                    let errText = '';
+                    if (typeof data.errorText === 'string') errText = data.errorText;
+                    else if (typeof data.error === 'string') errText = data.error;
+                    else if (
+                      data.error &&
+                      typeof data.error === 'object' &&
+                      typeof (data.error as { message?: unknown }).message === 'string'
+                    ) {
+                      errText = (data.error as { message: string }).message;
+                    }
+                    errText = errText.trim();
+                    if (!errText) {
+                      console.warn('[chat] error event with no message; raw payload:', data);
+                      errText =
+                        'The server sent an empty error. Check the dev console / server logs for details.';
+                    }
                     const parts = finalizeReasoningParts(
                       removeThinkingPart(messageParts[assistantIndex] || [])
                     );
-                    parts.push({ type: 'error', error: data.error, userMessage: text });
+                    parts.push({ type: 'error', error: errText, userMessage: text });
                     messageParts[assistantIndex] = [...parts];
                     isLoading = false;
                     abortController = null;
@@ -2936,7 +3359,8 @@
                         subtitle={part.subtitle}
                         status={part.status}
                         details={part.details}
-                        searchResults={part.searchResults} />
+                        searchResults={part.searchResults}
+                        toolInput={part.toolInput} />
                     {:else if part.type === 'chain-of-thought'}
                       <ChainOfThought defaultOpen={part.status === 'running'}>
                         <ChainOfThoughtHeader
@@ -2985,14 +3409,14 @@
                               (step.details && step.details.length > 0)}
                             <ChainOfToolsStep
                               class="text-[12px]"
-                              icon={toolIcon(step.toolName)}
+                              icon={toolIcon(step.toolName, step.toolInput)}
                               label={step.status === 'running' ? step.titlePending : step.titleDone}
                               description={step.subtitle}
                               status={step.status === 'running' ? 'active' : 'complete'}
                               toggleable={hasOutput}>
                               {#if step.searchResults && step.searchResults.length > 0}
                                 <div
-                                  class="mt-1 rounded-md border border-border/40 px-3 py-2"
+                                  class="mt-1 overflow-hidden rounded-md border border-border/40 px-3 py-2"
                                   style="background-color: var(--tool-box-bg);">
                                   <ul class="space-y-2">
                                     {#each step.searchResults as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
@@ -3030,12 +3454,12 @@
                                 </div>
                               {:else if step.details && step.details.length > 0}
                                 <div
-                                  class="mt-1 rounded-md border border-border/40 px-3 py-2"
+                                  class="mt-1 overflow-hidden rounded-md border border-border/40 px-3 py-2"
                                   style="background-color: var(--tool-box-bg);">
                                   <div
                                     class="space-y-1 text-[12px] leading-relaxed text-muted-foreground/75">
                                     {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
-                                      <div class="min-w-0">{detail}</div>
+                                      <div class="truncate">{detail}</div>
                                     {/each}
                                   </div>
                                 </div>
@@ -3059,16 +3483,33 @@
                         readTo={artifact.readTo}
                         totalLines={artifact.totalLines} />
                     {:else if part.type === 'error'}
-                      <!-- Error with retry -->
+                      <!--
+                        Error block. The server's onError handler encodes the
+                        upstream code as a `[CODE] message` prefix when known
+                        (e.g. `[404] Hy3 preview is no longer available...`).
+                        We split it out so the code renders as a distinct
+                        badge instead of being lost in the message body.
+                      -->
+                      {@const rawError = (part.error ?? '').trim()}
+                      {@const codedMatch = rawError.match(/^\[([^\]]+)\]\s*([\s\S]*)$/)}
+                      {@const errCode = codedMatch ? codedMatch[1] : ''}
+                      {@const errMsg = codedMatch
+                        ? codedMatch[2].trim()
+                        : rawError || 'Something went wrong.'}
                       <div
-                        class="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
-                        <AlertCircle class="size-4 shrink-0 text-destructive" />
-                        <p class="flex-1 text-[13px] font-medium text-destructive">
-                          Some error occurred
-                        </p>
+                        class="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
+                        <AlertCircle class="mt-[2px] size-4 shrink-0 text-destructive" />
+                        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                          <pre
+                            class="m-0 min-w-0 font-sans text-[13px] leading-relaxed break-words whitespace-pre-wrap text-destructive">{#if errCode}<span
+                                class="font-mono">[{errCode}]</span>
+                            {/if}{errMsg}</pre>
+                        </div>
                         <button
                           type="button"
-                          class="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-3 py-1 text-[13px] font-medium text-destructive transition-colors hover:bg-destructive/20"
+                          aria-label="Retry"
+                          title="Retry"
+                          class="flex size-7 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive transition-colors hover:bg-destructive/20"
                           onclick={() =>
                             retryMessage(
                               part.userMessage ||
@@ -3077,8 +3518,7 @@
                                   .pop()?.content as string) ||
                                 ''
                             )}>
-                          <RotateCcw class="size-3" />
-                          Retry
+                          <RotateCcw class="size-3.5" />
                         </button>
                       </div>
                     {:else if part.type === 'markdown'}
