@@ -15,7 +15,37 @@ import { getDb } from '$lib/server/db';
 const SESSION_COOKIE_NAME = 'magnova_session';
 const LOCAL_COOKIE_NAME = 'graphini_session';
 const GUEST_COOKIE_NAME = 'graphini_guest_id';
+const LOGGED_OUT_COOKIE_NAME = 'graphini_logged_out';
+const LOGGED_OUT_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 const GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+const GUEST_NAME_ADJECTIVES = [
+  'bright',
+  'calm',
+  'clever',
+  'curious',
+  'gentle',
+  'happy',
+  'kind',
+  'lively',
+  'lucky',
+  'nimble',
+  'playful',
+  'quick'
+];
+const GUEST_NAME_ANIMALS = [
+  'bear',
+  'dolphin',
+  'eagle',
+  'fox',
+  'koala',
+  'lion',
+  'otter',
+  'panda',
+  'seal',
+  'tiger',
+  'whale',
+  'wolf'
+];
 
 /** Comma-separated emails that should be treated as admin when the DB still has role `user`. */
 const ADMIN_EMAIL_OVERRIDES = (env.ADMIN_EMAIL_OVERRIDES || env.ADMIN_ALLOWED_EMAILS || '')
@@ -140,12 +170,17 @@ function isLoopbackHost(hostname: string): boolean {
  * Use for rate limits and any other dev-bypass checks.
  */
 export function getDevBypassEmail(request: Request): string | undefined {
+  if (isLoggedOutRequest(request)) return undefined;
   const explicit = env.DEV_BYPASS_AUTH;
   if (explicit) return explicit;
   if (!dev) return undefined;
   const host = new URL(request.url).hostname;
   if (isLoopbackHost(host)) return 'true';
   return undefined;
+}
+
+function isLoggedOutRequest(request: Request): boolean {
+  return parseCookies(request)[LOGGED_OUT_COOKIE_NAME] === '1';
 }
 
 /**
@@ -165,6 +200,8 @@ function liftRoleForDevBypassSession(user: User): User {
  * 2. graphini_session cookie (signed email → user lookup, for local/dev auth)
  */
 export async function validateSession(request: Request): Promise<User | null> {
+  if (isLoggedOutRequest(request)) return null;
+
   // Method 0: Dev bypass — skip all auth, auto-login
   const bypassEmail = getDevBypassEmail(request);
   if (bypassEmail) {
@@ -438,19 +475,25 @@ async function ensureGuestUser(token: string, ip: string | null): Promise<User |
   if (!token) return null;
   const db = getDb();
   const firebaseUid = `${GUEST_FIREBASE_PREFIX}${token}`;
+  const displayName = guestDisplayName(token);
   const user = await db.getUserByFirebaseUid(firebaseUid);
   if (user) {
     // Refresh last_seen_at and IP on every hit so expiry is based on activity.
     await db.touchUser(user.id, { ip_address: ip ?? undefined }).catch(() => {
       /* non-fatal */
     });
-    return { ...user, is_guest: true };
+    return {
+      ...user,
+      display_name:
+        user.display_name && user.display_name !== 'Guest' ? user.display_name : displayName,
+      is_guest: true
+    };
   }
 
   const inserted = await db.upsertUserFromFirebase({
     firebase_uid: firebaseUid,
     email: null,
-    display_name: 'Guest'
+    display_name: displayName
   });
   if (inserted && ip) {
     await db.touchUser(inserted.id, { ip_address: ip }).catch(() => {
@@ -458,6 +501,17 @@ async function ensureGuestUser(token: string, ip: string | null): Promise<User |
     });
   }
   return inserted ? { ...inserted, is_guest: true } : null;
+}
+
+function guestDisplayName(token: string): string {
+  let hash = 0;
+  for (let i = 0; i < token.length; i += 1) {
+    hash = (hash * 31 + token.charCodeAt(i)) >>> 0;
+  }
+  const adjective = GUEST_NAME_ADJECTIVES[hash % GUEST_NAME_ADJECTIVES.length];
+  const animal =
+    GUEST_NAME_ANIMALS[Math.floor(hash / GUEST_NAME_ADJECTIVES.length) % GUEST_NAME_ANIMALS.length];
+  return `Guest-${adjective}-${animal}`;
 }
 
 /**
@@ -492,6 +546,24 @@ export async function findGuestUserForRequest(request: Request): Promise<User | 
  */
 export function clearGuestCookieHeader(secure = false): string {
   const attrs = [`${GUEST_COOKIE_NAME}=`, 'Path=/', 'Max-Age=0', 'SameSite=Lax', 'HttpOnly'];
+  if (secure) attrs.push('Secure');
+  return attrs.join('; ');
+}
+
+export function loggedOutCookieHeader(secure = false): string {
+  const attrs = [
+    `${LOGGED_OUT_COOKIE_NAME}=1`,
+    'Path=/',
+    `Max-Age=${LOGGED_OUT_COOKIE_MAX_AGE}`,
+    'SameSite=Lax',
+    'HttpOnly'
+  ];
+  if (secure) attrs.push('Secure');
+  return attrs.join('; ');
+}
+
+export function clearLoggedOutCookieHeader(secure = false): string {
+  const attrs = [`${LOGGED_OUT_COOKIE_NAME}=`, 'Path=/', 'Max-Age=0', 'SameSite=Lax', 'HttpOnly'];
   if (secure) attrs.push('Secure');
   return attrs.join('; ');
 }

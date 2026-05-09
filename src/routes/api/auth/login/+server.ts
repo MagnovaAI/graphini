@@ -2,6 +2,7 @@ import { json, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
   applyAdminEmailRoleOverrides,
+  clearLoggedOutCookieHeader,
   clearGuestCookieHeader,
   createLocalSession,
   findGuestUserForRequest,
@@ -97,7 +98,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
             headers: withCookies(
               { 'Content-Type': 'application/json' },
               localSessionCookie(signed, secureCookie),
-              guestClear
+              guestClear,
+              clearLoggedOutCookieHeader(secureCookie)
             )
           }
         );
@@ -175,7 +177,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
         headers: withCookies(
           { 'Content-Type': 'application/json' },
           localSessionCookie(signed, secureCookie),
-          guestClear
+          guestClear,
+          clearLoggedOutCookieHeader(secureCookie)
         )
       }
     );

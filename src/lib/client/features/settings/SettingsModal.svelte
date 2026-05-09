@@ -11,6 +11,7 @@
     toolsStore
   } from '$lib/client/stores';
   import { uiSettings, type UISettings } from '$lib/client/stores/settings.svelte';
+  import { authStore } from '$lib/client/stores/auth.svelte';
   import { kv } from '$lib/client/stores/kvStore.svelte';
   import { loadModelsFromAPI } from '$lib/client/stores/modelStore.svelte';
   import { downloadAppState } from '$lib/client/util/serialization/exportState';
@@ -122,13 +123,18 @@
   let personalization = $derived(personalizationSettings.value);
 
   type SettingsTab = 'theme' | 'models' | 'voice' | 'tools' | 'rules' | 'memory';
-
-  const settingsTabs: {
+  interface SettingsTabItem {
     id: SettingsTab;
     label: string;
     description: string;
     icon: typeof Monitor;
-  }[] = [
+  }
+
+  const isAdmin = $derived(
+    authStore.user?.role === 'admin' || authStore.user?.role === 'superadmin'
+  );
+
+  const allSettingsTabs: SettingsTabItem[] = [
     { description: 'Theme and interface density', icon: Palette, id: 'theme', label: 'Theme' },
     {
       description: 'Search, keys, and enabled models',
@@ -157,7 +163,13 @@
     { description: 'User memory preferences', icon: Brain, id: 'memory', label: 'Memory' }
   ];
 
+  const settingsTabs = $derived(allSettingsTabs.filter((tab) => isAdmin || tab.id !== 'voice'));
+
   let activeTab = $state<SettingsTab>('theme');
+
+  $effect(() => {
+    if (!isAdmin && activeTab === 'voice') activeTab = 'theme';
+  });
 
   type ModelSearchProvider = 'openrouter' | 'openai' | 'anthropic';
   type ProviderCredential = 'api_key' | 'auth_token';
@@ -583,9 +595,11 @@
   onMount(() => {
     // Load providers and models
     loadProvidersAndModels();
-    loadEnabledModels();
-    loadChatCompactionSettings();
-    loadVoiceSettings();
+    if (isAdmin) {
+      loadEnabledModels();
+      loadChatCompactionSettings();
+      loadVoiceSettings();
+    }
     // Search-provider keys live in aiSettings now — no server fetch needed.
     // Load memories
     loadMemories();
@@ -883,8 +897,8 @@
                 <div class="mb-3">
                   <div class="text-[13px] font-medium">Search Providers</div>
                   <div class="mt-1 text-[13px] text-muted-foreground">
-                    Per-user keys for the Web Search tool. Stored encrypted server-side. Tavily is
-                    used when both are set (richer results); Brave is the fallback.
+                    Per-user keys for the Web Search tool. Tavily is used when both are set (richer
+                    results); Brave is the fallback.
                   </div>
                 </div>
                 <div class="grid gap-3 lg:grid-cols-2">
@@ -990,221 +1004,228 @@
                 </div>
               {/if}
 
-              <div class="rounded-md border border-border p-3">
-                <div class="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <div class="text-[13px] font-medium">Chat Summarizer Model</div>
-                    <div class="mt-1 text-[13px] text-muted-foreground">
-                      Used to compact older chat history only after the active model context budget
-                      is near full.
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    class="h-7 gap-1 text-[13px]"
-                    disabled={chatCompactionSettingsLoading}
-                    onclick={loadChatCompactionSettings}>
-                    <RefreshCw
-                      class="size-3 {chatCompactionSettingsLoading ? 'animate-spin' : ''}" /> Refresh
-                  </Button>
-                </div>
-                <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
-                  <div class="space-y-2">
-                    <Input
-                      class="h-8 text-[13px]"
-                      list="chat-compaction-model-options"
-                      placeholder="Leave unset to use the active chat model"
-                      bind:value={chatCompactionModelInput}
-                      onkeydown={(event) =>
-                        event.key === 'Enter' && saveChatCompactionSettings()} />
-                    <datalist id="chat-compaction-model-options">
-                      {#each enabledModels as model (model.model_id)}
-                        <option value={model.model_id}>{model.model_name}</option>
-                      {/each}
-                    </datalist>
-                    <div class="text-[13px] text-muted-foreground">
-                      Pick a cheap, high-context text model. If unset, Graphini falls back to the
-                      current chat model.
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    class="h-8 gap-1 text-[13px]"
-                    disabled={chatCompactionSettingsSaving || !chatCompactionModelInput.trim()}
-                    onclick={saveChatCompactionSettings}>
-                    <Save class="size-3.5" /> Save
-                  </Button>
-                </div>
-              </div>
-
-              <div class="grid min-h-[420px] gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-                <div class="overflow-hidden rounded-md border border-border">
-                  <div class="flex h-10 items-center justify-between border-b border-border px-3">
-                    <span class="text-[13px] font-medium">Enabled Models</span>
-                    <div class="flex items-center gap-2">
-                      <Badge variant="outline" class="text-[13px]">{enabledModels.length}</Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        class="h-7 gap-1 text-[13px]"
-                        onclick={loadEnabledModels}>
-                        <RefreshCw class="size-3 {enabledModelsLoading ? 'animate-spin' : ''}" /> Refresh
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        class="h-7 gap-1 text-[13px]"
-                        onclick={async () => {
-                          for (const model of enabledModels.filter((item) => item.is_enabled)) {
-                            await toggleEnabledModel(model.model_id, false);
-                          }
-                        }}>
-                        <EyeOff class="size-3" /> Disable all
-                      </Button>
-                    </div>
-                  </div>
-                  <div class="max-h-[520px] overflow-auto">
-                    {#if enabledModelsLoading}
-                      <div class="flex items-center justify-center py-12">
-                        <RefreshCw class="size-5 animate-spin text-muted-foreground" />
+              {#if isAdmin}
+                <div class="rounded-md border border-border p-3">
+                  <div class="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-[13px] font-medium">Chat Summarizer Model</div>
+                      <div class="mt-1 text-[13px] text-muted-foreground">
+                        Used to compact older chat history only after the active model context
+                        budget is near full.
                       </div>
-                    {:else if enabledModels.length === 0}
-                      <div class="p-8 text-center text-[13px] text-muted-foreground">
-                        No enabled models yet.
-                      </div>
-                    {:else}
-                      <div class="divide-y divide-border">
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      class="h-7 gap-1 text-[13px]"
+                      disabled={chatCompactionSettingsLoading}
+                      onclick={loadChatCompactionSettings}>
+                      <RefreshCw
+                        class="size-3 {chatCompactionSettingsLoading ? 'animate-spin' : ''}" /> Refresh
+                    </Button>
+                  </div>
+                  <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <div class="space-y-2">
+                      <Input
+                        class="h-8 text-[13px]"
+                        list="chat-compaction-model-options"
+                        placeholder="Leave unset to use the active chat model"
+                        bind:value={chatCompactionModelInput}
+                        onkeydown={(event) =>
+                          event.key === 'Enter' && saveChatCompactionSettings()} />
+                      <datalist id="chat-compaction-model-options">
                         {#each enabledModels as model (model.model_id)}
-                          <div class="flex items-center justify-between gap-3 px-3 py-3">
-                            <div class="min-w-0 flex-1">
-                              <div class="truncate text-[13px] font-medium">{model.model_name}</div>
-                              <div class="truncate text-[12px] text-muted-foreground">
-                                {model.model_id}
-                              </div>
-                              <div class="mt-1 flex flex-wrap gap-1">
-                                <Badge variant="secondary" class="text-[13px]"
-                                  >{model.provider || 'openrouter'}</Badge>
-                                {#if model.tool_support}<Badge variant="outline" class="text-[13px]"
-                                    >Tools</Badge
-                                  >{/if}
-                                {#if model.is_free}<Badge variant="default" class="text-[13px]"
-                                    >Free</Badge
-                                  >{/if}
-                              </div>
-                            </div>
-                            <div class="flex shrink-0 items-center gap-1">
-                              <span class="text-[13px] text-muted-foreground"
-                                >{model.gems_per_message ?? 2} gems</span>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                class="size-7 p-0"
-                                title={model.is_enabled ? 'Disable' : 'Enable'}
-                                onclick={() =>
-                                  toggleEnabledModel(model.model_id, !model.is_enabled)}>
-                                <Power
-                                  class="size-3.5 {model.is_enabled
-                                    ? 'text-success'
-                                    : 'text-muted-foreground'}" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                class="size-7 p-0 text-destructive"
-                                title="Delete"
-                                onclick={() => deleteEnabledModel(model.model_id)}>
-                                <Trash2 class="size-3.5" />
-                              </Button>
-                            </div>
-                          </div>
+                          <option value={model.model_id}>{model.model_name}</option>
                         {/each}
+                      </datalist>
+                      <div class="text-[13px] text-muted-foreground">
+                        Pick a cheap, high-context text model. If unset, Graphini falls back to the
+                        current chat model.
                       </div>
-                    {/if}
+                    </div>
+                    <Button
+                      size="sm"
+                      class="h-8 gap-1 text-[13px]"
+                      disabled={chatCompactionSettingsSaving || !chatCompactionModelInput.trim()}
+                      onclick={saveChatCompactionSettings}>
+                      <Save class="size-3.5" /> Save
+                    </Button>
                   </div>
                 </div>
+              {/if}
 
-                <div class="overflow-hidden rounded-md border border-border">
-                  <div class="space-y-3 border-b border-border p-3">
-                    <div class="flex items-center justify-between">
-                      <span class="text-[13px] font-medium">Model Search</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        class="h-7 gap-1 text-[13px]"
-                        disabled={providerModelsLoading}
-                        onclick={loadProviderModels}>
-                        <Search class="size-3" /> Search
-                      </Button>
-                    </div>
-                    <div class="grid grid-cols-3 gap-1">
-                      {#each modelSearchProviders as provider (provider.value)}
-                        <button
-                          type="button"
-                          class="rounded-md border px-2 py-2 text-[13px] transition-colors {modelSearchProvider ===
-                          provider.value
-                            ? 'border-foreground bg-foreground text-background'
-                            : 'border-border hover:bg-muted'}"
-                          aria-pressed={modelSearchProvider === provider.value}
-                          onclick={() => {
-                            modelSearchProvider = provider.value;
-                            providerModels = [];
+              {#if isAdmin}
+                <div class="grid min-h-[420px] gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div class="overflow-hidden rounded-md border border-border">
+                    <div class="flex h-10 items-center justify-between border-b border-border px-3">
+                      <span class="text-[13px] font-medium">Enabled Models</span>
+                      <div class="flex items-center gap-2">
+                        <Badge variant="outline" class="text-[13px]">{enabledModels.length}</Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="h-7 gap-1 text-[13px]"
+                          onclick={loadEnabledModels}>
+                          <RefreshCw class="size-3 {enabledModelsLoading ? 'animate-spin' : ''}" /> Refresh
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="h-7 gap-1 text-[13px]"
+                          onclick={async () => {
+                            for (const model of enabledModels.filter((item) => item.is_enabled)) {
+                              await toggleEnabledModel(model.model_id, false);
+                            }
                           }}>
-                          {provider.label}
-                        </button>
-                      {/each}
+                          <EyeOff class="size-3" /> Disable all
+                        </Button>
+                      </div>
                     </div>
-                    <Input
-                      class="h-8 text-[13px]"
-                      placeholder="Search by model name, ID, or capability..."
-                      bind:value={providerModelSearch}
-                      onkeydown={(event) => event.key === 'Enter' && loadProviderModels()} />
-                  </div>
-                  <div class="max-h-[520px] overflow-auto">
-                    {#if providerModelsLoading}
-                      <div class="flex items-center justify-center py-12">
-                        <RefreshCw class="size-5 animate-spin text-muted-foreground" />
-                      </div>
-                    {:else if providerModels.length === 0}
-                      <div class="p-8 text-center text-[13px] text-muted-foreground">
-                        Search models from the selected provider.
-                      </div>
-                    {:else}
-                      <div class="divide-y divide-border">
-                        {#each filteredProviderModels as model (model.id)}
-                          {@const imported = isProviderModelImported(model.id)}
-                          {@const ctx = model.contextWindow || model.context_length || 0}
-                          <div class="flex items-center justify-between gap-3 px-3 py-3">
-                            <div class="min-w-0 flex-1">
-                              <div class="truncate text-[13px] font-medium">
-                                {model.name || model.id}
+                    <div class="max-h-[520px] overflow-auto">
+                      {#if enabledModelsLoading}
+                        <div class="flex items-center justify-center py-12">
+                          <RefreshCw class="size-5 animate-spin text-muted-foreground" />
+                        </div>
+                      {:else if enabledModels.length === 0}
+                        <div class="p-8 text-center text-[13px] text-muted-foreground">
+                          No enabled models yet.
+                        </div>
+                      {:else}
+                        <div class="divide-y divide-border">
+                          {#each enabledModels as model (model.model_id)}
+                            <div class="flex items-center justify-between gap-3 px-3 py-3">
+                              <div class="min-w-0 flex-1">
+                                <div class="truncate text-[13px] font-medium">
+                                  {model.model_name}
+                                </div>
+                                <div class="truncate text-[12px] text-muted-foreground">
+                                  {model.model_id}
+                                </div>
+                                <div class="mt-1 flex flex-wrap gap-1">
+                                  <Badge variant="secondary" class="text-[13px]"
+                                    >{model.provider || 'openrouter'}</Badge>
+                                  {#if model.tool_support}<Badge
+                                      variant="outline"
+                                      class="text-[13px]">Tools</Badge
+                                    >{/if}
+                                  {#if model.is_free}<Badge variant="default" class="text-[13px]"
+                                      >Free</Badge
+                                    >{/if}
+                                </div>
                               </div>
-                              <div class="truncate text-[12px] text-muted-foreground">
-                                {model.id}
-                              </div>
-                              <div class="mt-1 text-[13px] text-muted-foreground">
-                                {ctx ? `${(ctx / 1000).toFixed(0)}k context` : 'Context unknown'}
+                              <div class="flex shrink-0 items-center gap-1">
+                                <span class="text-[13px] text-muted-foreground"
+                                  >{model.gems_per_message ?? 2} gems</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  class="size-7 p-0"
+                                  title={model.is_enabled ? 'Disable' : 'Enable'}
+                                  onclick={() =>
+                                    toggleEnabledModel(model.model_id, !model.is_enabled)}>
+                                  <Power
+                                    class="size-3.5 {model.is_enabled
+                                      ? 'text-success'
+                                      : 'text-muted-foreground'}" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  class="size-7 p-0 text-destructive"
+                                  title="Delete"
+                                  onclick={() => deleteEnabledModel(model.model_id)}>
+                                  <Trash2 class="size-3.5" />
+                                </Button>
                               </div>
                             </div>
-                            {#if imported}
-                              <Badge variant="secondary" class="shrink-0 text-[13px]"
-                                ><Check class="mr-1 size-3" /> Imported</Badge>
-                            {:else}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                class="h-7 shrink-0 gap-1 text-[13px]"
-                                onclick={() => importProviderModel(model)}>
-                                <Download class="size-3" /> Import
-                              </Button>
-                            {/if}
-                          </div>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+
+                  <div class="overflow-hidden rounded-md border border-border">
+                    <div class="space-y-3 border-b border-border p-3">
+                      <div class="flex items-center justify-between">
+                        <span class="text-[13px] font-medium">Model Search</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          class="h-7 gap-1 text-[13px]"
+                          disabled={providerModelsLoading}
+                          onclick={loadProviderModels}>
+                          <Search class="size-3" /> Search
+                        </Button>
+                      </div>
+                      <div class="grid grid-cols-3 gap-1">
+                        {#each modelSearchProviders as provider (provider.value)}
+                          <button
+                            type="button"
+                            class="rounded-md border px-2 py-2 text-[13px] transition-colors {modelSearchProvider ===
+                            provider.value
+                              ? 'border-foreground bg-foreground text-background'
+                              : 'border-border hover:bg-muted'}"
+                            aria-pressed={modelSearchProvider === provider.value}
+                            onclick={() => {
+                              modelSearchProvider = provider.value;
+                              providerModels = [];
+                            }}>
+                            {provider.label}
+                          </button>
                         {/each}
                       </div>
-                    {/if}
+                      <Input
+                        class="h-8 text-[13px]"
+                        placeholder="Search by model name, ID, or capability..."
+                        bind:value={providerModelSearch}
+                        onkeydown={(event) => event.key === 'Enter' && loadProviderModels()} />
+                    </div>
+                    <div class="max-h-[520px] overflow-auto">
+                      {#if providerModelsLoading}
+                        <div class="flex items-center justify-center py-12">
+                          <RefreshCw class="size-5 animate-spin text-muted-foreground" />
+                        </div>
+                      {:else if providerModels.length === 0}
+                        <div class="p-8 text-center text-[13px] text-muted-foreground">
+                          Search models from the selected provider.
+                        </div>
+                      {:else}
+                        <div class="divide-y divide-border">
+                          {#each filteredProviderModels as model (model.id)}
+                            {@const imported = isProviderModelImported(model.id)}
+                            {@const ctx = model.contextWindow || model.context_length || 0}
+                            <div class="flex items-center justify-between gap-3 px-3 py-3">
+                              <div class="min-w-0 flex-1">
+                                <div class="truncate text-[13px] font-medium">
+                                  {model.name || model.id}
+                                </div>
+                                <div class="truncate text-[12px] text-muted-foreground">
+                                  {model.id}
+                                </div>
+                                <div class="mt-1 text-[13px] text-muted-foreground">
+                                  {ctx ? `${(ctx / 1000).toFixed(0)}k context` : 'Context unknown'}
+                                </div>
+                              </div>
+                              {#if imported}
+                                <Badge variant="secondary" class="shrink-0 text-[13px]"
+                                  ><Check class="mr-1 size-3" /> Imported</Badge>
+                              {:else}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  class="h-7 shrink-0 gap-1 text-[13px]"
+                                  onclick={() => importProviderModel(model)}>
+                                  <Download class="size-3" /> Import
+                                </Button>
+                              {/if}
+                            </div>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
                   </div>
                 </div>
-              </div>
+              {/if}
             </div>
           {:else if activeTab === 'voice'}
             <div class="space-y-5">

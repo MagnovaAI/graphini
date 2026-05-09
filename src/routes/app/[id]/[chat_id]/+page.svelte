@@ -479,7 +479,7 @@
       // file fetches; both the conversations and files stores are per-user
       // and can populate in parallel.
       const initP = initHandler();
-      const convosP = authStore.isLoggedIn ? conversationsStore.fetch() : Promise.resolve();
+      const convosP = authStore.hasSession ? conversationsStore.fetch() : Promise.resolve();
       const filesP = filesStore.fetchAll();
       await Promise.allSettled([initP, convosP, filesP]);
       window.addEventListener('appinstalled', () => logEvent('pwaInstalled', { isMobile }));
@@ -532,7 +532,7 @@
     // and refreshes the sidebar list. We just listen so we can refresh if needed,
     // but never POST a second create here.
     const handleConversationCreated = () => {
-      if (authStore.isLoggedIn) conversationsStore.fetch();
+      if (authStore.hasSession) conversationsStore.fetch();
     };
     window.addEventListener('conversation-created', handleConversationCreated);
 

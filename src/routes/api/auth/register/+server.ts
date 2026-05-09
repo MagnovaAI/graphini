@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
   applyAdminEmailRoleOverrides,
+  clearLoggedOutCookieHeader,
   clearGuestCookieHeader,
   createLocalSession,
   findGuestUserForRequest,
@@ -72,6 +73,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
     headers.append('Set-Cookie', localSessionCookie(signed, secureCookie));
+    headers.append('Set-Cookie', clearLoggedOutCookieHeader(secureCookie));
     if (guestClear) headers.append('Set-Cookie', guestClear);
 
     return new Response(

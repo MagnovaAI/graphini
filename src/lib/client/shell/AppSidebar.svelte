@@ -261,6 +261,12 @@
       .toUpperCase()
       .slice(0, 2);
   });
+
+  const guestDisplayName = $derived(
+    authStore.user?.is_guest === true && authStore.user.display_name
+      ? authStore.user.display_name
+      : 'Guest'
+  );
 </script>
 
 <Sidebar.Root collapsible="icon" variant="sidebar">
@@ -322,8 +328,8 @@
         <Sidebar.GroupContent>
           {#if conversationsStore.isLoading}
             <p class="px-2 py-2 text-[13px] text-muted-foreground">Loading</p>
-          {:else if !authStore.isLoggedIn}
-            <p class="px-2 py-2 text-[13px] text-muted-foreground">Sign in to save chats</p>
+          {:else if !authStore.hasSession}
+            <p class="px-2 py-2 text-[13px] text-muted-foreground">Open a chat to start saving</p>
           {:else if conversationsStore.list.length === 0}
             <p class="px-2 py-2 text-[13px] text-muted-foreground">No chats yet</p>
           {:else}
@@ -573,7 +579,7 @@
               {#snippet child({ props })}
                 <Sidebar.MenuButton tooltipContent="Account" {...props}>
                   <UserCircle />
-                  <span class="truncate text-[13px] font-medium">Guest User</span>
+                  <span class="truncate text-[13px] font-medium">{guestDisplayName}</span>
                 </Sidebar.MenuButton>
               {/snippet}
             </DropdownMenu.Trigger>
@@ -596,7 +602,9 @@
                     </AvatarFallback>
                   </Avatar>
                   <div class="flex min-w-0 flex-1 flex-col">
-                    <span class="truncate text-[13px] font-medium text-foreground">Guest User</span>
+                    <span class="truncate text-[13px] font-medium text-foreground">
+                      {guestDisplayName}
+                    </span>
                     <span class="truncate text-[12px] font-normal text-muted-foreground"
                       >Sign in to save your work</span>
                   </div>

@@ -1,6 +1,7 @@
 import { dev } from '$app/environment';
 import {
   clearGuestCookieHeader,
+  clearLoggedOutCookieHeader,
   findGuestUserForRequest,
   guestCookieHeader,
   validateSession
@@ -10,6 +11,7 @@ import { getDb } from '$lib/server/db';
 import type { Handle } from '@sveltejs/kit';
 
 const GUEST_COOKIE_NAME = 'graphini_guest_id';
+const LOGGED_OUT_COOKIE_NAME = 'graphini_logged_out';
 
 function generateGuestToken(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -50,12 +52,16 @@ async function maybeMergeGuestOnAuthenticatedRequest(
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+  const loggedOut = event.cookies.get(LOGGED_OUT_COOKIE_NAME) === '1';
+  const path = event.url.pathname;
+  const shouldStartGuestSession = !loggedOut || path === '/app' || path.startsWith('/app/');
+
   // Issue a guest session cookie on first hit so anonymous users can persist a
   // chat across requests. The cookie is upgraded to a real session by the
   // background merge below once the user logs in.
   let guestToken = event.cookies.get(GUEST_COOKIE_NAME);
   let setGuestCookie = false;
-  if (!guestToken) {
+  if (!guestToken && shouldStartGuestSession) {
     guestToken = generateGuestToken();
     setGuestCookie = true;
   }
@@ -78,6 +84,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   if (setGuestCookie) {
     response.headers.append('Set-Cookie', guestCookieHeader(guestToken, !dev));
+    response.headers.append('Set-Cookie', clearLoggedOutCookieHeader(!dev));
   } else if (mergeClearCookie) {
     response.headers.append('Set-Cookie', mergeClearCookie);
   }
