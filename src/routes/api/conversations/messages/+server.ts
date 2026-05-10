@@ -13,6 +13,8 @@ interface MessagePayload {
   tokens_used?: unknown;
 }
 
+const MESSAGE_RESTORE_PAGE_SIZE = 500;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -31,6 +33,27 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+export async function _listAllConversationMessages(
+  db: {
+    listMessages: (
+      conversationId: string,
+      options?: { limit?: number; offset?: number }
+    ) => Promise<Message[]>;
+  },
+  conversationId: string
+): Promise<Message[]> {
+  const all: Message[] = [];
+  for (let offset = 0; ; offset += MESSAGE_RESTORE_PAGE_SIZE) {
+    const page = await db.listMessages(conversationId, {
+      limit: MESSAGE_RESTORE_PAGE_SIZE,
+      offset
+    });
+    all.push(...page);
+    if (page.length < MESSAGE_RESTORE_PAGE_SIZE) break;
+  }
+  return all;
+}
+
 /** List messages for a conversation */
 export const GET: RequestHandler = async ({ request, url }) => {
   try {
@@ -46,7 +69,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
       return json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    const messages = await db.listMessages(conversationId);
+    const messages = await _listAllConversationMessages(db, conversationId);
 
     return json({ messages });
   } catch (err: unknown) {
@@ -76,7 +99,7 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    const existing = await db.listMessages(conversation_id);
+    const existing = await _listAllConversationMessages(db, conversation_id);
     const existingClientIds = new Set(
       existing
         .map((msg) => asRecord(msg.metadata).clientId)

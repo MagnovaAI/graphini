@@ -1,16 +1,25 @@
 import {
+  Box,
   ChartBar,
   FileCode,
   FileJson,
+  FilePenLine,
+  FilePlus,
+  FileSearch,
   FileText,
-  FolderTree,
+  FileX,
+  FolderInput,
+  FolderX,
   Globe,
   Lightbulb,
+  List,
   MessageCircleQuestion,
   Paintbrush,
   Palette,
+  ScrollText,
+  Search,
   ShieldCheck,
-  Wrench
+  Workflow
 } from 'lucide-svelte';
 import type { Component } from 'svelte';
 
@@ -25,12 +34,28 @@ const ICON_BY_TOOL: Record<string, IconComponent> = {
   autoStyler: i(Paintbrush),
   dataAnalyzer: i(ChartBar),
   errorChecker: i(ShieldCheck),
-  fileManager: i(FileText),
-  fileSystem: i(FolderTree),
-  iconSearch: i(Palette),
-  styleSearch: i(Paintbrush),
+  fileSystem: i(FilePenLine),
+  iconSearch: i(Search),
+  personalization: i(ScrollText),
+  styleSearch: i(Palette),
   thinking: i(Lightbulb),
+  useSkill: i(Box),
   webSearch: i(Globe)
+};
+
+function normalizedFileOperation(operation: string): string {
+  if (operation === 'update' || operation === 'patch') return 'edit';
+  return operation;
+}
+
+const ICON_BY_FILE_OPERATION: Record<string, IconComponent> = {
+  create: i(FilePlus),
+  delete: i(FileX),
+  deleteFolder: i(FolderX),
+  edit: i(FilePenLine),
+  list: i(List),
+  moveFolder: i(FolderInput),
+  read: i(FileSearch)
 };
 
 const ICON_BY_FILE_KIND: Record<string, IconComponent> = {
@@ -43,15 +68,18 @@ const ICON_BY_FILE_KIND: Record<string, IconComponent> = {
 };
 
 /**
- * Resolve the icon for a tool call. For `fileSystem`, the icon varies by the
- * file extension in the `path` argument so the chain-of-tools display reflects
- * what the model is actually editing (.md, .json, .yaml, .mermaid).
+ * Resolve the icon for a tool call. `fileSystem` gets operation-level icons,
+ * with a file-extension fallback for partially streamed calls.
  */
 export function toolIcon(
   toolName: string,
-  input?: { path?: unknown; from?: unknown }
+  input?: { path?: unknown; from?: unknown; operation?: unknown }
 ): IconComponent {
   if (toolName === 'fileSystem' && input) {
+    if (typeof input.operation === 'string') {
+      const byOperation = ICON_BY_FILE_OPERATION[normalizedFileOperation(input.operation)];
+      if (byOperation) return byOperation;
+    }
     const candidate =
       typeof input.path === 'string'
         ? input.path
@@ -64,7 +92,7 @@ export function toolIcon(
       const byKind = ICON_BY_FILE_KIND[ext];
       if (byKind) return byKind;
     }
-    return ICON_BY_TOOL.fileSystem;
+    return ICON_BY_FILE_OPERATION.edit;
   }
-  return ICON_BY_TOOL[toolName] ?? i(Wrench);
+  return ICON_BY_TOOL[toolName] ?? i(Workflow);
 }

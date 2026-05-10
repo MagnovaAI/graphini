@@ -22,16 +22,19 @@
     ...restProps
   }: ChainOfToolsProps = $props();
 
-  // Create context instance with proper controllable state
-  const context = new ChainOfToolsContext({
-    isOpen: open !== undefined ? open : defaultOpen,
-    onOpenChange
+  const context = new ChainOfToolsContext();
+  let didInitializeOpen = false;
+
+  $effect(() => {
+    context.setOnOpenChange(onOpenChange);
   });
 
-  // Handle controlled mode synchronization
   $effect(() => {
-    if (open !== undefined) {
-      context.isOpen = open;
+    if (!didInitializeOpen) {
+      context.syncOpen(open !== undefined ? open : defaultOpen);
+      didInitializeOpen = true;
+    } else if (open !== undefined) {
+      context.syncOpen(open);
     }
   });
 
@@ -40,7 +43,7 @@
 </script>
 
 <Collapsible open={context.isOpen} onOpenChange={context.setIsOpen}>
-  <div class={cn('not-prose max-w-prose space-y-4', className)} {...restProps}>
+  <div class={cn('not-prose max-w-prose space-y-2', className)} {...restProps}>
     {@render children()}
   </div>
 </Collapsible>

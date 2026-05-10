@@ -1,6 +1,6 @@
 /**
  * Shared Document Markdown Store (Svelte 5 runes)
- * Allows the chat (markdownWrite tool) to update the Document panel content.
+ * Allows workspace Markdown edits to update the Document panel content.
  * The DocumentPanel subscribes to this store and reflects changes in real-time.
  */
 

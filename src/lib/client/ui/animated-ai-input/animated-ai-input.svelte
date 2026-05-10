@@ -19,7 +19,9 @@
   let {
     class: className,
     placeholder = 'What can I do for you?',
-    onSubmit = () => {}
+    onSubmit = () => {
+      /* optional callback */
+    }
   }: Props = $props();
 
   const models: ModelOption[] = [
@@ -37,10 +39,10 @@
   function adjustHeight(reset = false) {
     if (!textarea) return;
 
-    textarea.style.height = '72px';
+    textarea.style.height = '64px';
     if (reset) return;
 
-    const nextHeight = Math.max(72, Math.min(textarea.scrollHeight, 300));
+    const nextHeight = Math.max(64, Math.min(textarea.scrollHeight, 300));
     textarea.style.height = `${nextHeight}px`;
   }
 
@@ -104,68 +106,62 @@
 {/snippet}
 
 <div class={cn('animated-ai-input w-full max-w-3xl', className)}>
-  <div class="rounded-2xl bg-black/5 p-2">
-    <div class="relative flex flex-col">
+  <div
+    class="overflow-hidden rounded-2xl border border-border/50 text-foreground transition-[border-color] duration-150 focus-within:border-foreground/30"
+    style="background-color: var(--chat-input-bg);">
+    <div class="flex flex-col">
       <Textarea
         bind:ref={textarea}
         bind:value
         id="homepage-ai-input"
         aria-label="Describe your diagram"
         {placeholder}
-        class="min-h-[72px] resize-none rounded-xl rounded-b-none border-none bg-black/5 px-4 py-3 text-[13px] text-neutral-950 shadow-none placeholder:text-black/60 focus-visible:ring-0 dark:bg-white/5 dark:text-white dark:placeholder:text-white/70"
+        class="block min-h-16 w-full resize-none rounded-none border-none bg-transparent px-3 pt-3 pb-1 text-[16px] leading-[1.45] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/45 focus-visible:ring-0 sm:text-[13px] dark:bg-transparent"
         style="max-height: 300px;"
         oninput={() => adjustHeight()}
         onkeydown={handleKeydown} />
 
-      <div class="h-14 rounded-b-xl bg-black/5">
-        <div class="absolute right-3 bottom-3 left-3 flex items-center justify-between gap-3">
-          <div class="flex min-w-0 items-center gap-2">
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger
-                class="flex h-8 max-w-[190px] items-center gap-1 rounded-md px-2 text-[13px] font-semibold text-neutral-900 transition hover:bg-black/10 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none dark:text-white dark:hover:bg-white/10"
-                aria-label="Select model">
-                {@render ModelIcon(selectedModel)}
-                <span class="truncate">{selectedModel.label}</span>
-                <ChevronDown class="size-3 opacity-50" />
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content align="start" class="min-w-48 border-black/10">
-                {#each models as model (model.label)}
-                  <DropdownMenu.Item onclick={() => (selectedModel = model)}>
-                    {@render ModelIcon(model)}
-                    <span>{model.label}</span>
-                    {#if selectedModel.label === model.label}
-                      <Check class="ml-auto size-4 text-primary" />
-                    {/if}
-                  </DropdownMenu.Item>
-                {/each}
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
+      <div class="flex items-center justify-between gap-2 px-2 pt-0 pb-2">
+        <div class="flex min-w-0 items-center gap-2">
+          <label
+            class="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 focus-within:ring-1 focus-within:ring-ring hover:bg-foreground/10 hover:text-foreground"
+            aria-label="Attach file">
+            <input type="file" class="sr-only" />
+            <Paperclip class="size-3.5" />
+          </label>
 
-            <div class="h-4 w-px bg-black/10 dark:bg-white/10"></div>
-
-            <label
-              class="flex size-8 cursor-pointer items-center justify-center rounded-lg bg-black/5 text-black/45 transition focus-within:ring-1 focus-within:ring-ring hover:bg-black/10 hover:text-black dark:bg-white/5 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white"
-              aria-label="Attach file">
-              <input type="file" class="sr-only" />
-              <Paperclip class="size-4" />
-            </label>
-          </div>
-
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            class="rounded-lg bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
-            aria-label="Send message"
-            disabled={!value.trim()}
-            onclick={submitMessage}>
-            <ArrowRight
-              class={cn(
-                'size-4 transition-opacity',
-                value.trim() ? 'opacity-100' : 'opacity-30'
-              )} />
-          </Button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger
+              class="flex h-7 max-w-[200px] cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] font-medium text-muted-foreground outline-offset-2 transition-[background-color,color] duration-150 ease-out hover:bg-foreground/10 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70"
+              aria-label="Select model">
+              {@render ModelIcon(selectedModel)}
+              <span class="truncate">{selectedModel.label}</span>
+              <ChevronDown class="size-3 shrink-0 opacity-50" />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="start" class="min-w-48">
+              {#each models as model (model.label)}
+                <DropdownMenu.Item onclick={() => (selectedModel = model)}>
+                  {@render ModelIcon(model)}
+                  <span>{model.label}</span>
+                  {#if selectedModel.label === model.label}
+                    <Check class="ml-auto size-4 text-primary" />
+                  {/if}
+                </DropdownMenu.Item>
+              {/each}
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
         </div>
+
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          class="size-8 rounded-full bg-foreground text-background transition-transform duration-150 hover:scale-105 hover:bg-foreground active:scale-95 disabled:opacity-40 disabled:hover:scale-100"
+          aria-label="Send message"
+          disabled={!value.trim()}
+          onclick={submitMessage}>
+          <ArrowRight class="size-4" />
+        </Button>
       </div>
     </div>
   </div>

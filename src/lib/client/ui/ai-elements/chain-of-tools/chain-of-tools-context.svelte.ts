@@ -25,6 +25,14 @@ export class ChainOfToolsContext {
     this.#onOpenChange?.(value);
   }
 
+  syncOpen(value: boolean) {
+    this.#isOpen = value;
+  }
+
+  setOnOpenChange(onOpenChange: ((open: boolean) => void) | undefined) {
+    this.#onOpenChange = onOpenChange;
+  }
+
   setIsOpen = (open: boolean) => {
     this.isOpen = open;
   };

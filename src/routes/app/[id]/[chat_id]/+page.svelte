@@ -44,6 +44,7 @@
     Loader2 as Loader2Spin,
     Maximize2,
     Network,
+    RefreshCw,
     Scan,
     Workflow,
     ZoomIn,
@@ -58,12 +59,6 @@
 
   const panZoomState = new PanZoomState();
 
-  // Workspace loading from route param. The full-page splash now only gates
-  // on auth (workspace + chat hydrate in the background from cache), but we
-  // still toggle this flag on the very first load so external callers /
-  // tests can observe loading state if needed.
-  let wsLoading = $state(true);
-  void wsLoading;
   let wsError = $state<string | null>(null);
 
   let width = $state(0);
@@ -276,7 +271,6 @@
       pendingChatLoadId = chatId;
     }
 
-    if (isInitialChatLoad) wsLoading = true;
     wsError = '';
     try {
       let workspaceId: string | undefined;
@@ -341,7 +335,6 @@
       wsError = 'Failed to load chat';
     } finally {
       if (!isStale()) {
-        wsLoading = false;
         isInitialChatLoad = false;
       }
     }
@@ -357,7 +350,7 @@
     // reliable signal that the user might be picking up where another session
     // left off — refresh the tree so newly-created files from other tabs or
     // recent agent runs show up immediately.
-    void filesStore.fetchAll();
+    void filesStore.refreshAll();
   });
 
   // Drains the pending chat-load the moment the Chat component mounts.
@@ -480,7 +473,7 @@
       // and can populate in parallel.
       const initP = initHandler();
       const convosP = authStore.hasSession ? conversationsStore.fetch() : Promise.resolve();
-      const filesP = filesStore.fetchAll();
+      const filesP = filesStore.fetchAllVisible();
       await Promise.allSettled([initP, convosP, filesP]);
       window.addEventListener('appinstalled', () => logEvent('pwaInstalled', { isMobile }));
     };
@@ -540,6 +533,10 @@
       authStore.login();
     };
     window.addEventListener('open-auth-modal', handleOpenAuthModal);
+    const handleOpenSettingsModal = () => {
+      isSettingsModalOpen = true;
+    };
+    window.addEventListener('open-settings-modal', handleOpenSettingsModal);
 
     // Workspace-based: no need to auto-create files; workspace is loaded by /workspace/[id]
 
@@ -612,6 +609,7 @@
       window.removeEventListener('selection-cleared', handleSelectionCleared as EventListener);
       window.removeEventListener('conversation-created', handleConversationCreated);
       window.removeEventListener('open-auth-modal', handleOpenAuthModal);
+      window.removeEventListener('open-settings-modal', handleOpenSettingsModal);
     };
   });
 
@@ -903,6 +901,16 @@
   });
 </script>
 
+<svelte:head>
+  <style>
+    html,
+    body {
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+  </style>
+</svelte:head>
+
 {#if !authStore.isInitialized || authStore.isLoading}
   <!--
     Splash is reserved for the auth handshake only. Workspace and chat data
@@ -918,24 +926,79 @@
     </div>
   </div>
 {:else if wsError}
-  <div class="flex h-screen items-center justify-center bg-background">
-    <div class="text-center">
-      <div
-        class="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/10">
-        <AlertCircle class="size-6 text-destructive" />
-      </div>
-      <h2 class="text-[16px] font-semibold text-foreground">Couldn't load workspace</h2>
-      <p class="mt-2 max-w-xs text-[13px] text-muted-foreground/70">{wsError}</p>
-      <button
-        class="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground transition-all hover:bg-primary/90"
-        onclick={() => goto(resolve('/app'))}>
-        <ArrowLeft class="size-3.5" />
-        Back to App
-      </button>
+  <div
+    class="relative flex h-screen items-center justify-center overflow-hidden bg-background px-4">
+    <div
+      class="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [background-size:48px_48px] opacity-[0.16]"
+      aria-hidden="true">
     </div>
+    <section
+      class="relative w-full max-w-[560px] overflow-hidden rounded-md border border-border bg-card text-left"
+      aria-labelledby="workspace-error-title">
+      <div class="flex h-11 items-center justify-between border-b border-border px-4">
+        <div class="flex min-w-0 items-center gap-2">
+          <img
+            src={resolve('/brand/logo.png')}
+            alt=""
+            width="28"
+            height="28"
+            class="size-7 rounded-md"
+            loading="eager" />
+          <span class="truncate text-[13px] font-medium text-foreground" translate="no">
+            Graphini
+          </span>
+        </div>
+        <span class="text-[12px] text-muted-foreground">Workspace Access</span>
+      </div>
+
+      <div class="grid gap-5 p-5 sm:grid-cols-[44px_1fr] sm:p-6">
+        <div
+          class="flex size-11 items-center justify-center rounded-md border border-destructive/25 bg-destructive/10">
+          <AlertCircle class="size-5 text-destructive" aria-hidden="true" />
+        </div>
+
+        <div class="min-w-0">
+          <p class="mb-2 text-[12px] font-medium text-destructive">Conversation unavailable</p>
+          <h2
+            id="workspace-error-title"
+            class="text-[22px] leading-[1.2] font-semibold text-balance text-foreground">
+            This workspace link can’t be opened
+          </h2>
+          <p class="mt-3 max-w-[38rem] text-[13px] leading-5 text-pretty text-muted-foreground">
+            {wsError === 'Chat not found'
+              ? 'The conversation may have been deleted, moved to another account, or opened from an expired share.'
+              : wsError}
+          </p>
+
+          <div class="mt-5 rounded-md border border-border bg-background/60 px-3 py-2">
+            <div class="flex min-w-0 items-center justify-between gap-3">
+              <span class="truncate text-[13px] text-muted-foreground">Requested chat</span>
+              <code class="truncate font-mono text-[12px] text-foreground"
+                >{$page.params.chat_id}</code>
+            </div>
+          </div>
+
+          <div class="mt-5 flex flex-col gap-2 sm:flex-row">
+            <Button
+              class="h-8 gap-2 rounded-md px-3 text-[13px]"
+              onclick={() => goto(resolve('/app'))}>
+              <ArrowLeft class="size-3.5" aria-hidden="true" />
+              Back to App
+            </Button>
+            <Button
+              variant="outline"
+              class="h-8 gap-2 rounded-md px-3 text-[13px]"
+              onclick={() => window.location.reload()}>
+              <RefreshCw class="size-3.5" aria-hidden="true" />
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 {:else if authStore.hasSession}
-  <div class="h-screen overflow-hidden bg-background" bind:clientWidth={width}>
+  <div class="fixed inset-0 overflow-hidden bg-background" bind:clientWidth={width}>
     <AppShell>
       {#snippet sidebar()}
         <AppSidebar
@@ -973,7 +1036,12 @@
                         class="flex max-w-[40%] min-w-0 shrink items-center gap-2"
                         title={activeFile ? activeFileName : 'Canvas'}>
                         {#if activeFile && activeFileIcon}
-                          <img src={activeFileIcon} alt="" class="size-4 shrink-0" />
+                          <img
+                            src={activeFileIcon}
+                            alt=""
+                            class="size-4 shrink-0 {activeFile.kind === 'mermaid'
+                              ? 'invert dark:invert-0'
+                              : ''}" />
                           <span class="truncate text-[13px] font-semibold text-foreground">
                             {activeFileName}
                           </span>
@@ -1170,7 +1238,12 @@
                         <SidebarTrigger class="-ml-1" />
                       {/if}
                       {#if activeFile && activeFileIcon}
-                        <img src={activeFileIcon} alt="" class="size-4 shrink-0" />
+                        <img
+                          src={activeFileIcon}
+                          alt=""
+                          class="size-4 shrink-0 {activeFile.kind === 'mermaid'
+                            ? 'invert dark:invert-0'
+                            : ''}" />
                         <span class="truncate text-[13px] font-semibold text-foreground">
                           {activeFileName}
                         </span>

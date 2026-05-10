@@ -55,6 +55,7 @@
   let element: HTMLDivElement;
 
   const interactive = $derived(toggleable && Boolean(children));
+  const isActive = $derived(status === 'active');
 
   const statusStyles = {
     complete: 'text-muted-foreground',
@@ -87,53 +88,91 @@
     if (target?.closest("a, button, input, textarea, select, [role='button']")) return;
     open = !open;
   }
-
-  function onRowKey(e: KeyboardEvent) {
-    if (!interactive) return;
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      open = !open;
-    }
-  }
 </script>
 
 <div
   bind:this={element}
   data-chain-step
-  role={interactive ? 'button' : undefined}
-  tabindex={interactive ? 0 : undefined}
-  aria-expanded={interactive ? open : undefined}
-  onclick={interactive ? onRowClick : undefined}
-  onkeydown={interactive ? onRowKey : undefined}
   class={cn(
-    'flex gap-2 text-sm transition-all duration-500 ease-out',
+    'text-sm transition-all duration-500 ease-out',
     statusStyles[status],
     isVisible ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
-    interactive && '-mx-1 cursor-pointer rounded px-1 transition-colors hover:bg-muted/30',
+    isActive && 'tool-active-shimmer',
     className
   )}
   {...restProps}>
-  <div class="relative mt-0.5">
-    <Icon class="size-3.5" />
-    <!-- Vertical connector to the next step. Hidden on the last step via the
-		:last-of-type rule below so the line doesn't dangle past the chain. -->
-    <div class="connector absolute top-5 -bottom-2 left-1/2 -mx-px w-px bg-muted-foreground/50">
-    </div>
-  </div>
-  <div class="min-w-0 flex-1 space-y-2">
-    <div class="flex w-full items-baseline gap-2">
-      <span class={cn('font-medium text-foreground/75', status === 'active' && 'thinking-shimmer')}>
-        {label}
-      </span>
-      {#if description}
-        <span class="min-w-0 flex-1 truncate text-[12px] text-muted-foreground/60"
-          >{description}</span>
-      {/if}
-    </div>
-    {#if children && (!toggleable || open)}
-      {@render children()}
+  {#if interactive}
+    <button
+      type="button"
+      aria-expanded={open}
+      onclick={onRowClick}
+      class={cn(
+        '-mx-1 flex w-full cursor-pointer gap-2 rounded px-1 text-left transition-colors hover:bg-muted/30',
+        statusStyles[status]
+      )}>
+      <div class="relative mt-0.5">
+        <span
+          class={cn(
+            'flex size-3.5 items-center justify-center',
+            isActive && 'tool-active-icon-shimmer'
+          )}>
+          <Icon class="size-3.5" />
+        </span>
+        <div class="connector absolute top-5 -bottom-2 left-1/2 -mx-px w-px bg-muted-foreground/50">
+        </div>
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="flex w-full items-baseline gap-2">
+          <span
+            class={cn('font-medium text-foreground/75', status === 'active' && 'thinking-shimmer')}>
+            {label}
+          </span>
+          {#if description}
+            <span class="min-w-0 flex-1 truncate text-[12px] text-muted-foreground/60">
+              {description}
+            </span>
+          {/if}
+        </div>
+      </div>
+    </button>
+    {#if children && open}
+      <div class="mt-2 ml-5 space-y-2">
+        {@render children()}
+      </div>
     {/if}
-  </div>
+  {:else}
+    <div class="flex gap-2">
+      <div class="relative mt-0.5">
+        <span
+          class={cn(
+            'flex size-3.5 items-center justify-center',
+            isActive && 'tool-active-icon-shimmer'
+          )}>
+          <Icon class="size-3.5" />
+        </span>
+        <!-- Vertical connector to the next step. Hidden on the last step via the
+          :last-of-type rule below so the line doesn't dangle past the chain. -->
+        <div class="connector absolute top-5 -bottom-2 left-1/2 -mx-px w-px bg-muted-foreground/50">
+        </div>
+      </div>
+      <div class="min-w-0 flex-1 space-y-2">
+        <div class="flex w-full items-baseline gap-2">
+          <span
+            class={cn('font-medium text-foreground/75', status === 'active' && 'thinking-shimmer')}>
+            {label}
+          </span>
+          {#if description}
+            <span class="min-w-0 flex-1 truncate text-[12px] text-muted-foreground/60">
+              {description}
+            </span>
+          {/if}
+        </div>
+        {#if children}
+          {@render children()}
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>

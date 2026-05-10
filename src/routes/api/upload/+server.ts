@@ -1,86 +1,132 @@
-import { storeFile } from '$lib/server/file-store';
-import { extractProviderKeys } from '$lib/server/auth/provider-keys';
 import { validateSessionOrGuest } from '$lib/server/auth';
+import { getDb } from '$lib/server/db';
+import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { workspaceFiles } from '$lib/server/db/schema';
 import { getClientKey, rateLimitResponse, uploadLimiter } from '$lib/server/rate-limit';
+import { validateContentForKind } from '$lib/server/workspace-content-validation';
+import { PATH_RE } from '$lib/server/workspace-paths';
 import { error, json } from '@sveltejs/kit';
+import { eq, sql } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 
 /**
- * File upload endpoint - processes all files server-side.
- * Images are analyzed via a vision model only when the selected chat model allows images.
- * Documents (txt, md) have their text extracted server-side.
- * PDFs are parsed with pdf-parse for full text extraction.
- * All files are stored in the server-side file store for agent access.
+ * Upload endpoint.
  *
- * Accepts multipart/form-data with 'file' field and optional 'sessionId' field.
- * Returns: { url: string|null, mediaType: string, filename: string, type: string, extractedText?: string, fileId?: string }
+ * Uploads are no longer a temporary chat attachment store. Supported source
+ * files are converted into Markdown and inserted into the user's workspace
+ * file tree as `uploads/<name>.md`, so the normal `fileSystem` tool can read,
+ * patch, move, and delete them.
  */
 
-async function describeImageWithVision(
-  apiKey: string,
-  base64DataUrl: string,
+const GUEST_MAX_FILE_SIZE = 2 * 1024 * 1024;
+const USER_MAX_FILE_SIZE = 10 * 1024 * 1024;
+const INLINE_UPLOAD_TOKEN_LIMIT = 50_000;
+const GUEST_QUOTA = 15;
+const USER_QUOTA = 30;
+const UPLOAD_FOLDER = 'uploads';
+
+const drizzleDb = () => (getDb() as NeonAdapter).db;
+
+function quotaFor(user: { is_guest?: boolean | null }): number {
+  return user.is_guest ? GUEST_QUOTA : USER_QUOTA;
+}
+
+function maxFileSizeFor(user: { is_guest?: boolean | null }): number {
+  return user.is_guest ? GUEST_MAX_FILE_SIZE : USER_MAX_FILE_SIZE;
+}
+
+function formatMegabytes(bytes: number): string {
+  return `${Math.floor(bytes / 1024 / 1024)}MB`;
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function stripExtension(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '');
+}
+
+function sanitizePathSegment(value: string): string {
+  const normalized = value
+    .normalize('NFKD')
+    .replace(/[^\w.\- ]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^[ ._-]+|[ ._-]+$/g, '')
+    .slice(0, 80);
+  return normalized || 'upload';
+}
+
+function markdownTitle(filename: string): string {
+  return stripExtension(filename).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeText(text: string): string {
+  return text.replace(/\r\n?/g, '\n').trim();
+}
+
+function textToMarkdown(text: string, filename: string, sourceLabel: string): string {
+  const title = markdownTitle(filename) || 'Uploaded file';
+  const body = normalizeText(text);
+  return [
+    `# ${title}`,
+    '',
+    `> Imported from ${sourceLabel}.`,
+    '',
+    body || '_No extractable text was found._',
+    ''
+  ].join('\n');
+}
+
+async function pdfToMarkdown(
+  buffer: Buffer,
+  filename: string
+): Promise<{ markdown: string; pageCount: number }> {
+  const { PDFParse } = await import('pdf-parse');
+  const parser = new PDFParse(new Uint8Array(buffer));
+  const pdf = await parser.getText();
+  const pageCount = pdf.pages?.length ?? 0;
+  const markdown = textToMarkdown(
+    pdf.text ?? '',
+    filename,
+    `PDF${pageCount ? `, ${pageCount} page${pageCount === 1 ? '' : 's'}` : ''}`
+  );
+  return { markdown, pageCount };
+}
+
+async function nextUploadPath(
+  db: ReturnType<typeof drizzleDb>,
+  userId: string,
   filename: string
 ): Promise<string> {
-  if (!apiKey) return `[Image: ${filename} — vision processing unavailable (no API key)]`;
+  const base = sanitizePathSegment(stripExtension(filename));
+  const rows = await db
+    .select({ path: workspaceFiles.path })
+    .from(workspaceFiles)
+    .where(eq(workspaceFiles.user_id, userId));
+  const taken = new Set(rows.map((row) => row.path));
 
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Analyze this image in detail. Describe:
-1. What type of image it is (diagram, screenshot, photo, chart, etc.)
-2. All text visible in the image
-3. The structure and layout
-4. Key elements, relationships, and data shown
-5. If it's a diagram/flowchart, describe the nodes, connections, and flow
-6. If it contains code or technical content, transcribe it
+  const first = `${UPLOAD_FOLDER}/${base}.md`;
+  if (!taken.has(first)) return first;
 
-Be thorough and precise. This description will be used to recreate or reference the image content.`
-              },
-              {
-                type: 'image_url',
-                image_url: { url: base64DataUrl }
-              }
-            ]
-          }
-        ],
-        max_tokens: 2000,
-        temperature: 0.3
-      }),
-      signal: AbortSignal.timeout(30000)
-    });
-
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      console.error(`[upload] Vision API error ${res.status}:`, errBody);
-      return `[Image: ${filename} — could not analyze (API error ${res.status})]`;
-    }
-
-    const data = await res.json();
-    const description = data.choices?.[0]?.message?.content?.trim();
-    if (!description) return `[Image: ${filename} — no description returned]`;
-    return description;
-  } catch (err) {
-    console.error('[upload] Vision processing error:', err);
-    return `[Image: ${filename} — processing failed]`;
+  for (let index = 2; index < 1000; index++) {
+    const candidate = `${UPLOAD_FOLDER}/${base} ${index}.md`;
+    if (!taken.has(candidate)) return candidate;
   }
+
+  return `${UPLOAD_FOLDER}/${base}-${crypto.randomUUID().slice(0, 8)}.md`;
+}
+
+function classifyUpload(filename: string, mediaType: string) {
+  const ext = `.${filename.split('.').pop()?.toLowerCase() ?? ''}`;
+  if (mediaType === 'application/pdf' || ext === '.pdf') return 'pdf';
+  if (mediaType === 'text/markdown' || ext === '.md' || ext === '.markdown') return 'markdown';
+  if (mediaType === 'text/plain' || ext === '.txt') return 'text';
+  return null;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    // Auth + rate limit before reading the body so anonymous floods get
-    // rejected before we pay the multipart parsing / vision-model costs.
     const rl = uploadLimiter.check(getClientKey(request));
     if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
 
@@ -89,150 +135,95 @@ export const POST: RequestHandler = async ({ request }) => {
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-
-    if (!file) {
-      return error(400, 'No file provided');
+    if (!file) return error(400, 'No file provided');
+    const maxFileSize = maxFileSizeFor(user);
+    if (file.size > maxFileSize) {
+      return error(413, `File too large. Max ${formatMegabytes(maxFileSize)} allowed.`);
     }
 
-    // Size limits: 20MB for all files
-    const MAX_FILE_SIZE = 20 * 1024 * 1024;
-
-    if (file.size > MAX_FILE_SIZE) {
-      return error(413, `File too large. Max 20MB allowed.`);
-    }
-
-    const filename = file.name;
+    const filename = file.name || 'attachment';
     const mediaType = file.type || 'application/octet-stream';
-    const isImage = file.type.startsWith('image/');
-    const supportsImages = formData.get('supportsImages') === 'true';
-    const keys = extractProviderKeys(request);
-
-    // For images: analyze with vision model, return text description + thumbnail URL
-    if (isImage) {
-      if (!supportsImages) {
-        return error(415, 'Images are only supported when the selected model allows image input.');
-      }
-
-      const buffer = await file.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
-      const dataUrl = `data:${mediaType};base64,${base64}`;
-
-      // Process image with vision model to get text description.
-      // The vision call uses OpenRouter; if the user hasn't supplied a key,
-      // describeImageWithVision degrades to a placeholder description rather
-      // than failing the upload — text/PDF uploads don't need a key at all.
-      const description = await describeImageWithVision(keys.openrouter, dataUrl, filename);
-
-      // Store image metadata for agent access
-      const sessionId = (formData.get('sessionId') as string) || 'default';
-      const storedFile = storeFile({
-        buffer: Buffer.from(buffer),
-        extractedText: `[Image: ${filename}]\n${description}`,
-        filename,
-        mimeType: mediaType,
-        originalName: filename,
-        sessionId
-      });
-
-      return json({
-        extractedText: `[Image: ${filename}]\n${description}`,
-        fileId: storedFile.id,
-        filename,
-        mediaType,
-        size: file.size,
-        type: 'image',
-        url: dataUrl
-      });
+    const uploadType = classifyUpload(filename, mediaType);
+    if (!uploadType) {
+      return error(415, 'Unsupported file type. Accepted: Markdown, text, and PDF.');
     }
 
-    // For text-based documents: extract text content
-    const textTypes = ['text/plain', 'text/markdown'];
-
-    const textExtensions = ['.txt', '.md', '.markdown'];
-    const ext = '.' + filename.split('.').pop()?.toLowerCase();
-    const isTextFile = textTypes.includes(mediaType) || textExtensions.includes(ext);
-
-    if (isTextFile) {
-      const text = await file.text();
-      const extractedText = text;
-      const sessionId = (formData.get('sessionId') as string) || 'default';
-      const storedFile = storeFile({
-        buffer: Buffer.from(text),
-        extractedText,
-        filename,
-        mimeType: mediaType,
-        originalName: filename,
-        sessionId
-      });
-
-      return json({
-        extractedText,
-        fileId: storedFile.id,
-        filename,
-        mediaType,
-        size: file.size,
-        type: 'document',
-        url: null
-      });
+    const db = drizzleDb();
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(workspaceFiles)
+      .where(eq(workspaceFiles.user_id, user.id));
+    const cap = quotaFor(user);
+    if (count >= cap) {
+      return json(
+        { error: `File quota reached (${count}/${cap}). Delete a file to make room.` },
+        { status: 409 }
+      );
     }
 
-    // For PDF: full text extraction using pdf-parse
-    if (mediaType === 'application/pdf' || ext === '.pdf') {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      let extractedText = '';
-      let pageCount = 0;
-      try {
-        const { PDFParse } = await import('pdf-parse');
-        const pdfParser = new PDFParse(new Uint8Array(buffer));
-        const pdfData = await pdfParser.getText();
-        extractedText = pdfData.text || '';
-        pageCount = pdfData.pages?.length || 0;
-        // Truncate very large PDFs to avoid context overflow (keep first ~50k chars)
-        if (extractedText.length > 50000) {
-          extractedText =
-            extractedText.slice(0, 50000) +
-            `\n\n[... truncated, ${extractedText.length - 50000} more characters. Use fileManager tool to read specific sections.]`;
+    let markdown = '';
+    let pageCount = 0;
+    if (uploadType === 'pdf') {
+      const converted = await pdfToMarkdown(Buffer.from(await file.arrayBuffer()), filename).catch(
+        (pdfErr) => {
+          console.error('[upload] PDF conversion failed:', pdfErr);
+          return null;
         }
-      } catch (pdfErr) {
-        console.error('[upload] PDF parse error:', pdfErr);
-        extractedText = `[PDF document: ${filename} — text extraction failed. The file has been stored and can be accessed via the fileManager tool.]`;
+      );
+      if (!converted) {
+        return json({ error: 'Could not extract text from this PDF.' }, { status: 422 });
       }
+      markdown = converted.markdown;
+      pageCount = converted.pageCount;
+    } else if (uploadType === 'markdown') {
+      markdown = normalizeText(await file.text());
+      if (!markdown) markdown = textToMarkdown('', filename, 'Markdown file');
+    } else {
+      markdown = textToMarkdown(await file.text(), filename, 'plain text file');
+    }
 
-      // Store file for agent access
-      const sessionId = (formData.get('sessionId') as string) || 'default';
-      const storedFile = storeFile({
-        buffer,
-        extractedText: extractedText || `[PDF: ${filename}]`,
-        filename,
-        mimeType: mediaType,
-        originalName: filename,
-        sessionId
-      });
+    const path = await nextUploadPath(db, user.id, filename);
+    if (!PATH_RE.test(path)) return error(400, 'Generated upload path was invalid.');
+    const validation = validateContentForKind('md', markdown);
+    if (!validation.ok) {
+      return json({ error: validation.error, hint: validation.hint }, { status: 400 });
+    }
 
-      const summary =
-        pageCount > 0
-          ? `[PDF: ${filename}, ${pageCount} pages, ${(file.size / 1024).toFixed(1)}KB]`
-          : `[PDF: ${filename}, ${(file.size / 1024).toFixed(1)}KB]`;
+    const [inserted] = await db
+      .insert(workspaceFiles)
+      .values({ content: markdown, kind: 'md', path, user_id: user.id })
+      .returning();
+    const tokenEstimate = estimateTokens(markdown);
+    const shouldInlineContent = tokenEstimate <= INLINE_UPLOAD_TOKEN_LIMIT;
 
-      return json({
-        extractedText: extractedText ? `${summary}\n\n${extractedText}` : summary,
-        fileId: storedFile.id,
+    const workspaceFile = {
+      content: shouldInlineContent ? inserted.content : '',
+      created_at: inserted.created_at.toISOString(),
+      id: inserted.id,
+      kind: inserted.kind,
+      path: inserted.path,
+      updated_at: inserted.updated_at.toISOString()
+    };
+
+    return json(
+      {
+        fileId: inserted.id,
         filename,
         mediaType,
         pageCount,
+        shouldInlineContent,
         size: file.size,
-        type: 'pdf',
-        url: null
-      });
-    }
-
-    // Unsupported file type - reject with error
-    return error(
-      415,
-      `Unsupported file type: ${ext || mediaType}. Accepted: Markdown, text, PDF${supportsImages ? ', and images' : ''}.`
+        tokenEstimate,
+        type: uploadType,
+        url: null,
+        workspaceFile,
+        workspaceFileId: inserted.id,
+        workspacePath: inserted.path
+      },
+      { status: 201 }
     );
   } catch (err) {
     console.error('Upload error:', err);
-    return error(500, 'Failed to process file');
+    return error(500, err instanceof Error ? err.message : 'Failed to process file');
   }
 };

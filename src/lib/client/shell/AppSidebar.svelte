@@ -24,7 +24,6 @@
   import FileTree from './FileTree.svelte';
   import type { EditingToken } from './fileTreeEditing';
   import { onMount } from 'svelte';
-  import { toast } from 'svelte-sonner';
 
   const sidebar = useSidebar();
   const isIconCollapsed = $derived(sidebar.state === 'collapsed' && !sidebar.isMobile);
@@ -61,6 +60,12 @@
   // === 'newFile' inside folders).
   let creatingRoot = $state<string | null>(null); // initial filename or null
   let rootInputEl = $state<HTMLInputElement | null>(null);
+  let fileNotice = $state<{
+    action?: { label: string; onClick: () => void | Promise<void> };
+    kind: 'error' | 'success';
+    text: string;
+  } | null>(null);
+  let fileNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
     if (creatingRoot !== null && rootInputEl) {
@@ -74,13 +79,26 @@
 
   const fileTree = $derived(buildFileTree(filesStore.list));
 
+  function showFileNotice(
+    text: string,
+    kind: 'error' | 'success' = 'error',
+    action?: { label: string; onClick: () => void | Promise<void> }
+  ) {
+    if (fileNoticeTimer) clearTimeout(fileNoticeTimer);
+    fileNotice = { action, kind, text };
+    fileNoticeTimer = setTimeout(() => {
+      fileNotice = null;
+      fileNoticeTimer = null;
+    }, 3000);
+  }
+
   onMount(() => {
     // Lazy-load files when the user first switches to Files mode.
   });
 
   $effect(() => {
     if (mode === 'files' && filesStore.list.length === 0 && !filesStore.loading) {
-      filesStore.fetchAll();
+      filesStore.fetchAllVisible();
     }
   });
 
@@ -99,7 +117,7 @@
 
   function startNewFileAtRoot() {
     if (filesStore.quota.used >= filesStore.quota.total) {
-      toast.error(
+      showFileNotice(
         `File quota reached (${filesStore.quota.used}/${filesStore.quota.total}). Delete a file to make room.`
       );
       return;
@@ -119,7 +137,7 @@
     editing = null;
     const result = await filesStore.create(path, '');
     if ('error' in result) {
-      toast.error(result.error);
+      showFileNotice(result.error);
       return;
     }
     expandAllAncestors(result.path);
@@ -147,7 +165,7 @@
 
   function startNewFileInFolder(folderPath: string) {
     if (filesStore.quota.used >= filesStore.quota.total) {
-      toast.error(
+      showFileNotice(
         `File quota reached (${filesStore.quota.used}/${filesStore.quota.total}). Delete a file to make room.`
       );
       return;
@@ -163,7 +181,7 @@
     const newPath = parts.length ? `${parts.join('/')}/${newName}` : newName;
     if (newPath === file.path) return;
     const result = await filesStore.update(file.id, { path: newPath });
-    if ('error' in result) toast.error(result.error);
+    if ('error' in result) showFileNotice(result.error);
   }
 
   async function commitRenameFolder(folderPath: string, newName: string) {
@@ -173,26 +191,23 @@
     const newFolder = parts.length ? `${parts.join('/')}/${newName}` : newName;
     if (newFolder === folderPath) return;
     const result = await filesStore.moveFolder(folderPath, newFolder);
-    if (result.error) toast.error(result.error);
+    if (result.error) showFileNotice(result.error);
   }
 
   async function handleDeleteFile(file: WorkspaceFile) {
-    // Optimistic delete with 5s undo. The store's `remove` is hard delete;
+    // Optimistic delete with undo. The store's `remove` is hard delete;
     // for undo we restore by re-creating with the same path/content.
     const snapshot = { path: file.path, content: file.content };
     const ok = await filesStore.remove(file.id);
     if (!ok) {
-      toast.error(`Failed to delete ${file.path}`);
+      showFileNotice(`Failed to delete ${file.path}`);
       return;
     }
-    toast(`Deleted ${file.path}`, {
-      duration: 5000,
-      action: {
-        label: 'Undo',
-        onClick: async () => {
-          const r = await filesStore.create(snapshot.path, snapshot.content);
-          if ('error' in r) toast.error(r.error);
-        }
+    showFileNotice(`Deleted ${file.path}`, 'success', {
+      label: 'Undo',
+      onClick: async () => {
+        const r = await filesStore.create(snapshot.path, snapshot.content);
+        if ('error' in r) showFileNotice(r.error);
       }
     });
   }
@@ -206,28 +221,25 @@
     if (snapshot.length === 0) return;
     const result = await filesStore.deleteFolder(path);
     if (result.error) {
-      toast.error(result.error);
+      showFileNotice(result.error);
       return;
     }
-    toast(`Deleted folder ${path} (${result.deleted} files)`, {
-      duration: 5000,
-      action: {
-        label: 'Undo',
-        onClick: async () => {
-          for (const f of snapshot) {
-            const r = await filesStore.create(f.path, f.content);
-            if ('error' in r) {
-              toast.error(`Failed to restore ${f.path}: ${r.error}`);
-              break;
-            }
+    showFileNotice(`Deleted folder ${path} (${result.deleted} files)`, 'success', {
+      label: 'Undo',
+      onClick: async () => {
+        for (const f of snapshot) {
+          const r = await filesStore.create(f.path, f.content);
+          if ('error' in r) {
+            showFileNotice(`Failed to restore ${f.path}: ${r.error}`);
+            break;
           }
         }
       }
     });
   }
 
-  // Active-file-aware panel buttons. With no file selected (scratch mode),
-  // only the Chat button shows. Markdown files swap Canvas for Document.
+  // Active-file-aware viewer buttons. Keep the switcher stable in scratch
+  // mode, then swap Canvas for Document only when a markdown file is active.
   const activeMode = $derived<null | 'mermaid' | 'json' | 'yaml' | 'md'>(
     filesStore.activeFile?.kind ?? null
   );
@@ -241,7 +253,6 @@
     icon: typeof Layers;
   }
   const viewerButtons = $derived.by((): ViewerOption[] => {
-    if (activeMode === null) return [];
     const opts: ViewerOption[] = [];
     if (activeMode === 'md') {
       opts.push({ id: 'document', label: 'Document', icon: FileText });
@@ -267,13 +278,19 @@
       ? authStore.user.display_name
       : 'Guest'
   );
+
+  function conversationPreview(title: string | null | undefined): string {
+    const text = title?.trim();
+    if (!text) return 'Untitled chat';
+    return text.length > 42 ? `${text.slice(0, 42).trim()}…` : text;
+  }
 </script>
 
 <Sidebar.Root collapsible="icon" variant="sidebar">
   <Sidebar.Header class="gap-0 border-b border-sidebar-border p-0">
     <div
       class="flex h-9 items-center gap-2 px-3 text-[13px] font-semibold tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-      <img src="/brand/logo.png" alt="" class="size-5 shrink-0" />
+      <img src="/brand/logo.png" alt="" class="size-4 shrink-0" />
       <span class="truncate group-data-[collapsible=icon]:hidden">Graphini</span>
     </div>
   </Sidebar.Header>
@@ -283,14 +300,14 @@
     <Sidebar.Group class="group-data-[collapsible=icon]:hidden">
       <Sidebar.GroupContent>
         <div
-          class="grid grid-cols-2 gap-1 rounded-md bg-sidebar-accent/40 p-0.5 text-[13px]"
+          class="grid grid-cols-2 gap-1 rounded-lg border border-sidebar-border/70 bg-sidebar-accent/15 p-1 text-[13px]"
           role="tablist"
           aria-label="Sidebar mode">
           <button
             type="button"
             role="tab"
             aria-selected={mode === 'chats'}
-            class="flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded text-foreground text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground aria-selected:bg-sidebar aria-selected:font-medium aria-selected:shadow-sm"
+            class="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62 transition-[background-color,color] hover:bg-sidebar-accent/30 hover:text-sidebar-foreground aria-selected:bg-sidebar-accent/60 aria-selected:font-medium aria-selected:text-sidebar-foreground"
             onclick={() => (mode = 'chats')}>
             <MessageSquare class="size-3.5" />
             <span>Chats</span>
@@ -299,7 +316,7 @@
             type="button"
             role="tab"
             aria-selected={mode === 'files'}
-            class="flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded text-foreground text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground aria-selected:bg-sidebar aria-selected:font-medium aria-selected:shadow-sm"
+            class="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62 transition-[background-color,color] hover:bg-sidebar-accent/30 hover:text-sidebar-foreground aria-selected:bg-sidebar-accent/60 aria-selected:font-medium aria-selected:text-sidebar-foreground"
             onclick={() => (mode = 'files')}>
             <FolderTree class="size-3.5" />
             <span>Files</span>
@@ -309,15 +326,18 @@
     </Sidebar.Group>
 
     {#if mode === 'chats'}
-      <!-- New chat -->
       <Sidebar.Group>
         <Sidebar.GroupContent>
           <Sidebar.Menu>
             <Sidebar.MenuItem>
-              <Sidebar.MenuButton tooltipContent="New chat" onclick={() => onNewChat()}>
-                <Plus />
-                <span>New chat</span>
-              </Sidebar.MenuButton>
+              <button
+                type="button"
+                class="flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg border border-sidebar-border/70 bg-sidebar px-3 text-left text-[13px] text-sidebar-foreground transition-[background-color,border-color,box-shadow,color,transform] duration-150 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:border-sidebar-border/60 group-data-[collapsible=icon]:bg-sidebar-accent/18 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:text-sidebar-foreground/78 hover:border-sidebar-foreground/18 hover:bg-sidebar-accent/28 group-data-[collapsible=icon]:hover:border-sidebar-foreground/20 group-data-[collapsible=icon]:hover:bg-sidebar-accent/45 group-data-[collapsible=icon]:hover:text-sidebar-foreground group-data-[collapsible=icon]:hover:shadow-[0_0_0_1px_hsl(var(--sidebar-foreground)/0.04)] group-data-[collapsible=icon]:active:scale-95"
+                onclick={() => onNewChat()}>
+                <Plus
+                  class="size-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:size-4 group-data-[collapsible=icon]:text-current" />
+                <span class="truncate group-data-[collapsible=icon]:hidden">New chat</span>
+              </button>
             </Sidebar.MenuItem>
           </Sidebar.Menu>
         </Sidebar.GroupContent>
@@ -337,20 +357,22 @@
               {#each conversationsStore.list as conv (conv.id)}
                 {@const isActive = conv.id === conversationsStore.activeId}
                 <Sidebar.MenuItem>
-                  <Sidebar.MenuButton
-                    {isActive}
-                    size="sm"
+                  <button
+                    type="button"
+                    data-active={isActive}
+                    class="peer/sidebar-row relative flex h-8 w-full cursor-pointer items-center rounded-md px-3 pr-9 text-left text-[13px] text-sidebar-foreground/72 transition-[background-color,color] before:absolute before:top-1.5 before:bottom-1.5 before:left-1 before:w-px before:rounded-full before:bg-transparent hover:bg-sidebar-accent/20 hover:text-sidebar-foreground data-[active=true]:bg-sidebar-accent/42 data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground data-[active=true]:before:bg-sidebar-foreground/75"
                     onclick={() => onSelectConversation(conv.id)}
                     onmouseenter={() => onPrefetchConversation?.(conv.id)}
                     onfocus={() => onPrefetchConversation?.(conv.id)}>
-                    <span class="truncate">{conv.title || 'Untitled chat'}</span>
-                  </Sidebar.MenuButton>
-                  <Sidebar.MenuAction
-                    showOnHover
+                    <span class="truncate">{conversationPreview(conv.title)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="absolute top-1 right-1 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground/65 opacity-0 transition-[background-color,color,opacity] group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-[active=true]/sidebar-row:opacity-100 hover:bg-sidebar-accent/45 hover:text-sidebar-foreground"
                     onclick={() => onDeleteConversation(conv.id)}
                     aria-label="Delete chat">
-                    <Trash2 />
-                  </Sidebar.MenuAction>
+                    <Trash2 class="size-3.5" />
+                  </button>
                 </Sidebar.MenuItem>
               {/each}
             </Sidebar.Menu>
@@ -368,17 +390,57 @@
                   ? `Quota reached (${filesStore.quota.used}/${filesStore.quota.total})`
                   : 'New file'}
                 onclick={startNewFileAtRoot}
-                class={filesStore.quota.used >= filesStore.quota.total
+                class="h-9 border border-sidebar-border bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent {filesStore
+                  .quota.used >= filesStore.quota.total
                   ? 'cursor-not-allowed opacity-50'
-                  : ''}>
+                  : ''}">
                 <Plus />
                 <span>New file</span>
               </Sidebar.MenuButton>
             </Sidebar.MenuItem>
           </Sidebar.Menu>
-          <p class="px-2 pt-1 text-[11px] text-muted-foreground">
-            {filesStore.quota.used} / {filesStore.quota.total} files
-          </p>
+          <div class="px-2 pt-2 group-data-[collapsible=icon]:hidden">
+            <div class="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Files</span>
+              <span>{filesStore.quota.used}/{filesStore.quota.total}</span>
+            </div>
+            <div class="h-1 overflow-hidden rounded-full bg-sidebar-accent">
+              <div
+                class="h-full rounded-full bg-sidebar-foreground/35"
+                style={`width: ${Math.min(100, Math.round((filesStore.quota.used / Math.max(filesStore.quota.total, 1)) * 100))}%`}>
+              </div>
+            </div>
+          </div>
+          {#if fileNotice}
+            <div class="px-2 pt-2 group-data-[collapsible=icon]:hidden">
+              <div
+                role="status"
+                class="rounded-md border px-2.5 py-2 text-[12px] leading-4 {fileNotice.kind ===
+                'error'
+                  ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                  : 'border-sidebar-border bg-sidebar-accent/24 text-sidebar-foreground'}">
+                <div class="flex items-start justify-between gap-2">
+                  <span class="min-w-0 flex-1 break-words">{fileNotice.text}</span>
+                  {#if fileNotice.action}
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-sm px-1.5 py-0.5 text-[12px] font-medium text-sidebar-foreground underline-offset-2 hover:bg-sidebar-accent hover:underline focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+                      onclick={async () => {
+                        const action = fileNotice?.action;
+                        fileNotice = null;
+                        if (fileNoticeTimer) {
+                          clearTimeout(fileNoticeTimer);
+                          fileNoticeTimer = null;
+                        }
+                        await action?.onClick();
+                      }}>
+                      {fileNotice.action.label}
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
         </Sidebar.GroupContent>
       </Sidebar.Group>
 
@@ -411,7 +473,7 @@
                 }} />
             </div>
           {/if}
-          {#if filesStore.loading}
+          {#if filesStore.loading && fileTree.length === 0}
             <p class="px-2 py-2 text-[13px] text-muted-foreground">Loading</p>
           {:else if fileTree.length === 0 && creatingRoot === null}
             <p class="px-2 py-2 text-[13px] text-muted-foreground">
@@ -444,45 +506,42 @@
   </Sidebar.Content>
 
   <Sidebar.Footer class="gap-0 border-t border-sidebar-border p-0">
-    <!--
-      Two switches: Chat (independent toggle) and the viewer group (Canvas /
-      Document / Code, single-select). Layout enforces the two-window rule —
-      max one viewer visible at any time. The viewer group only renders when
-      a workspace file is active; scratch mode shows just the Chat toggle.
-    -->
-    <div class="flex flex-col gap-1 p-2 group-data-[collapsible=icon]:gap-1">
-      <button
-        type="button"
-        aria-label="Chat"
-        aria-pressed={panels.panels.chat.visible}
-        use:tooltip={{ text: 'Chat', side: 'top' }}
-        onclick={() => onTogglePanel('chat')}
-        class="flex h-8 w-full items-center justify-center gap-2 rounded-md text-[13px] text-muted-foreground transition-colors group-data-[collapsible=icon]:size-8 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-pressed:bg-sidebar-accent aria-pressed:font-medium aria-pressed:text-sidebar-accent-foreground">
-        <MessageSquare class="size-4 shrink-0" />
-        <span class="group-data-[collapsible=icon]:hidden">Chat</span>
-      </button>
-      {#if viewerButtons.length > 0}
-        <div
-          class="flex gap-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1"
-          role="tablist"
-          aria-label="Viewer">
+    <!-- Chat is independent; viewer buttons are single-select in the page handler. -->
+    <div class="p-2 group-data-[collapsible=icon]:p-1.5">
+      <div
+        class="grid gap-0.5 rounded-lg border border-sidebar-border/70 bg-sidebar-accent/10 p-0.5 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 {viewerButtons.length >
+        0
+          ? 'grid-cols-3'
+          : 'grid-cols-1'}"
+        role="toolbar"
+        aria-label="Panel visibility">
+        <button
+          type="button"
+          aria-label="Chat"
+          aria-pressed={panels.panels.chat.visible}
+          use:tooltip={{ text: 'Chat', side: 'top' }}
+          onclick={() => onTogglePanel('chat')}
+          class="flex h-7 w-full items-center justify-center gap-1.5 rounded-sm text-[12px] font-medium text-muted-foreground transition-[background-color,color] outline-none group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-md hover:bg-sidebar-accent/18 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/22 focus-visible:text-sidebar-foreground aria-pressed:bg-transparent aria-pressed:text-sidebar-foreground group-data-[collapsible=icon]:aria-pressed:bg-sidebar-accent/16">
+          <MessageSquare class="size-3.5 shrink-0" />
+          <span class="group-data-[collapsible=icon]:hidden">Chat</span>
+        </button>
+        {#if viewerButtons.length > 0}
           {#each viewerButtons as btn (btn.id)}
             {@const Icon = btn.icon}
             {@const isActive = panels.panels[btn.id].visible}
             <button
               type="button"
-              role="tab"
               aria-label={btn.label}
-              aria-selected={isActive}
+              aria-pressed={isActive}
               use:tooltip={{ text: btn.label, side: 'top' }}
               onclick={() => onTogglePanel(btn.id)}
-              class="flex h-8 flex-1 items-center justify-center gap-2 rounded-md text-[13px] text-muted-foreground transition-colors group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-selected:bg-sidebar-accent aria-selected:font-medium aria-selected:text-sidebar-accent-foreground">
-              <Icon class="size-4 shrink-0" />
-              <span class="group-data-[collapsible=icon]:hidden">{btn.label}</span>
+              class="flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-sm text-[12px] font-medium text-muted-foreground transition-[background-color,color] outline-none group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-md hover:bg-sidebar-accent/18 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/22 focus-visible:text-sidebar-foreground aria-pressed:bg-transparent aria-pressed:text-sidebar-foreground group-data-[collapsible=icon]:aria-pressed:bg-sidebar-accent/16">
+              <Icon class="size-3.5 shrink-0" />
+              <span class="min-w-0 truncate group-data-[collapsible=icon]:hidden">{btn.label}</span>
             </button>
           {/each}
-        </div>
-      {/if}
+        {/if}
+      </div>
     </div>
     <Sidebar.Menu class="border-t border-sidebar-border p-2">
       <Sidebar.MenuItem>
@@ -490,19 +549,27 @@
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
               {#snippet child({ props })}
-                <Sidebar.MenuButton tooltipContent="Account" {...props}>
-                  <Avatar class="size-5 rounded-full">
+                <Sidebar.MenuButton
+                  tooltipContent="Account"
+                  class="h-11 gap-2 rounded-lg px-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0! focus-visible:bg-sidebar-accent/28 focus-visible:ring-0"
+                  {...props}>
+                  <Avatar class="size-7 rounded-full group-data-[collapsible=icon]:size-8">
                     {#if authStore.user?.avatar_url}
                       <AvatarImage
                         src={authStore.user.avatar_url}
                         alt={authStore.user?.display_name || authStore.user?.email || 'User'} />
                     {/if}
-                    <AvatarFallback class="rounded-full bg-muted text-[10px] font-medium">
+                    <AvatarFallback class="rounded-full bg-muted text-[11px] font-medium">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span class="truncate text-[13px] font-medium">
-                    {authStore.user?.display_name || authStore.user?.email || 'User'}
+                  <span class="min-w-0">
+                    <span class="block truncate text-[13px] font-medium">
+                      {authStore.user?.display_name || authStore.user?.email || 'User'}
+                    </span>
+                    <span class="block truncate text-[11px] font-normal text-muted-foreground">
+                      Account
+                    </span>
                   </span>
                 </Sidebar.MenuButton>
               {/snippet}
@@ -510,7 +577,7 @@
             <Sidebar.MenuAction
               onclick={onOpenSettings}
               aria-label="Settings"
-              class="group-data-[collapsible=icon]:hidden">
+              class="top-2 right-1 size-7 text-muted-foreground/80 group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent/40 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/35 focus-visible:ring-0 [&>svg]:size-4">
               <Settings />
             </Sidebar.MenuAction>
             <DropdownMenu.Content
@@ -577,16 +644,28 @@
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
               {#snippet child({ props })}
-                <Sidebar.MenuButton tooltipContent="Account" {...props}>
-                  <UserCircle />
-                  <span class="truncate text-[13px] font-medium">{guestDisplayName}</span>
+                <Sidebar.MenuButton
+                  tooltipContent="Account"
+                  class="h-11 gap-2 rounded-lg px-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0! focus-visible:bg-sidebar-accent/28 focus-visible:ring-0"
+                  {...props}>
+                  <Avatar class="size-7 rounded-full group-data-[collapsible=icon]:size-8">
+                    <AvatarFallback class="rounded-full bg-muted text-[11px] font-medium">
+                      {guestDisplayName.slice(0, 1).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span class="min-w-0">
+                    <span class="block truncate text-[13px] font-medium">{guestDisplayName}</span>
+                    <span class="block truncate text-[11px] font-normal text-muted-foreground">
+                      Local settings
+                    </span>
+                  </span>
                 </Sidebar.MenuButton>
               {/snippet}
             </DropdownMenu.Trigger>
             <Sidebar.MenuAction
               onclick={onOpenSettings}
               aria-label="Settings"
-              class="group-data-[collapsible=icon]:hidden">
+              class="top-2 right-1 size-7 text-muted-foreground/80 group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent/40 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/35 focus-visible:ring-0 [&>svg]:size-4">
               <Settings />
             </Sidebar.MenuAction>
             <DropdownMenu.Content

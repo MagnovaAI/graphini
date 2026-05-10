@@ -33,7 +33,7 @@ const PANEL_DEFAULTS: Record<PanelId, Omit<PanelConfig, 'id'>> = {
   canvas: { flex: true, label: 'Canvas', maxWidth: 9999, minWidth: 200, visible: true, width: 0 },
   document: { label: 'Markdown', maxWidth: 9999, minWidth: 220, visible: false, width: 400 },
   code: { flex: true, label: 'Code', maxWidth: 9999, minWidth: 220, visible: true, width: 0 },
-  chat: { label: 'Chat', maxWidth: 9999, minWidth: 220, visible: true, width: 380 }
+  chat: { label: 'Chat', maxWidth: 9999, minWidth: 340, visible: true, width: 380 }
 };
 
 // Panel layout is per-user. Storage keys are namespaced by the active user

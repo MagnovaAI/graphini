@@ -6,7 +6,7 @@ export function extractStreamingJsonNumber(inputJson: string, key: string): numb
   return match ? Number(match[1]) : null;
 }
 
-export function buildDiagramPatchPreview(
+export function buildLineEditPreview(
   inputJson: string,
   replacement: string,
   previousCode: string
@@ -25,4 +25,12 @@ export function buildDiagramPatchPreview(
   const nextLines = [...lines];
   nextLines.splice(startLine - 1, endLine - startLine + 1, ...replacementLines);
   return nextLines.join('\n');
+}
+
+export function buildDiagramLineEditPreview(
+  inputJson: string,
+  replacement: string,
+  previousCode: string
+): string | null {
+  return buildLineEditPreview(inputJson, replacement, previousCode);
 }

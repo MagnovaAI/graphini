@@ -3,7 +3,7 @@
   import { Button } from '$lib/client/ui/button';
   import { stateStore, updateCode, updateConfig } from '$lib/client/util/state/state';
   import { debounce } from 'lodash-es';
-  import { Wrench } from 'lucide-svelte';
+  import { ChevronDown, Wrench } from 'lucide-svelte';
   import { onDestroy } from 'svelte';
   import ExclamationCircleIcon from '~icons/material-symbols/error-outline-rounded';
   import DesktopEditor from './DesktopEditor.svelte';
@@ -110,14 +110,17 @@
         : $stateStore.validationError
       : $stateStore.error?.toString() || 'Syntax error'}
     <div
-      class="flex-shrink-0 border-t border-border bg-background"
+      class="error-display flex-shrink-0 border-t border-border"
       data-testid={TID.errorContainer}>
-      <div class="flex items-center gap-2 px-3 py-2">
-        <div class="flex size-5 items-center justify-center rounded bg-destructive/10">
-          <ExclamationCircleIcon class="size-3.5 text-destructive" aria-hidden="true" />
+      <div class="flex min-h-10 items-center gap-2 px-3 py-2">
+        <div class="flex size-5 shrink-0 items-center justify-center">
+          <ExclamationCircleIcon class="size-4 text-destructive" aria-hidden="true" />
         </div>
-        <span class="flex-1 truncate text-[13px] font-medium text-destructive dark:text-destructive"
-          >{errorMsg.length > 80 ? errorMsg.slice(0, 80) + '…' : errorMsg}</span>
+        <span
+          class="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-destructive"
+          title={errorMsg}>
+          {errorMsg.length > 96 ? errorMsg.slice(0, 96) + '…' : errorMsg}
+        </span>
 
         {#if $stateStore.editorMode === 'code'}
           <Button
@@ -125,26 +128,27 @@
             size="sm"
             data-testid={TID.aiRepairButton}
             onclick={handleFixValidationError}
-            class="h-7 shrink-0 gap-2 border-destructive/20 bg-destructive/5 px-3 text-[13px] font-medium text-destructive transition-all hover:bg-destructive/10 dark:border-destructive/20 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/10">
+            class="h-7 shrink-0 gap-1.5 rounded-[5px] border-border bg-transparent px-2.5 text-[13px] font-medium text-foreground transition-colors hover:border-destructive/35 hover:bg-destructive/10 hover:text-destructive">
             <Wrench class="size-3" />
             Repair
           </Button>
         {/if}
       </div>
 
-      <!-- Collapsible error details -->
-      <details class="border-t border-border/30">
+      <details class="error-details border-t border-border/40">
         <summary
-          class="cursor-pointer px-3 py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >Show details</summary>
-        <div class="max-h-32 overflow-y-auto px-3 pb-2">
+          class="flex cursor-pointer list-none items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+          <ChevronDown class="error-details-icon size-3.5" aria-hidden="true" />
+          Details
+        </summary>
+        <div class="max-h-32 overflow-y-auto px-3 pb-2.5">
           <pre
-            class="font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-destructive dark:text-destructive">{$stateStore.error?.toString() ||
+            class="font-mono text-[12px] leading-5 whitespace-pre-wrap text-muted-foreground">{$stateStore.error?.toString() ||
               $stateStore.validationError}</pre>
           {#if $stateStore.validationSuggestions && $stateStore.validationSuggestions.length > 0}
             <div class="mt-2 space-y-1">
               {#each $stateStore.validationSuggestions as suggestion (suggestion)}
-                <p class="text-[13px] text-muted-foreground">• {suggestion}</p>
+                <p class="text-[12px] leading-5 text-muted-foreground">- {suggestion}</p>
               {/each}
             </div>
           {/if}
@@ -153,3 +157,21 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .error-display {
+    background: color-mix(in srgb, var(--background) 82%, var(--destructive) 18%);
+  }
+
+  .error-details summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .error-details :global(.error-details-icon) {
+    transition: transform 150ms ease;
+  }
+
+  .error-details[open] :global(.error-details-icon) {
+    transform: rotate(180deg);
+  }
+</style>

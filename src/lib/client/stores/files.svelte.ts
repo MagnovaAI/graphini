@@ -8,7 +8,6 @@
 
 import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
 import { kv } from '$lib/client/stores/kvStore.svelte';
-import { toast } from 'svelte-sonner';
 
 const ACTIVE_FILE_KV_KEY = 'graphini_files_active_v1';
 
@@ -63,20 +62,36 @@ const state = $state<FilesState>(
 );
 hmrPreserve('filesState', () => ({ ...state }));
 
-async function fetchAll(): Promise<void> {
-  try {
-    state.loading = true;
-    const res = await fetch('/api/workspace-files', { credentials: 'include' });
-    if (res.ok) {
-      const data = await res.json();
-      state.list = (data.files ?? []) as WorkspaceFile[];
-      state.quota = data.quota ?? state.quota;
+let fetchAllInFlight: Promise<void> | null = null;
+
+async function fetchAll(options: { silent?: boolean } = {}): Promise<void> {
+  if (fetchAllInFlight) return fetchAllInFlight;
+  const showLoading = options.silent !== true && state.list.length === 0;
+  fetchAllInFlight = (async () => {
+    try {
+      if (showLoading) state.loading = true;
+      const res = await fetch('/api/workspace-files', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        state.list = (data.files ?? []) as WorkspaceFile[];
+        state.quota = data.quota ?? state.quota;
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      if (showLoading) state.loading = false;
+      fetchAllInFlight = null;
     }
-  } catch {
-    /* ignore */
-  } finally {
-    state.loading = false;
-  }
+  })();
+  return fetchAllInFlight;
+}
+
+async function refreshAll(): Promise<void> {
+  return fetchAll({ silent: true });
+}
+
+async function fetchAllVisible(): Promise<void> {
+  return fetchAll({ silent: false });
 }
 
 async function create(path?: string, content = ''): Promise<WorkspaceFile | { error: string }> {
@@ -92,7 +107,6 @@ async function create(path?: string, content = ''): Promise<WorkspaceFile | { er
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const error = data?.error ?? `HTTP ${res.status}`;
-      if (res.status === 409) toast.error(error);
       return { error };
     }
     state.list = [...state.list, data as WorkspaceFile].sort((a, b) =>
@@ -156,7 +170,7 @@ async function moveFolder(from: string, to: string): Promise<{ moved: number; er
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { moved: 0, error: data?.error ?? `HTTP ${res.status}` };
-    await fetchAll();
+    await refreshAll();
     return { moved: data.moved ?? 0 };
   } catch (err) {
     return { moved: 0, error: err instanceof Error ? err.message : 'Failed' };
@@ -173,7 +187,7 @@ async function deleteFolder(path: string): Promise<{ deleted: number; error?: st
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { deleted: 0, error: data?.error ?? `HTTP ${res.status}` };
-    await fetchAll();
+    await refreshAll();
     return { deleted: data.deleted ?? 0 };
   } catch (err) {
     return { deleted: 0, error: err instanceof Error ? err.message : 'Failed' };
@@ -198,7 +212,6 @@ export type FileTreeNode =
 export function buildFileTree(files: WorkspaceFile[]): FileTreeNode[] {
   // Build a nested map of folders → children. These Maps are local
   // computation helpers, not reactive state — SvelteMap is not needed.
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   type FolderMap = Map<string, { folders: Map<string, unknown>; files: WorkspaceFile[] }>;
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const root = { folders: new Map() as FolderMap, files: [] as WorkspaceFile[] };
@@ -225,7 +238,6 @@ export function buildFileTree(files: WorkspaceFile[]): FileTreeNode[] {
   }
 
   function toNodes(
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     node: { folders: Map<string, unknown>; files: WorkspaceFile[] },
     prefix: string
   ): FileTreeNode[] {
@@ -261,6 +273,7 @@ export const filesStore = {
   create,
   deleteFolder,
   fetchAll,
+  fetchAllVisible,
   getById,
   get list() {
     return state.list;
@@ -273,6 +286,7 @@ export const filesStore = {
     return state.quota;
   },
   remove,
+  refreshAll,
   setActive,
   update
 };

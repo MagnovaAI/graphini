@@ -5,13 +5,58 @@ export function metadataOf(message: DbMessageRow): Record<string, unknown> {
   return message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
 }
 
+export function textFromContentParts(parts: unknown): string {
+  if (!Array.isArray(parts)) return '';
+  const text: string[] = [];
+  for (const raw of parts) {
+    if (!raw || typeof raw !== 'object') continue;
+    const part = raw as Record<string, unknown>;
+    if (part.type === 'text' && typeof part.text === 'string') {
+      text.push(part.text);
+    }
+  }
+  return text.join('');
+}
+
+export function bestVisibleContent(message: {
+  content?: unknown;
+  role?: unknown;
+  parts?: unknown;
+}): string {
+  const content =
+    typeof message.content === 'string' ? message.content : String(message.content ?? '');
+  if (message.role !== 'assistant') return content;
+
+  const partsText = textFromContentParts(message.parts);
+  if (!partsText.trim()) return content;
+  if (
+    !content.trim() ||
+    content === '[tool call]' ||
+    partsText.trim().length > content.trim().length
+  ) {
+    return partsText;
+  }
+  return content;
+}
+
 export function messagesFromDbRows(rows: DbMessageRow[]): Record<string, unknown>[] {
   return rows.map((message) => {
     const metadata = metadataOf(message);
+    const contextContent =
+      typeof metadata.contextContent === 'string' && metadata.contextContent.trim()
+        ? metadata.contextContent
+        : undefined;
+    const attachments = Array.isArray(metadata.attachments) ? metadata.attachments : [];
+    const content =
+      message.role === 'user' &&
+      message.content === '[tool call]' &&
+      (contextContent || attachments.length > 0)
+        ? ''
+        : bestVisibleContent(message);
     return {
-      attachments: metadata.attachments || [],
-      content: message.content,
-      contextContent: metadata.contextContent,
+      attachments,
+      content,
+      ...(message.role === 'user' && contextContent ? { contextContent } : {}),
       id: typeof metadata.clientId === 'string' ? metadata.clientId : message.id,
       model_used: message.model_used,
       role: message.role,

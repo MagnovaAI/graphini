@@ -39,10 +39,10 @@
 
   /* Component sizing — control heights and constrained dimensions on the
      4px grid. Heights step from compact (28px = h-7) up to xl (56px = h-14). */
-  --ds-control-sm: 24px;   /* h-6  — chip / badge */
-  --ds-control-md: 28px;   /* h-7  — icon button, model trigger */
-  --ds-control-lg: 32px;   /* h-8  — primary CTA, send button */
-  --ds-control-xl: 40px;   /* h-10 — multi-line input min-height */
+  --ds-control-sm: 24px; /* h-6  — chip / badge */
+  --ds-control-md: 28px; /* h-7  — icon button, model trigger */
+  --ds-control-lg: 32px; /* h-8  — primary CTA, send button */
+  --ds-control-xl: 40px; /* h-10 — multi-line input min-height */
 
   /* Surface dimensions */
   --ds-input-min-height: var(--ds-control-xl);
@@ -59,12 +59,10 @@
   --ds-radius-full: 9999px;
 
   /* Typography — Inter for UI (optical size variant), Geist Mono for code. */
-  --ds-font-sans:
-    'Inter', 'SF Pro Display', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --ds-font-text:
-    'Inter', 'SF Pro Text', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --ds-font-mono:
-    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --ds-font-sans: 'Inter', 'SF Pro Display', -apple-system, system-ui, 'Segoe UI', Roboto,
+    sans-serif;
+  --ds-font-text: 'Inter', 'SF Pro Text', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --ds-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   /* Type scale (font-size / line-height / letter-spacing / weight) */
   --ds-text-display-xl-size: 80px;
@@ -140,24 +138,24 @@
   --chat-background: #fcfcfc;
   --chat-input-bg: #f4f4f5;
   --tool-box-bg: #f4f4f5;
-  --code-bg: #f4f4f5;
+  --code-bg: #ffffff;
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(240 10% 3.9%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(240 10% 3.9%);
-  --primary: hsl(240 5.9% 10%);
+  --primary: #2400ab;
   --primary-foreground: hsl(0 0% 98%);
   --secondary: hsl(240 4.8% 95.9%);
   --secondary-foreground: hsl(240 5.9% 10%);
   --muted: hsl(240 4.8% 95.9%);
   --muted-foreground: hsl(240 3.8% 46.1%);
-  --accent: hsl(240 4.8% 95.9%);
-  --accent-foreground: hsl(240 5.9% 10%);
+  --accent: rgba(96, 0, 233, 0.08);
+  --accent-foreground: #2400ab;
   --destructive: #dc2626;
   --destructive-foreground: hsl(0 0% 98%);
   --border: hsl(240 5.9% 90%);
   --input: hsl(240 5.9% 90%);
-  --ring: hsl(240 5.9% 10%);
+  --ring: #6000e9;
   --chart-1: #2563eb;
   --chart-2: #10b981;
   --chart-3: #f59e0b;
@@ -165,29 +163,29 @@
   --chart-5: #8b5cf6;
   --sidebar: hsl(0 0% 100%);
   --sidebar-foreground: hsl(240 10% 3.9%);
-  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary: #2400ab;
   --sidebar-primary-foreground: hsl(0 0% 98%);
   --sidebar-accent: #e8e8e8;
   --sidebar-accent-foreground: hsl(240 5.9% 10%);
   --sidebar-border: hsl(240 5.9% 90%);
-  --sidebar-ring: hsl(240 5.9% 10%);
+  --sidebar-ring: #6000e9;
   --success: #16a34a;
   --warning: #ea580c;
-  --info: #2563eb;
+  --info: #6000e9;
 
   /* Canvas / diagram accent (indigo) — used for selections, connectors, highlights */
-  --canvas-accent: #6366f1;
+  --canvas-accent: #6000e9;
   --canvas-accent-foreground: #ffffff;
-  --canvas-accent-muted: rgba(99, 102, 241, 0.1);
+  --canvas-accent-muted: rgba(96, 0, 233, 0.1);
 
   /* Sticky note */
   --canvas-sticky: #ffec99;
   --canvas-sticky-border: rgba(0, 0, 0, 0.08);
 
   /* Brand gradient endpoints — for CTA buttons and hero sections */
-  --gradient-from: #2563eb;
-  --gradient-via: #1d4ed8;
-  --gradient-to: #3b82f6;
+  --gradient-from: #2400ab;
+  --gradient-via: #4210ca;
+  --gradient-to: #6000e9;
 
   /* Surface overlays — for glass, cards on dark backgrounds */
   --surface-overlay: rgba(0, 0, 0, 0.025);
@@ -210,6 +208,15 @@
   --dash-pattern-dot-alt: rgba(0, 0, 0, 0.02);
   --dash-card-shadow: rgba(0, 0, 0, 0.08);
   --dash-card-hover-shadow: rgba(0, 0, 0, 0.14);
+}
+
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select,
+  [contenteditable='true'] {
+    font-size: 16px !important;
+  }
 }
 
 .dark {
@@ -252,54 +259,54 @@
   --chat-background: #141414;
   --chat-input-bg: #1c1c1c;
   --tool-box-bg: #181818;
-  --code-bg: #181818;
+  --code-bg: #141414;
   --card: #181818;
   --card-foreground: #e4e4e4;
   --popover: #1c1c1c;
   --popover-foreground: #e4e4e4;
-  --primary: #88c0d0;
-  --primary-foreground: #181818;
+  --primary: #6000e9;
+  --primary-foreground: #ffffff;
   --secondary: #1c1c1c;
   --secondary-foreground: #e4e4e4;
   --muted: #1c1c1c;
   --muted-foreground: rgba(228, 228, 228, 0.55);
-  --accent: #1c1c1c;
-  --accent-foreground: #e4e4e4;
+  --accent: rgba(96, 0, 233, 0.18);
+  --accent-foreground: #f4efff;
   --destructive: #e34671;
   --destructive-foreground: #ffffff;
   --border: #262626;
   --input: #262626;
-  --ring: #88c0d0;
-  --chart-1: #88c0d0;
+  --ring: #8b5cff;
+  --chart-1: #6000e9;
   --chart-2: #3fa266;
   --chart-3: #f1b467;
   --chart-4: #e34671;
   --chart-5: #aaa0fa;
   --sidebar: #181818;
   --sidebar-foreground: #e4e4e4;
-  --sidebar-primary: #88c0d0;
-  --sidebar-primary-foreground: #181818;
+  --sidebar-primary: #6000e9;
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #1f1f1f;
   --sidebar-accent-foreground: #e4e4e4;
   --sidebar-border: #262626;
-  --sidebar-ring: #88c0d0;
+  --sidebar-ring: #8b5cff;
   --success: #3fa266;
   --warning: #f1b467;
-  --info: #88c0d0;
+  --info: #8b5cff;
 
   /* Canvas / diagram accent */
-  --canvas-accent: #818cf8;
+  --canvas-accent: #8b5cff;
   --canvas-accent-foreground: #ffffff;
-  --canvas-accent-muted: rgba(129, 140, 248, 0.12);
+  --canvas-accent-muted: rgba(139, 92, 255, 0.14);
 
   /* Sticky note */
   --canvas-sticky: #ffec99;
   --canvas-sticky-border: rgba(0, 0, 0, 0.08);
 
   /* Brand gradient endpoints */
-  --gradient-from: #7c3aed;
-  --gradient-via: #4f46e5;
-  --gradient-to: #6366f1;
+  --gradient-from: #2400ab;
+  --gradient-via: #4210ca;
+  --gradient-to: #6000e9;
 
   /* Surface overlays */
   --surface-overlay: rgba(255, 255, 255, 0.035);
@@ -1083,6 +1090,27 @@
   @apply text-foreground;
 }
 
+.composer-gradient-glass {
+  border-color: rgba(192, 174, 255, 0.34);
+  background: linear-gradient(135deg, rgba(36, 0, 171, 0.4), rgba(96, 0, 233, 0.5)),
+    rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 6px 18px rgba(36, 0, 171, 0.18);
+  backdrop-filter: blur(14px) saturate(1.35);
+}
+
+.composer-gradient-glass:hover {
+  border-color: rgba(218, 208, 255, 0.5);
+  background: linear-gradient(135deg, rgba(36, 0, 171, 0.48), rgba(96, 0, 233, 0.58)),
+    rgba(255, 255, 255, 0.12);
+}
+
+.composer-gradient-glass:disabled {
+  opacity: 0.42;
+}
+
 /* Line numbers */
 .code-block-line-numbers {
   @apply pr-4 text-right text-muted-foreground/50 select-none;
@@ -1168,4 +1196,70 @@
 .dark .token.function,
 .dark .token.class-name {
   color: #a78bfa;
+}
+
+.tool-active-shimmer {
+  position: relative;
+}
+
+.tool-active-icon-shimmer {
+  --base-color: #a1a1aa;
+  --base-gradient-color: #000;
+  color: var(--base-color);
+  animation: reasoning-icon-shimmer 1.2s linear infinite;
+}
+
+.dark .tool-active-icon-shimmer {
+  --base-color: #71717a;
+  --base-gradient-color: #ffffff;
+}
+
+.thinking-shimmer {
+  --base-color: #a1a1aa;
+  --base-gradient-color: #000;
+  --spread: 16px;
+  --bg: linear-gradient(
+    90deg,
+    transparent calc(50% - var(--spread)),
+    var(--base-gradient-color),
+    transparent calc(50% + var(--spread))
+  );
+  position: relative;
+  display: inline-block;
+  background-image: var(--bg), linear-gradient(var(--base-color), var(--base-color));
+  background-size:
+    250% 100%,
+    auto;
+  background-repeat: no-repeat, padding-box;
+  background-position: 100% center;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer-slide 1.2s linear infinite;
+}
+
+.dark .thinking-shimmer {
+  --base-color: #71717a;
+  --base-gradient-color: #ffffff;
+}
+
+@keyframes shimmer-slide {
+  0% {
+    background-position: 100% center;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+@keyframes reasoning-icon-shimmer {
+  0%,
+  100% {
+    color: var(--base-color);
+  }
+  45%,
+  55% {
+    color: var(--base-gradient-color);
+  }
 }

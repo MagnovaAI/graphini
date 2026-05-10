@@ -4,6 +4,14 @@ function matchJsonString(json: string, key: string): string | null {
   return match ? match[1].replace(/\\"/g, '"') : null;
 }
 
+function matchJsonNumber(json: string, key: string): number | null {
+  const re = new RegExp(`"${key}"\\s*:\\s*(\\d+)`);
+  const match = json.match(re);
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 10);
+  return Number.isFinite(value) ? value : null;
+}
+
 /**
  * Best-effort parse of a streaming `thinking` tool input. The JSON may be
  * unterminated mid-stream, so we walk the `thoughts` array manually and
@@ -72,7 +80,9 @@ export interface ToolInputDisplay {
 export function deriveToolInputDisplay(toolName: string, inputJson: string): ToolInputDisplay {
   if (toolName === 'autoStyler' || toolName === 'styleSearch') {
     const palette = matchJsonString(inputJson, 'palette');
-    return palette ? { subtitle: palette } : {};
+    const themeMode = matchJsonString(inputJson, 'themeMode');
+    const subtitle = [themeMode, palette].filter(Boolean).join(' ');
+    return subtitle ? { subtitle } : {};
   }
   if (toolName === 'iconSearch') {
     const query = matchJsonString(inputJson, 'query');
@@ -87,14 +97,37 @@ export function deriveToolInputDisplay(toolName: string, inputJson: string): Too
       details: reason ? [reason] : undefined
     };
   }
+  if (toolName === 'useSkill') {
+    const name = matchJsonString(inputJson, 'name');
+    return name ? { subtitle: name } : {};
+  }
   // `thinking` is handled as its own chain-of-thought part; it never
   // reaches this generic tool-simple input formatter.
   if (toolName === 'errorChecker') {
     return { subtitle: 'diagram syntax' };
   }
-  if (toolName === 'fileManager') {
-    const op = matchJsonString(inputJson, 'operation');
-    return op ? { subtitle: op } : {};
+  if (toolName === 'fileSystem') {
+    const path = matchJsonString(inputJson, 'path');
+    const from = matchJsonString(inputJson, 'from');
+    const to = matchJsonString(inputJson, 'to');
+    const startLine = matchJsonNumber(inputJson, 'startLine');
+    const endLine = matchJsonNumber(inputJson, 'endLine') ?? startLine;
+    const content = matchJsonString(inputJson, 'content');
+    const details: string[] = [];
+    if (path) details.push(`Path: ${path}`);
+    if (from || to) details.push(`Move: ${from ?? '?'} -> ${to ?? '?'}`);
+    if (startLine !== null && endLine !== null) {
+      details.push(`Lines: ${startLine}${endLine !== startLine ? `-${endLine}` : ''}`);
+    }
+    if (content !== null) {
+      details.push(
+        `Content: ${content.split('\\n').length} line${content.split('\\n').length !== 1 ? 's' : ''}`
+      );
+    }
+    return {
+      subtitle: path ?? from ?? undefined,
+      details: details.length > 0 ? details : undefined
+    };
   }
   return {};
 }

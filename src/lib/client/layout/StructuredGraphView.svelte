@@ -87,8 +87,8 @@
 
   $effect(() => {
     if (!svgElement || !panZoomState) return;
-    layout.width;
-    layout.height;
+    void layout.width;
+    void layout.height;
     panZoomState.updateElement(svgElement, {});
   });
 
@@ -105,6 +105,7 @@
   }
 
   function toggleBranch(id: string) {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const next = new Set(collapsedBranchIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -112,6 +113,7 @@
   }
 
   function toggleCard(id: string) {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const next = new Set(collapsedCardIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -164,11 +166,11 @@
 <div class="structured-canvas">
   <svg bind:this={svgElement} class="structured-svg" viewBox="0 0 {layout.width} {layout.height}">
     <defs>
-      <pattern id="structured-dots" width="16" height="16" patternUnits="userSpaceOnUse">
-        <circle cx="1" cy="1" r="1" class="fill-muted-foreground/15" />
+      <pattern id="structured-dots" width="12" height="12" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" class="structured-grid-dot" />
       </pattern>
-      <pattern id="structured-squares" width="30" height="30" patternUnits="userSpaceOnUse">
-        <path d="M 30 0 H 0 V 30" class="structured-grid-line" />
+      <pattern id="structured-squares" width="20" height="20" patternUnits="userSpaceOnUse">
+        <path d="M 20 0 H 0 V 20" class="structured-grid-line" />
       </pattern>
     </defs>
     {#if shouldShowGrid}
@@ -282,8 +284,13 @@
   }
 
   .structured-grid-line {
-    @apply fill-none stroke-muted-foreground/15;
+    @apply fill-none;
+    stroke: color-mix(in oklab, var(--foreground) 5%, transparent);
     stroke-width: 1;
+  }
+
+  .structured-grid-dot {
+    fill: color-mix(in oklab, var(--foreground) 6%, transparent);
   }
 
   .graph-edge:hover {

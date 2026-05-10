@@ -6,11 +6,17 @@
   } from '$lib/client/features/diagram/mermaid';
   import { PanZoomState } from '$lib/client/features/diagram/panZoom';
   import type { State, ValidatedState } from '$lib/client/types';
-  import { recordRenderTime, setTrailingCallback, shouldRefreshView } from '$lib/client/util/autoSync';
+  import {
+    recordRenderTime,
+    setTrailingCallback,
+    shouldRefreshView
+  } from '$lib/client/util/autoSync';
   import { findNodeDefinition, svgIdToNodeName } from '$lib/client/util/diagram/diagramMapper';
   import { inputStateStore, stateStore, updateCodeStore } from '$lib/client/util/state/state';
   import { logEvent, saveStatistics } from '$lib/client/util/stats';
-  import FontAwesome, { mayContainFontAwesome } from '$lib/client/features/diagram/components/FontAwesome.svelte';
+  import FontAwesome, {
+    mayContainFontAwesome
+  } from '$lib/client/features/diagram/components/FontAwesome.svelte';
   import type { MermaidConfig } from 'mermaid';
   import { mode } from 'mode-watcher';
   import { onMount } from 'svelte';
@@ -35,15 +41,12 @@
   let container: HTMLDivElement | undefined;
   let rough = false;
   let view: HTMLDivElement | undefined;
-  let error = $state(false);
   let panZoom = true;
   let manualUpdate = true;
   let waitForFontAwesomeToLoad = $state<FontAwesome['waitForFontAwesomeToLoad'] | undefined>(
     undefined
   );
   let activeTool: 'select' | 'pan' | 'draw' = 'select';
-  let isDrawing = false;
-  let currentPath = '';
   let previousMode: 'light' | 'dark' | undefined;
 
   // Selection state — supports multi-selection of same element types
@@ -103,7 +106,7 @@
     }
   };
 
-  const formatJSON = (obj: any): string => {
+  const formatJSON = (obj: unknown): string => {
     return JSON.stringify(obj, null, 2);
   };
 
@@ -457,14 +460,11 @@
     if (!view) return;
 
     let isDrawing = false;
-    let startX = 0;
-    let startY = 0;
-
     const handleMouseDown = (e: MouseEvent) => {
       if (activeTool === 'draw' && view) {
         isDrawing = true;
-        startX = e.clientX;
-        startY = e.clientY;
+        void e.clientX;
+        void e.clientY;
         view.style.cursor = 'crosshair';
       }
     };
@@ -473,10 +473,7 @@
       // Edge hover effect
       handleEdgeHover(e);
 
-      if (isDrawing && activeTool === 'draw') {
-        const currentX = e.clientX;
-        const currentY = e.clientY;
-      }
+      if (isDrawing && activeTool === 'draw') void e;
     };
 
     const handleMouseUp = () => {
@@ -503,11 +500,9 @@
     const startTime = Date.now();
     // Don't show errors for empty diagrams
     if (state.error !== undefined && state.code && state.code.trim().length > 0) {
-      error = true;
       renderError = typeof state.error === 'string' ? state.error : 'Diagram has syntax errors';
       return;
     }
-    error = false;
     renderError = '';
     let diagramType: string | undefined;
     try {
@@ -547,10 +542,10 @@
         // Clear container if code is empty — no error for empty diagrams
         if (!code || code.trim().length === 0) {
           if (container) {
+            // eslint-disable-next-line svelte/no-dom-manipulating
             container.innerHTML = '';
           }
           code = '';
-          error = false;
           renderError = '';
           isRendering = false;
           return;
@@ -623,7 +618,8 @@
             hitArea.classList.add('graphini-edge-hitarea');
             // Copy data attributes so findEdgePath can resolve it
             for (const attr of ['data-edge', 'data-et', 'data-id']) {
-              if (ep.hasAttribute(attr)) hitArea.setAttribute(attr, ep.getAttribute(attr)!);
+              const value = ep.getAttribute(attr);
+              if (value !== null) hitArea.setAttribute(attr, value);
             }
             ep.parentElement?.insertBefore(hitArea, ep);
           });
@@ -631,7 +627,6 @@
         if (view?.parentElement && scroll) {
           view.parentElement.scrollTop = scroll;
         }
-        error = false;
         renderError = '';
         isRendering = false;
       } else if (manualUpdate) {
@@ -645,6 +640,7 @@
         .forEach((el) => el.closest('[id^="d"]')?.remove());
       // Keep last valid SVG visible to prevent layout shift — only clear if no SVG exists
       if (container && !container.querySelector('svg')) {
+        // eslint-disable-next-line svelte/no-dom-manipulating
         container.innerHTML = '';
       }
       // Handle ELK layout errors with dagre fallback (with loop guard)
@@ -663,7 +659,6 @@
           }
         }
       }
-      error = true;
       renderError = error_.message || 'Failed to render diagram';
     }
     const renderTime = Date.now() - startTime;
@@ -671,7 +666,7 @@
     // Record render time for throttling but use a no-op updater.
     // Re-renders are already triggered by code/config changes via the stateStore subscription.
     // Passing an updater that sets updateDiagram:true caused an infinite render loop.
-    recordRenderTime(renderTime, () => {});
+    recordRenderTime(renderTime, () => undefined);
   };
 
   onMount(() => {
@@ -706,7 +701,11 @@
       if (document.visibilityState === 'visible') {
         // Small delay to let the browser finish layout
         requestAnimationFrame(() => {
-          try { panZoomState.resize(); } catch { /* svg may not exist yet */ }
+          try {
+            panZoomState.resize();
+          } catch {
+            /* svg may not exist yet */
+          }
           // Force a single re-render to restore the canvas
           updateCodeStore({ updateDiagram: true });
         });
@@ -730,15 +729,18 @@
   // Queue state changes to avoid race condition
   let pendingStateChange = Promise.resolve();
   stateStore.subscribe((state) => {
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
-    pendingStateChange = pendingStateChange.then(() => handleStateChange(state).catch(() => {}));
+    pendingStateChange = pendingStateChange.then(() =>
+      handleStateChange(state).catch(() => undefined)
+    );
   });
 
   // When a render is throttled, autoSync schedules a trailing fire so the
   // final state always lands on the canvas.
   setTrailingCallback(() => {
     const state = get(stateStore);
-    pendingStateChange = pendingStateChange.then(() => handleStateChange(state).catch(() => {}));
+    pendingStateChange = pendingStateChange.then(() =>
+      handleStateChange(state).catch(() => undefined)
+    );
   });
 
   // Inline editor: commit the label change to mermaid code
@@ -1014,7 +1016,7 @@
   onclick={handleDiagramClick}
   ondblclick={handleDiagramDblClick}
   class="relative h-full w-full {shouldShowGrid && `grid-${gridStyle}-${get(mode)}`}">
-  <div id="container" bind:this={container} class="h-full overflow-auto"></div>
+  <div id="container" bind:this={container} class="h-full overflow-hidden"></div>
 
   {#if inlineEditorVisible}
     <div
@@ -1040,24 +1042,48 @@
 <style>
   /* Dots grid */
   .grid-dots-light {
-    background-size: 24px 24px;
-    background-image: radial-gradient(circle, #6b728033 1px, transparent 1px);
+    background-size: 16px 16px;
+    background-image: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--foreground) 5%, transparent) 1px,
+      transparent 1px
+    );
   }
   .grid-dots-dark {
-    background-size: 24px 24px;
-    background-image: radial-gradient(circle, #9ca3af33 1px, transparent 1px);
+    background-size: 16px 16px;
+    background-image: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
+      transparent 1px
+    );
   }
 
   /* Squares grid */
   .grid-squares-light {
-    background-size: 30px 30px;
-    background-image: linear-gradient(to right, #e5e7eb44 1px, transparent 1px),
-      linear-gradient(to bottom, #e5e7eb44 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-image: linear-gradient(
+        to right,
+        color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
+        transparent 1px
+      );
   }
   .grid-squares-dark {
-    background-size: 30px 30px;
-    background-image: linear-gradient(to right, #37415144 1px, transparent 1px),
-      linear-gradient(to bottom, #37415144 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-image: linear-gradient(
+        to right,
+        color-mix(in oklab, var(--foreground) 5%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, var(--foreground) 5%, transparent) 1px,
+        transparent 1px
+      );
   }
 
   :global(.graphini-selection-rect) {

@@ -11,6 +11,7 @@
   import * as DropdownMenu from '$lib/client/ui/dropdown-menu';
   import { ChevronRight, FileCode, FileJson, FileText, MoreHorizontal, Plus } from 'lucide-svelte';
   import type { FileTreeNode, WorkspaceFile } from '$lib/client/stores/files.svelte';
+  import FileTree from './FileTree.svelte';
   import type { EditingToken } from './fileTreeEditing';
 
   interface Props {
@@ -187,7 +188,7 @@
                   commitOnBlur(e, '', (v) => onCommitNewFile(node.path, v), onCancelEdit)} />
             </div>
           {/if}
-          <svelte:self
+          <FileTree
             nodes={node.children}
             {activeId}
             {expanded}

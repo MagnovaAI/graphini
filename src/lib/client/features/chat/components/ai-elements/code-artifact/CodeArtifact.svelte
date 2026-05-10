@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronRight, Eye, FileCode, FilePen } from 'lucide-svelte';
+  import { ChevronRight, Eye, FilePen, FilePlus, Trash2 } from 'lucide-svelte';
   import { tick } from 'svelte';
   import { mode } from 'mode-watcher';
   import type { ThemedToken } from 'shiki';
@@ -11,7 +11,7 @@
     language?: string;
     title?: string;
     isStreaming?: boolean;
-    operation?: 'create' | 'update' | 'patch' | 'delete' | 'read';
+    operation?: 'create' | 'edit' | 'delete' | 'read';
     defaultCollapsed?: boolean;
     hasErrors?: boolean;
     errors?: string[];
@@ -42,9 +42,9 @@
   let collapseInitialized = false;
 
   // Initialize once from props, then preserve user toggles except for streaming completion.
-  // Write/Edit stay expanded so the code/diff is visible; Read auto-collapses.
+  // Create/Edit stay expanded so the code is visible; Read auto-collapses.
   $effect(() => {
-    const keepExpanded = operation === 'patch' || operation === 'update' || operation === 'create';
+    const keepExpanded = operation === 'edit' || operation === 'create';
     if (!collapseInitialized) {
       isCollapsed = defaultCollapsed ?? (keepExpanded ? false : operation === 'read');
       collapseInitialized = true;
@@ -141,7 +141,7 @@
     }
     return result;
   });
-  let showDiffView = $derived(hasDiff && !isStreaming && diffLines.length > 0);
+  let showDiffView = $derived(false);
 
   // Auto-scroll to bottom during streaming
   $effect(() => {
@@ -158,9 +158,8 @@
   const verbsByOp: Record<string, { pending: string; done: string }> = {
     create: { pending: 'Creating', done: 'Created' },
     delete: { pending: 'Clearing', done: 'Cleared' },
-    patch: { pending: 'Editing', done: 'Edited' },
-    read: { pending: 'Reading', done: 'Read' },
-    update: { pending: 'Updating', done: 'Updated' }
+    edit: { pending: 'Editing', done: 'Edited' },
+    read: { pending: 'Reading', done: 'Read' }
   };
   let titlePending = $derived(verbsByOp[operation]?.pending || 'Running');
   let titleDone = $derived(verbsByOp[operation]?.done || 'Done');
@@ -171,7 +170,7 @@
         ? `lines ${readFrom}-${readTo} of ${totalLines}`
         : `lines ${readFrom}-${readTo}`;
     }
-    if (operation === 'patch' && previousCode && (addedCount > 0 || removedCount > 0)) {
+    if (operation === 'edit' && previousCode && (addedCount > 0 || removedCount > 0)) {
       return ''; // diff stats rendered separately with color
     }
     return `${lineCount} line${lineCount !== 1 ? 's' : ''}`;
@@ -274,19 +273,24 @@
     <!-- Icon (no chip) -->
     {#if isError || isRead}
       <Eye
-        class="size-4 flex-shrink-0 text-muted-foreground/70 {isStreaming
-          ? 'animate-pulse'
-          : ''}" />
-    {:else if operation === 'patch' || operation === 'update'}
+        class="size-4 flex-shrink-0 {isStreaming
+          ? 'tool-active-icon-shimmer'
+          : 'text-muted-foreground/70'}" />
+    {:else if operation === 'edit'}
       <FilePen
-        class="size-4 flex-shrink-0 text-muted-foreground/70 {isStreaming
-          ? 'animate-pulse'
-          : ''}" />
+        class="size-4 flex-shrink-0 {isStreaming
+          ? 'tool-active-icon-shimmer'
+          : 'text-muted-foreground/70'}" />
+    {:else if operation === 'delete'}
+      <Trash2
+        class="size-4 flex-shrink-0 {isStreaming
+          ? 'tool-active-icon-shimmer'
+          : 'text-muted-foreground/70'}" />
     {:else}
-      <FileCode
-        class="size-4 flex-shrink-0 text-muted-foreground/70 {isStreaming
-          ? 'animate-pulse'
-          : ''}" />
+      <FilePlus
+        class="size-4 flex-shrink-0 {isStreaming
+          ? 'tool-active-icon-shimmer'
+          : 'text-muted-foreground/70'}" />
     {/if}
 
     <div class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
@@ -300,8 +304,8 @@
         {/if}
       </span>
 
-      <!-- Diff stats for patch/update -->
-      {#if !isStreaming && (operation === 'patch' || operation === 'update') && previousCode && (addedCount > 0 || removedCount > 0)}
+      <!-- Diff stats for edits -->
+      {#if !isStreaming && operation === 'edit' && previousCode && (addedCount > 0 || removedCount > 0)}
         <span class="flex-shrink-0 font-mono text-[12px]">
           {#if addedCount > 0}<span class="text-emerald-600 dark:text-emerald-400"
               >+{addedCount}</span
@@ -350,7 +354,7 @@
     <div
       bind:this={codeContainer}
       class="artifact-code-body relative mt-1 overflow-auto rounded-md border border-border/40 transition-[max-height] duration-150"
-      style="max-height: {isStreaming ? '300px' : '250px'}; background-color: var(--tool-box-bg);">
+      style="max-height: {isStreaming ? '300px' : '250px'}; background-color: var(--code-bg);">
       {#if showDiffView}
         <!-- Diff-only view: show only changed regions -->
         <table class="w-full border-collapse font-mono text-[12px] leading-[1.65]">
@@ -485,7 +489,7 @@
     display: inline-block;
     width: 2px;
     height: 1.1em;
-    background: hsl(var(--primary));
+    background: var(--ring);
     margin-left: 1px;
     vertical-align: text-bottom;
     animation: artifact-blink 0.8s step-end infinite;
@@ -514,7 +518,7 @@
 
   /* New line highlight during streaming */
   .artifact-line-new {
-    background: hsl(var(--primary) / 0.04);
+    background: var(--accent);
   }
 
   /* Diff highlights are now handled inline via Tailwind classes */

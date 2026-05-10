@@ -9,7 +9,7 @@ export interface Artifact {
   id: string;
   code: string;
   previousCode: string;
-  operation: 'create' | 'update' | 'patch' | 'delete' | 'read';
+  operation: 'create' | 'edit' | 'delete' | 'read';
   isStreaming: boolean;
   title: string;
   language?: string;
@@ -57,8 +57,8 @@ export type ContentPart =
       status: 'running' | 'done';
       details?: string[];
       /**
-       * Parsed tool input — used by per-kind icon resolution for the unified
-       * `fileSystem` tool (icon depends on the file extension in `path`).
+       * Parsed tool input — used by per-operation icon resolution for file
+       * tools. Workspace file icons also consider the extension in `path`.
        */
       toolInput?: { path?: unknown; from?: unknown; operation?: unknown };
       /**
