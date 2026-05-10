@@ -77,6 +77,17 @@ export class NeonAdapter implements DatabaseAdapter {
     return usersDomain.upsertUserFromFirebase(this.db, data);
   }
 
+  async linkFirebaseUser(
+    id: string,
+    data: {
+      firebase_uid: string;
+      display_name?: string | null;
+      avatar_url?: string | null;
+    }
+  ): Promise<User> {
+    return usersDomain.linkFirebaseUser(this.db, id, data);
+  }
+
   async updateUser(
     id: string,
     data: Partial<

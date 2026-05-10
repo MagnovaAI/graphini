@@ -37,6 +37,14 @@ export interface DatabaseAdapter {
     display_name?: string | null;
     avatar_url?: string | null;
   }): Promise<User>;
+  linkFirebaseUser(
+    id: string,
+    data: {
+      firebase_uid: string;
+      display_name?: string | null;
+      avatar_url?: string | null;
+    }
+  ): Promise<User>;
   updateUser(
     id: string,
     data: Partial<

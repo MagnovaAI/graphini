@@ -67,7 +67,7 @@ function filterNodesForIconSearch(
 export function createIconSearchTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Search local and verified Iconify icon candidates for Mermaid diagram nodes without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Supports color/noncolor icon modes. Use before fileSystem patch when the user asks for icons or logos. Return patch suggestions, then choose and apply only the needed node annotation lines via fileSystem patch.',
+      'Search local and verified Iconify icon candidates for Mermaid diagram nodes without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Supports color/noncolor icon modes. Use before workspaceFiles operation "edit" when the user asks for icons or logos. Return edit suggestions, then choose and apply only the needed node annotation lines via workspaceFiles operation "edit".',
     inputSchema: z.object({
       colorMode: z
         .enum(['any', 'color', 'noncolor'])
@@ -121,7 +121,7 @@ export function createIconSearchTool({ target, userId }: ToolContext) {
         return {
           message: validation.error,
           repairHint:
-            'Fix the Mermaid structure before searching icons. If the diagram starts with a subgraph, patch line 1 to prepend "flowchart TD".',
+            'Fix the Mermaid structure before searching icons. If the diagram starts with a subgraph, use workspaceFiles operation "edit" on line 1 to prepend "flowchart TD".',
           suggestedRepairPatch: buildMissingDeclarationRepair(lines),
           success: false
         };

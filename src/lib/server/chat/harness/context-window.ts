@@ -5,7 +5,8 @@ import { getChatProviderOptions, resolveChatModelFor } from '$lib/server/chat/mo
 import type { ProviderKeys } from '$lib/server/auth/provider-keys';
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
-const MIN_RECENT_CONTEXT_TOKENS = 12000;
+export const INPUT_CONTEXT_BUDGET_RATIO = 0.82;
+export const MIN_RECENT_CONTEXT_TOKENS = 12000;
 const SUMMARY_TARGET_TOKENS = 1800;
 const CHAT_COMPACTION_CATEGORY = 'chat_compaction';
 const CHAT_COMPACTION_MODEL_KEY = 'model';
@@ -23,6 +24,20 @@ export function contextWindowForModel(enabledModel: { max_tokens?: number | null
   return typeof configured === 'number' && configured > 8000
     ? configured
     : DEFAULT_CONTEXT_WINDOW_TOKENS;
+}
+
+export function usableInputBudgetTokens(contextWindowTokens: number): number {
+  return Math.floor(contextWindowTokens * INPUT_CONTEXT_BUDGET_RATIO);
+}
+
+export function chatHistoryBudgetTokens(options: {
+  contextWindowTokens: number;
+  fixedPromptTokens: number;
+}): number {
+  return Math.max(
+    MIN_RECENT_CONTEXT_TOKENS,
+    usableInputBudgetTokens(options.contextWindowTokens) - options.fixedPromptTokens
+  );
 }
 
 async function getChatCompactionModel(fallbackModel: string): Promise<string> {
@@ -84,10 +99,10 @@ export async function buildChatContext(
   options: {
     contextWindowTokens: number;
     fallbackModel: string;
-    systemPromptTokens: number;
+    fixedPromptTokens: number;
     keys: ProviderKeys;
   }
-): Promise<{ messages: Record<string, unknown>[]; summary: string }> {
+): Promise<{ compacted: boolean; messages: Record<string, unknown>[]; summary: string }> {
   let history = Array.isArray(uiMessages) ? uiMessages : [];
   const lastUiMessage = history.at(-1);
   if (
@@ -119,10 +134,10 @@ export async function buildChatContext(
       ? historyMessages
       : [...historyMessages, { role: 'user', content: userContent }];
 
-  const usableBudget = Math.max(
-    MIN_RECENT_CONTEXT_TOKENS,
-    Math.floor(options.contextWindowTokens * 0.82) - options.systemPromptTokens
-  );
+  const usableBudget = chatHistoryBudgetTokens({
+    contextWindowTokens: options.contextWindowTokens,
+    fixedPromptTokens: options.fixedPromptTokens
+  });
 
   let recentTokenCount = 0;
   let recentStart = fullMessages.length;
@@ -138,7 +153,7 @@ export async function buildChatContext(
   const olderMessages = fullMessages.slice(0, recentStart);
   const recentMessages = fullMessages.slice(recentStart);
   if (olderMessages.length === 0) {
-    return { messages: recentMessages, summary: '' };
+    return { compacted: false, messages: recentMessages, summary: '' };
   }
 
   try {
@@ -147,10 +162,11 @@ export async function buildChatContext(
       keys: options.keys,
       messages: olderMessages
     });
-    return { messages: recentMessages, summary };
+    return { compacted: true, messages: recentMessages, summary };
   } catch (summaryError) {
     console.warn('[chat] Failed to summarize overflowing history:', summaryError);
     return {
+      compacted: true,
       messages: recentMessages,
       summary:
         'Older chat history exceeded the context budget, but automatic summarization failed. Continue using the recent messages only.'

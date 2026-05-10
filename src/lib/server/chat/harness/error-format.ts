@@ -31,6 +31,10 @@ interface ApiCallErrorShape {
 
 const FALLBACK = 'Unknown error';
 
+function normalizeErrorMessage(message: string): string {
+  return message.replace(/\s+/g, ' ').trim();
+}
+
 function tryParseJson(s: string): { message?: string; code?: number | string } | null {
   try {
     const parsed = JSON.parse(s) as {
@@ -126,6 +130,11 @@ export function formatStreamError(error: unknown): string {
   } catch {
     /* ignore */
   }
-  const trimmed = message.trim() || FALLBACK;
+  let trimmed = normalizeErrorMessage(message) || FALLBACK;
+  if (/tried to call unavailable tool/i.test(trimmed)) {
+    trimmed = normalizeErrorMessage(
+      `${trimmed} This is a model/tool routing error. The requested tool is not available in this turn; adjust enabled tools or retry after Graphini refreshes its tool list.`
+    );
+  }
   return code !== undefined && code !== null && code !== '' ? `[${code}] ${trimmed}` : trimmed;
 }

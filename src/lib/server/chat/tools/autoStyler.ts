@@ -1,11 +1,12 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { persistFileContentById, resolveMermaidTarget, type ToolContext } from './context';
+import { getStylePalette } from './stylePalettes';
 
 export function createAutoStylerTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Automatically style all nodes and subgraphs in a Mermaid diagram with harmonious grouped colors. Pass `path` to target a specific .mermaid file; defaults to the active file when none is given. Use when the user asks to "make it colorful", "style the diagram", or "add colors".',
+      'Automatically style all nodes and subgraphs in a Mermaid diagram with harmonious grouped colors. Pass `path` to target a specific .mermaid file; defaults to the active file when none is given. Use when the user asks to "make it colorful", "style the diagram", or "add colors". Choose `themeMode` based on whether the user wants light-mode or dark-mode colors.',
     inputSchema: z.object({
       path: z
         .string()
@@ -17,12 +18,21 @@ export function createAutoStylerTool({ target, userId }: ToolContext) {
         .enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome'])
         .optional()
         .describe('Color palette theme. Defaults to vibrant.'),
+      themeMode: z
+        .enum(['light', 'dark'])
+        .optional()
+        .describe('Palette mode to apply. Use light for light UI/export, dark for dark UI/export.'),
       preserveExisting: z
         .boolean()
         .optional()
         .describe('If true, only style nodes that have no existing style. Default false.')
     }),
-    execute: async ({ path, palette = 'vibrant', preserveExisting = false }) => {
+    execute: async ({
+      path,
+      palette = 'vibrant',
+      themeMode = 'dark',
+      preserveExisting = false
+    }) => {
       const resolved = await resolveMermaidTarget(target, userId, path);
       if (!resolved.ok) {
         return { success: false, message: resolved.reason, hint: resolved.hint };
@@ -55,62 +65,7 @@ export function createAutoStylerTool({ target, userId }: ToolContext) {
         };
       }
 
-      const palettes: Record<string, { fill: string; stroke: string; text: string }[]> = {
-        earth: [
-          { fill: '#92400e', stroke: '#78350f', text: '#fef3c7' },
-          { fill: '#065f46', stroke: '#064e3b', text: '#d1fae5' },
-          { fill: '#7c2d12', stroke: '#6c2710', text: '#fed7aa' },
-          { fill: '#1e3a5f', stroke: '#172554', text: '#dbeafe' },
-          { fill: '#713f12', stroke: '#5c3210', text: '#fef9c3' },
-          { fill: '#4a1942', stroke: '#3b1336', text: '#fae8ff' }
-        ],
-        monochrome: [
-          { fill: '#374151', stroke: '#1f2937', text: '#f9fafb' },
-          { fill: '#6b7280', stroke: '#4b5563', text: '#f9fafb' },
-          { fill: '#9ca3af', stroke: '#6b7280', text: '#111827' },
-          { fill: '#d1d5db', stroke: '#9ca3af', text: '#111827' },
-          { fill: '#1f2937', stroke: '#111827', text: '#f9fafb' },
-          { fill: '#4b5563', stroke: '#374151', text: '#f9fafb' }
-        ],
-        ocean: [
-          { fill: '#0ea5e9', stroke: '#0284c7', text: '#ffffff' },
-          { fill: '#06b6d4', stroke: '#0891b2', text: '#ffffff' },
-          { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
-          { fill: '#3b82f6', stroke: '#2563eb', text: '#ffffff' },
-          { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' },
-          { fill: '#0369a1', stroke: '#075985', text: '#ffffff' }
-        ],
-        pastel: [
-          { fill: '#c7d2fe', stroke: '#818cf8', text: '#312e81' },
-          { fill: '#e0e7ff', stroke: '#818cf8', text: '#312e81' },
-          { fill: '#99f6e4', stroke: '#2dd4bf', text: '#134e4a' },
-          { fill: '#fde68a', stroke: '#fbbf24', text: '#78350f' },
-          { fill: '#ddd6fe', stroke: '#a78bfa', text: '#4c1d95' },
-          { fill: '#a5f3fc', stroke: '#22d3ee', text: '#164e63' },
-          { fill: '#fecaca', stroke: '#f87171', text: '#7f1d1d' },
-          { fill: '#bbf7d0', stroke: '#4ade80', text: '#14532d' }
-        ],
-        sunset: [
-          { fill: '#ef4444', stroke: '#dc2626', text: '#ffffff' },
-          { fill: '#f97316', stroke: '#ea580c', text: '#ffffff' },
-          { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
-          { fill: '#818cf8', stroke: '#6366f1', text: '#ffffff' },
-          { fill: '#a855f7', stroke: '#9333ea', text: '#ffffff' },
-          { fill: '#e11d48', stroke: '#be123c', text: '#ffffff' }
-        ],
-        vibrant: [
-          { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' },
-          { fill: '#818cf8', stroke: '#6366f1', text: '#ffffff' },
-          { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
-          { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
-          { fill: '#8b5cf6', stroke: '#7c3aed', text: '#ffffff' },
-          { fill: '#06b6d4', stroke: '#0891b2', text: '#ffffff' },
-          { fill: '#ef4444', stroke: '#dc2626', text: '#ffffff' },
-          { fill: '#22c55e', stroke: '#16a34a', text: '#ffffff' }
-        ]
-      };
-
-      const colors = palettes[palette] || palettes.vibrant;
+      const colors = getStylePalette(palette, themeMode);
       const lines = diagram.split('\n');
 
       // Parse nodes: lines like "  NodeId[Label]" or "  NodeId(Label)" etc.
@@ -201,7 +156,8 @@ export function createAutoStylerTool({ target, userId }: ToolContext) {
         path: resolved.path,
         subgraphsStyled: subgraphIds.length,
         success: true,
-        summary: `Styled ${nodeIds.length} nodes and ${subgraphIds.length} subgraphs with ${palette} palette in ${resolved.path}`
+        summary: `Styled ${nodeIds.length} nodes and ${subgraphIds.length} subgraphs with ${themeMode} ${palette} palette in ${resolved.path}`,
+        themeMode
       };
     }
   });

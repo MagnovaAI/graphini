@@ -1,15 +1,6 @@
 import { z } from 'zod';
 import { emptyObjectSchema, objectSchema, type McpToolDescriptor } from './mcp';
 
-export type GraphiniAgentId =
-  | 'orchestrator'
-  | 'diagram-engineer'
-  | 'visual-polish'
-  | 'research-agent'
-  | 'document-agent'
-  | 'data-agent'
-  | 'critic';
-
 export const graphiniMcpTools = [
   {
     annotations: { readOnlyHint: true, title: 'Ask Questions' },
@@ -25,7 +16,8 @@ export const graphiniMcpTools = [
               .array(
                 z.object({
                   id: z.string().min(1),
-                  label: z.string().min(1)
+                  label: z.string().min(1),
+                  other: z.boolean().optional()
                 })
               )
               .min(2)
@@ -42,7 +34,7 @@ export const graphiniMcpTools = [
   {
     annotations: { readOnlyHint: true, title: 'Data Analyzer' },
     description:
-      'Perform computational analysis on uploaded CSV or tabular files: frequencies, grouping, filters, top values, crosstabs, and correlations.',
+      'Perform computational analysis on workspace Markdown tables or CSV-like files: frequencies, grouping, filters, top values, crosstabs, and correlations.',
     inputSchema: objectSchema(
       z.object({
         aggregation: z.enum(['sum', 'count', 'avg', 'min', 'max']).optional(),
@@ -50,7 +42,7 @@ export const graphiniMcpTools = [
         column: z.string().optional(),
         column2: z.string().optional(),
         columns: z.array(z.string()).optional(),
-        fileId: z.string().min(1),
+        fileId: z.string().min(1).optional(),
         filterOp: z.enum(['equals', 'contains', 'gt', 'lt', 'gte', 'lte', 'notEquals']).optional(),
         filterValue: z.string().optional(),
         n: z.number().int().min(1).optional(),
@@ -62,7 +54,8 @@ export const graphiniMcpTools = [
           'crossTab',
           'valueCounts',
           'correlate'
-        ])
+        ]),
+        path: z.string().min(1).optional()
       })
     ),
     name: 'dataAnalyzer',
@@ -78,7 +71,7 @@ export const graphiniMcpTools = [
   {
     annotations: { readOnlyHint: true, title: 'Style Search' },
     description:
-      'Search Mermaid style palettes and return patch suggestions without mutating the diagram.',
+      'Search Mermaid style palettes and return edit suggestions without mutating the diagram.',
     inputSchema: objectSchema(
       z.object({
         limit: z.number().int().min(1).max(30).optional(),
@@ -153,24 +146,21 @@ export const graphiniMcpTools = [
     title: 'Thinking'
   },
   {
-    annotations: { destructiveHint: true, readOnlyHint: false, title: 'File Manager' },
-    description: 'List, read, search, summarize, or delete uploaded files available to the agent.',
+    annotations: { readOnlyHint: true, title: 'Use Skill' },
+    description:
+      'Load one enabled user skill by exact name and return its instructions for the current turn. Use this before relying on a user skill.',
     inputSchema: objectSchema(
       z.object({
-        endChar: z.number().int().min(0).optional(),
-        fileId: z.string().optional(),
-        operation: z.enum(['list', 'read', 'search', 'delete', 'summary']),
-        query: z.string().optional(),
-        startChar: z.number().int().min(0).optional()
+        name: z.string().min(1)
       })
     ),
-    name: 'fileManager',
-    title: 'File Manager'
+    name: 'useSkill',
+    title: 'Use Skill'
   },
   {
     annotations: { destructiveHint: true, readOnlyHint: false, title: 'File System' },
     description:
-      'Single tool for all workspace file operations on the per-user file tree (.md, .json, .yaml, .mermaid). Operations: list, read, create, update, patch, delete, moveFolder, deleteFolder. Mandatory ordering: list before create, read before patch (same turn). Quotas: 15 files for guests, 30 for signed-in users.',
+      'Single tool for workspace files on the per-user file tree (.md, .json, .yaml, .mermaid). Operations: list, read, create, edit, delete, moveFolder, deleteFolder. create performs duplicate/quota checks internally. edit can replace the full file or a line range. Mandatory ordering: read before line-range edit. Quotas: 15 files for guests, 30 for signed-in users.',
     inputSchema: objectSchema(
       z.object({
         content: z.string().optional(),
@@ -180,8 +170,7 @@ export const graphiniMcpTools = [
           'list',
           'read',
           'create',
-          'update',
-          'patch',
+          'edit',
           'delete',
           'moveFolder',
           'deleteFolder'
@@ -196,25 +185,10 @@ export const graphiniMcpTools = [
   }
 ] satisfies McpToolDescriptor[];
 
-export const agentToolNames = {
-  critic: ['fileSystem', 'errorChecker'],
-  'data-agent': ['fileManager', 'dataAnalyzer'],
-  'diagram-engineer': ['fileSystem', 'errorChecker'],
-  'document-agent': ['fileSystem', 'fileManager'],
-  orchestrator: ['askQuestions', 'thinking'],
-  'research-agent': ['webSearch', 'fileManager'],
-  'visual-polish': ['fileSystem', 'styleSearch', 'iconSearch', 'errorChecker']
-} satisfies Record<GraphiniAgentId, string[]>;
-
 export function listMcpTools(): McpToolDescriptor[] {
   return graphiniMcpTools;
 }
 
 export function getMcpTool(name: string): McpToolDescriptor | undefined {
   return graphiniMcpTools.find((tool) => tool.name === name);
-}
-
-export function listMcpToolsForAgent(agentId: GraphiniAgentId): McpToolDescriptor[] {
-  const allowed = new Set(agentToolNames[agentId]);
-  return graphiniMcpTools.filter((tool) => allowed.has(tool.name));
 }

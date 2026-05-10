@@ -58,9 +58,8 @@ export function normalizeChatModelId(
 /**
  * Build an OpenRouter language model with an explicit API key.
  *
- * Exported because subagent tools (diagramPatch, markdownWrite, ...) need to
- * construct lightweight chat clients with the same key the originating
- * request supplied. They get the key via `ToolContext.keys`.
+ * Exported for server-side chat utilities that need to construct lightweight
+ * chat clients with the same key the originating request supplied.
  */
 export function buildOpenRouterChat(modelId: string, apiKey: string): LanguageModel {
   const openrouter = createOpenRouter({

@@ -1,6 +1,79 @@
 export const MERMAID_DIAGRAM_DECLARATION =
   /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|mindmap|timeline|kanban|gitGraph|gitgraph|quadrantChart|xyChart|xychart|sankey|block|packet|architecture|C4Context|C4Container|C4Component|C4Deployment|requirementDiagram|zenuml)\b/i;
 
+let serverMermaidPromise: Promise<typeof import('mermaid').default> | null = null;
+
+async function getServerMermaid() {
+  if (!serverMermaidPromise) {
+    serverMermaidPromise = (async () => {
+      if (typeof document === 'undefined') {
+        const { JSDOM } = await import('jsdom');
+        const dom = new JSDOM('<!doctype html><html><body></body></html>');
+        globalThis.window = dom.window as unknown as Window & typeof globalThis;
+        globalThis.document = dom.window.document;
+        Object.defineProperty(globalThis, 'navigator', {
+          configurable: true,
+          value: dom.window.navigator
+        });
+        globalThis.Element = dom.window.Element;
+        globalThis.HTMLElement = dom.window.HTMLElement;
+        globalThis.SVGElement = dom.window.SVGElement;
+      }
+
+      const mermaid = (await import('mermaid')).default;
+      mermaid.initialize({ startOnLoad: false });
+      return mermaid;
+    })();
+  }
+  return serverMermaidPromise;
+}
+
+function parseErrorLine(message: string): number {
+  const match = message.match(/Parse error on line (\d+)/i);
+  if (!match) return 0;
+  const line = Number.parseInt(match[1], 10);
+  return Number.isFinite(line) ? line : 0;
+}
+
+export async function validateMermaidSyntaxServer(
+  source: string
+): Promise<
+  | { valid: true }
+  | { error: { line: number; message: string }; parserUnavailable?: false; valid: false }
+  | { reason: string; parserUnavailable: true; valid: true }
+> {
+  try {
+    const mermaid = await getServerMermaid();
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    console.error = () => undefined;
+    console.warn = () => undefined;
+
+    try {
+      await mermaid.parse(source.trim());
+      return { valid: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        error: {
+          line: parseErrorLine(message),
+          message: message || 'Invalid Mermaid syntax'
+        },
+        valid: false
+      };
+    } finally {
+      console.error = originalError;
+      console.warn = originalWarn;
+    }
+  } catch (err) {
+    return {
+      parserUnavailable: true,
+      reason: err instanceof Error ? err.message : String(err),
+      valid: true
+    };
+  }
+}
+
 export function findMermaidDeclarations(source: string): { line: number; text: string }[] {
   return source
     .split('\n')
@@ -8,15 +81,25 @@ export function findMermaidDeclarations(source: string): { line: number; text: s
     .filter(({ text }) => MERMAID_DIAGRAM_DECLARATION.test(text));
 }
 
+function firstSemanticMermaidLine(source: string): string {
+  for (const line of source.split('\n')) {
+    const text = line.trim();
+    if (!text) continue;
+    if (text.startsWith('%%')) continue;
+    return text;
+  }
+  return '';
+}
+
 export function validateSingleMermaidDocument(
   source: string
 ): { valid: true } | { error: string; hint: string; valid: false } {
-  const trimmed = source.trim();
-  if (!MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
+  const firstDiagramLine = firstSemanticMermaidLine(source);
+  if (!MERMAID_DIAGRAM_DECLARATION.test(firstDiagramLine)) {
     return {
       error:
-        'REJECTED: Content does not start with a valid Mermaid diagram type. Save documentation/prose to a .md file via fileSystem. Redo with valid Mermaid code that starts with a diagram type like "graph TD", "flowchart LR", "sequenceDiagram", etc.',
-      hint: 'Mermaid content must start with exactly one diagram declaration.',
+        'REJECTED: Content does not start with a valid Mermaid diagram type. Save documentation/prose to a .md file. Redo with valid Mermaid code that starts with a diagram type like "graph TD", "flowchart LR", "sequenceDiagram", etc. Leading Mermaid init directives and comments are allowed.',
+      hint: 'Mermaid content must contain exactly one top-level diagram declaration.',
       valid: false
     };
   }

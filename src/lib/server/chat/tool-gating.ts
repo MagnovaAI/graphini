@@ -12,11 +12,11 @@ export const REQUESTABLE_TOOL_NAMES = [
   'autoStyler',
   'dataAnalyzer',
   'errorChecker',
-  'fileManager',
   'fileSystem',
   'iconSearch',
   'styleSearch',
   'thinking',
+  'useSkill',
   'webSearch'
 ];
 

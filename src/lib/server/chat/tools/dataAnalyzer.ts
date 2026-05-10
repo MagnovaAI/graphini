@@ -1,18 +1,16 @@
-import { getFileById } from '$lib/server/file-store';
+import { getDb } from '$lib/server/db';
+import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { workspaceFiles } from '$lib/server/db/schema';
 import { tool } from 'ai';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import type { ToolContext } from './context';
 
-interface ToolContext {
-  modelId?: string;
-  sessionId: string;
-}
+const drizzleDb = () => (getDb() as NeonAdapter).db;
 
-export function createDataAnalyzerTool(context: ToolContext) {
-  // Tool reads from getFileById directly; the ToolContext is accepted for
-  // shape parity with the rest of the catalog.
-  void context;
+export function createDataAnalyzerTool({ userId }: ToolContext) {
   return tool({
-    description: `Perform computational analysis on CSV/tabular data from uploaded files. Use this when the user asks to analyze data, find patterns, frequencies, trends, top values, or any computation on uploaded CSV/Excel files.
+    description: `Perform computational analysis on CSV/tabular data stored in workspace files. Use this when the user asks to analyze data, find patterns, frequencies, trends, top values, or any computation on Markdown tables or CSV-like text saved in the workspace.
 
 OPERATIONS:
 - "frequency" — Count how often each unique value appears in a column. Great for finding most common items, popular numbers, etc.
@@ -29,7 +27,7 @@ WHEN TO USE:
 - User asks "group by X and sum Y" → use groupBy
 - User asks "show top 10 by sales" → use topN
 - User asks "filter where price > 100" → use filter
-- Any data analysis request on uploaded CSV files`,
+- Any data analysis request on workspace Markdown tables or CSV-like files`,
     inputSchema: z.object({
       aggregation: z
         .enum(['sum', 'count', 'avg', 'min', 'max'])
@@ -45,7 +43,7 @@ WHEN TO USE:
         .array(z.string())
         .optional()
         .describe('Multiple columns for valueCounts operation'),
-      fileId: z.string().describe('File ID of the uploaded CSV file to analyze'),
+      fileId: z.string().optional().describe('Workspace file ID to analyze. Provide this or path.'),
       filterOp: z
         .enum(['equals', 'contains', 'gt', 'lt', 'gte', 'lte', 'notEquals'])
         .optional()
@@ -54,10 +52,15 @@ WHEN TO USE:
       n: z.number().optional().describe('Number of results for topN (default 20)'),
       operation: z
         .enum(['frequency', 'groupBy', 'filter', 'topN', 'crossTab', 'valueCounts', 'correlate'])
-        .describe('The analysis operation to perform')
+        .describe('The analysis operation to perform'),
+      path: z
+        .string()
+        .optional()
+        .describe('Workspace file path to analyze. Provide this or fileId.')
     }),
     execute: async ({
       fileId,
+      path,
       operation,
       column,
       column2,
@@ -68,10 +71,28 @@ WHEN TO USE:
       ascending = false,
       columns: multiColumns
     }) => {
-      const file = await getFileById(fileId);
-      if (!file) return { success: false, error: `File not found: ${fileId}` };
+      if (!userId) return { success: false, error: 'No user context — cannot analyze files.' };
+      if (!fileId && !path) {
+        return { success: false, error: 'fileId or path is required for data analysis' };
+      }
 
-      const rawText = file.extractedText || '';
+      const db = drizzleDb();
+      const [file] = await db
+        .select({
+          content: workspaceFiles.content,
+          id: workspaceFiles.id,
+          path: workspaceFiles.path
+        })
+        .from(workspaceFiles)
+        .where(
+          and(
+            eq(workspaceFiles.user_id, userId),
+            fileId ? eq(workspaceFiles.id, fileId) : eq(workspaceFiles.path, path as string)
+          )
+        );
+      if (!file) return { success: false, error: `File not found: ${fileId ?? path}` };
+
+      const rawText = file.content || '';
       if (!rawText.trim()) return { success: false, error: 'File has no extracted text content' };
 
       // Parse CSV — handle both raw CSV and markdown-table format

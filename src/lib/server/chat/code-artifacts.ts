@@ -33,7 +33,7 @@ export function validateCodeArtifact(
   if (MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
     return {
       error:
-        'REJECTED: code tools are for non-Mermaid code. Use fileSystem with a .mermaid file for Mermaid.',
+        'REJECTED: code tools are for non-Mermaid code. Use workspaceFiles with a .mermaid file for Mermaid.',
       valid: false
     };
   }

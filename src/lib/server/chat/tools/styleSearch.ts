@@ -2,45 +2,7 @@ import { parseMermaidNodes, validateSingleMermaidDocument } from '$lib/server/ch
 import { tool } from 'ai';
 import { z } from 'zod';
 import { resolveMermaidTarget, type ToolContext } from './context';
-
-const palettes = {
-  earth: [
-    { fill: '#92400e', stroke: '#78350f', text: '#fef3c7' },
-    { fill: '#065f46', stroke: '#064e3b', text: '#d1fae5' },
-    { fill: '#7c2d12', stroke: '#6c2710', text: '#fed7aa' },
-    { fill: '#1e3a5f', stroke: '#172554', text: '#dbeafe' }
-  ],
-  monochrome: [
-    { fill: '#374151', stroke: '#1f2937', text: '#f9fafb' },
-    { fill: '#6b7280', stroke: '#4b5563', text: '#f9fafb' },
-    { fill: '#d1d5db', stroke: '#9ca3af', text: '#111827' },
-    { fill: '#1f2937', stroke: '#111827', text: '#f9fafb' }
-  ],
-  ocean: [
-    { fill: '#0ea5e9', stroke: '#0284c7', text: '#ffffff' },
-    { fill: '#06b6d4', stroke: '#0891b2', text: '#ffffff' },
-    { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
-    { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' }
-  ],
-  pastel: [
-    { fill: '#c7d2fe', stroke: '#818cf8', text: '#312e81' },
-    { fill: '#99f6e4', stroke: '#2dd4bf', text: '#134e4a' },
-    { fill: '#fde68a', stroke: '#fbbf24', text: '#78350f' },
-    { fill: '#fecaca', stroke: '#f87171', text: '#7f1d1d' }
-  ],
-  sunset: [
-    { fill: '#ef4444', stroke: '#dc2626', text: '#ffffff' },
-    { fill: '#f97316', stroke: '#ea580c', text: '#ffffff' },
-    { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
-    { fill: '#a855f7', stroke: '#9333ea', text: '#ffffff' }
-  ],
-  vibrant: [
-    { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' },
-    { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
-    { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
-    { fill: '#8b5cf6', stroke: '#7c3aed', text: '#ffffff' }
-  ]
-} satisfies Record<string, { fill: string; stroke: string; text: string }[]>;
+import { getStylePalette, stylePalettePreview } from './stylePalettes';
 
 const noStyleTypes = new Set([
   'mindmap',
@@ -76,7 +38,7 @@ function buildMissingDeclarationRepair(lines: string[]) {
 export function createStyleSearchTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Search and preview Mermaid style directives without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use before fileSystem patch when the user asks for colors, themes, styling, or visual polish. Return patch suggestions, then choose and apply only the needed lines via fileSystem patch.',
+      'Search and preview Mermaid style directives without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use before workspaceFiles operation "edit" when the user asks for colors, themes, styling, light mode, dark mode, or visual polish. Choose `themeMode` based on the requested display mode: light palettes use pale fills with dark text; dark palettes use deeper fills with light text. Return edit suggestions, then choose and apply only the needed lines via workspaceFiles operation "edit".',
     inputSchema: z.object({
       path: z
         .string()
@@ -88,9 +50,15 @@ export function createStyleSearchTool({ target, userId }: ToolContext) {
         .enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome'])
         .optional()
         .describe('Palette to preview. Defaults to vibrant.'),
+      themeMode: z
+        .enum(['light', 'dark'])
+        .optional()
+        .describe(
+          'Palette mode to preview. Use light for light UI/export, dark for dark UI/export.'
+        ),
       limit: z.number().int().min(1).max(30).optional().describe('Maximum nodes to style.')
     }),
-    execute: async ({ path, palette = 'vibrant', limit = 30 }) => {
+    execute: async ({ path, palette = 'vibrant', themeMode = 'dark', limit = 30 }) => {
       const resolved = await resolveMermaidTarget(target, userId, path);
       if (!resolved.ok) {
         return { success: false, message: resolved.reason, hint: resolved.hint };
@@ -105,7 +73,7 @@ export function createStyleSearchTool({ target, userId }: ToolContext) {
         return {
           message: validation.error,
           repairHint:
-            'Fix the Mermaid structure before styling. If the diagram starts with a subgraph, patch line 1 to prepend "flowchart TD".',
+            'Fix the Mermaid structure before styling. If the diagram starts with a subgraph, use workspaceFiles operation "edit" on line 1 to prepend "flowchart TD".',
           suggestedRepairPatch: buildMissingDeclarationRepair(lines),
           success: false
         };
@@ -121,7 +89,7 @@ export function createStyleSearchTool({ target, userId }: ToolContext) {
 
       const nodes = parseMermaidNodes(diagram).slice(0, limit);
       const subgraphs = findSubgraphs(lines);
-      const colors = palettes[palette] ?? palettes.vibrant;
+      const colors = getStylePalette(palette, themeMode);
       const styleLines = nodes.map((node, index) => {
         const color = colors[index % colors.length];
         return `    style ${node.id} fill:${color.fill},stroke:${color.stroke},stroke-width:2px,color:${color.text}`;
@@ -137,6 +105,10 @@ export function createStyleSearchTool({ target, userId }: ToolContext) {
       const patchContent = `${finalLine}${finalLine.trim() ? '\n' : ''}${suggestedLines.join('\n')}`;
 
       return {
+        availablePalettes: {
+          dark: stylePalettePreview('dark'),
+          light: stylePalettePreview('light')
+        },
         nodes: nodes.map((node) => ({ id: node.id, line: node.line + 1, text: node.text })),
         palette,
         styleLines: suggestedLines,
@@ -146,7 +118,8 @@ export function createStyleSearchTool({ target, userId }: ToolContext) {
           endLine: lines.length,
           startLine: lines.length
         },
-        summary: `Found ${suggestedLines.length} style line${suggestedLines.length !== 1 ? 's' : ''} for ${palette} palette`
+        summary: `Found ${suggestedLines.length} style line${suggestedLines.length !== 1 ? 's' : ''} for ${themeMode} ${palette} palette`,
+        themeMode
       };
     }
   });

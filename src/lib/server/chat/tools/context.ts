@@ -4,6 +4,7 @@ import { getDb } from '$lib/server/db';
 import type { NeonAdapter } from '$lib/server/db/neon-adapter';
 import { workspaceFiles } from '$lib/server/db/schema';
 import type { ProviderKeys } from '$lib/server/auth/provider-keys';
+import type { PersonalizationSkillContext } from '$lib/server/chat/harness/types';
 
 export interface WorkspaceToolTab {
   engine: string;
@@ -26,7 +27,7 @@ export interface WorkspaceToolTarget {
 }
 
 /**
- * Per-turn guard state for the unified `fileSystem` tool.
+ * Per-turn guard state for the unified `workspaceFiles` tool.
  * - `listed` is set after the model calls `list`; `create` requires it.
  * - `readPaths` records which file paths the model has read this turn;
  *   `patch` requires the path to be in this set.
@@ -43,7 +44,7 @@ export interface ToolContext {
   /** Authenticated user (or guest) id. Tools that need per-user data read this. */
   userId?: string;
   target?: WorkspaceToolTarget;
-  fileSystemGuard?: FileSystemTurnGuard;
+  workspaceFilesGuard?: FileSystemTurnGuard;
   /**
    * Provider keys carried by the originating chat request (extracted from
    * `x-provider-*` headers at the request boundary). Subagent tools that
@@ -51,6 +52,7 @@ export interface ToolContext {
    * a global key — is consumed.
    */
   keys: ProviderKeys;
+  skills?: PersonalizationSkillContext[];
 }
 
 export const targetTabNameSchema = z
@@ -174,7 +176,7 @@ export async function resolveMermaidTarget(
       return {
         ok: false,
         reason: `${explicitPath} is .${row.kind}, not .mermaid. This tool only operates on Mermaid files.`,
-        hint: 'Pass a `.mermaid` path, or call fileSystem to create one first.'
+        hint: 'Pass a `.mermaid` path, or call workspaceFiles to create one first.'
       };
     }
     return { ok: true, id: row.id, path: row.path, content: row.content };
@@ -194,14 +196,14 @@ export async function resolveMermaidTarget(
     return {
       ok: false,
       reason: `Active file "${target.activeFile.path}" is .${target.activeFile.kind}. Pass a \`path\` to a .mermaid file, or no file is targeted.`,
-      hint: 'fileSystem({operation: "list"}) to see your .mermaid files; pass that path here.'
+      hint: 'workspaceFiles({operation: "list"}) to see your .mermaid files; pass that path here.'
     };
   }
 
   return {
     ok: false,
     reason: 'No active file and no `path` given. Specify a `.mermaid` path to operate on.',
-    hint: 'fileSystem({operation: "list"}) to find a file, then re-run this tool with `path`.'
+    hint: 'workspaceFiles({operation: "list"}) to find a file, then re-run this tool with `path`.'
   };
 }
 

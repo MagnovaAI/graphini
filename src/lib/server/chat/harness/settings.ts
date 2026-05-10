@@ -16,7 +16,8 @@ const TOOLS_CONFIG_KEY = 'graphini_tools_config_v1';
  */
 function disabledToolsFromConfig(config: unknown): Set<string> | null {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
-  const disabled = Object.entries(config as Record<string, unknown>)
+  const values = config as Record<string, unknown>;
+  const disabled = Object.entries(values)
     .filter(([, value]) => value === false)
     .map(([toolName]) => toolName);
   return new Set(disabled);

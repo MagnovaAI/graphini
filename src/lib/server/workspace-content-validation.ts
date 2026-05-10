@@ -3,9 +3,9 @@
  *
  * Used by:
  *  - the chat tool path (src/lib/server/chat/tools/fileSystem.ts) where
- *    the model creates / patches files via tool calls
+ *    the model creates / edits files via tool calls
  *  - the REST API (src/routes/api/workspace-files/*) where the client
- *    creates / updates files directly
+ *    creates / edits files directly
  *
  * Both paths must enforce the same contract or files saved through one
  * surface render incorrectly through the other (e.g. markdown stored as
@@ -19,7 +19,7 @@
  *   .yaml/.yml stored as-is (no bundled parser).
  *
  * Empty content is accepted for every kind so callers can write the file
- * and fill it in subsequent updates.
+ * and fill it in subsequent edits.
  */
 
 import {
@@ -54,7 +54,7 @@ export function validateContentForKind(
   if (kind === 'md') {
     const trimmed = content.trim();
     if (!trimmed) return { ok: true };
-    if (MERMAID_DIAGRAM_DECLARATION.test(trimmed)) {
+    if (MERMAID_DIAGRAM_DECLARATION.test(trimmed) || validateSingleMermaidDocument(trimmed).valid) {
       return {
         error: 'REJECTED: .md content starts with a Mermaid diagram declaration.',
         hint: 'Save diagram code to a .mermaid file. Use .md for prose only.',
