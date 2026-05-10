@@ -3,7 +3,7 @@
   import { mode } from 'mode-watcher';
   import type { Tokens } from 'marked';
   import { type Highlighter, type ThemedToken } from 'shiki';
-  import { getSharedHighlighter } from '$lib/client/util/editor/shikiSetup';
+  import { ensureShikiLanguage, getSharedHighlighter } from '$lib/client/util/editor/shikiSetup';
 
   const { token }: { token: Tokens.Code; id?: string } = $props();
 
@@ -60,9 +60,8 @@
         // Try to load the language; fall back to 'text' if shiki doesn't know it.
         let lang = rawLang;
         if (!hl.getLoadedLanguages().includes(lang)) {
-          try {
-            await hl.loadLanguage(lang as never);
-          } catch {
+          const loaded = await ensureShikiLanguage(lang);
+          if (!loaded) {
             lang = 'text';
           }
         }

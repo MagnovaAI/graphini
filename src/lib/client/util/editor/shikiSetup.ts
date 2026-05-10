@@ -23,7 +23,11 @@ export function getSharedHighlighter(): Promise<Highlighter> {
         console.warn('[shiki] mermaid grammar load failed; continuing without it:', err);
         return null;
       });
-      const langs: unknown[] = ['json', 'yaml', 'markdown'];
+      const langs: unknown[] = [
+        (await import('shiki/dist/langs/json.mjs')).default,
+        (await import('shiki/dist/langs/yaml.mjs')).default,
+        (await import('shiki/dist/langs/markdown.mjs')).default
+      ];
       if (mermaidGrammar) langs.unshift(mermaidGrammar);
       const hl = await createHighlighter({
         // dark-plus / light-plus are the Monaco-shiki bridge's hardcoded
@@ -51,28 +55,52 @@ export function getSharedHighlighter(): Promise<Highlighter> {
  * the load failed (caller should fall back to plain text).
  */
 const inFlightLangLoads = new Map<string, Promise<boolean>>();
+const shikiLanguageLoaders: Record<string, () => Promise<unknown[]>> = {
+  bash: async () => (await import('shiki/dist/langs/bash.mjs')).default,
+  css: async () => (await import('shiki/dist/langs/css.mjs')).default,
+  diff: async () => (await import('shiki/dist/langs/diff.mjs')).default,
+  html: async () => (await import('shiki/dist/langs/html.mjs')).default,
+  javascript: async () => (await import('shiki/dist/langs/javascript.mjs')).default,
+  json: async () => (await import('shiki/dist/langs/json.mjs')).default,
+  jsx: async () => (await import('shiki/dist/langs/jsx.mjs')).default,
+  markdown: async () => (await import('shiki/dist/langs/markdown.mjs')).default,
+  python: async () => (await import('shiki/dist/langs/python.mjs')).default,
+  shellscript: async () => (await import('shiki/dist/langs/bash.mjs')).default,
+  tsx: async () => (await import('shiki/dist/langs/tsx.mjs')).default,
+  typescript: async () => (await import('shiki/dist/langs/typescript.mjs')).default,
+  yaml: async () => (await import('shiki/dist/langs/yaml.mjs')).default
+};
+const shikiLanguageAliases: Record<string, string> = {
+  bash: 'shellscript',
+  js: 'javascript',
+  md: 'markdown',
+  mjs: 'javascript',
+  py: 'python',
+  sh: 'shellscript',
+  ts: 'typescript',
+  yml: 'yaml'
+};
+
 export async function ensureShikiLanguage(lang: string): Promise<boolean> {
   if (!lang) return false;
+  const normalizedLang = shikiLanguageAliases[lang] ?? lang;
   const hl = await getSharedHighlighter();
-  if (hl.getLoadedLanguages().includes(lang)) return true;
-  const cached = inFlightLangLoads.get(lang);
+  if (hl.getLoadedLanguages().includes(normalizedLang)) return true;
+  const cached = inFlightLangLoads.get(normalizedLang);
   if (cached) return cached;
   const promise = (async () => {
     try {
-      const { bundledLanguages } = await import('shiki/langs');
-      const loader = (bundledLanguages as Record<string, () => Promise<{ default: unknown[] }>>)[
-        lang
-      ];
+      const loader = shikiLanguageLoaders[normalizedLang];
       if (!loader) return false;
-      const mod = await loader();
-      await hl.loadLanguage(mod.default as never);
+      const langDefinition = await loader();
+      await hl.loadLanguage(langDefinition as never);
       return true;
     } catch (err) {
-      console.warn(`[shiki] failed to load language "${lang}":`, err);
+      console.warn(`[shiki] failed to load language "${normalizedLang}":`, err);
       return false;
     }
   })();
-  inFlightLangLoads.set(lang, promise);
+  inFlightLangLoads.set(normalizedLang, promise);
   return promise;
 }
 
@@ -82,12 +110,7 @@ export async function ensureShikiLanguage(lang: string): Promise<boolean> {
 // as plain text. Build a standalone variant by promoting the inner repository
 // entries to the top-level patterns.
 async function buildStandaloneMermaidGrammar(): Promise<unknown> {
-  const { bundledLanguages } = await import('shiki/langs');
-  const loader = (bundledLanguages as Record<string, () => Promise<{ default: unknown[] }>>)
-    .mermaid;
-  if (!loader) throw new Error('mermaid grammar not bundled in shiki');
-  const mod = await loader();
-  const arr = mod.default;
+  const arr = (await import('shiki/dist/langs/mermaid.mjs')).default;
   // Deep clone so we don't mutate the cached module.
   const grammar = JSON.parse(JSON.stringify(arr[0])) as {
     patterns: { include: string }[];

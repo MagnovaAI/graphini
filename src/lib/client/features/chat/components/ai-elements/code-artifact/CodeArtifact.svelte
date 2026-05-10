@@ -3,7 +3,7 @@
   import { tick } from 'svelte';
   import { mode } from 'mode-watcher';
   import type { ThemedToken } from 'shiki';
-  import { getSharedHighlighter } from '$lib/client/util/editor/shikiSetup';
+  import { ensureShikiLanguage, getSharedHighlighter } from '$lib/client/util/editor/shikiSetup';
 
   interface Props {
     code: string;
@@ -210,9 +210,8 @@
       try {
         const hl = await getSharedHighlighter();
         if (!hl.getLoadedLanguages().includes(lang)) {
-          try {
-            await hl.loadLanguage(lang as never);
-          } catch {
+          const loaded = await ensureShikiLanguage(lang);
+          if (!loaded) {
             // unknown lang — fall back to plain rendering
             if (!cancelled) {
               codeTokenLines = null;
