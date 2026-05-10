@@ -1,10 +1,16 @@
-import { getDevBypassEmail, validateSessionOrGuest } from '$lib/server/auth';
+import {
+  clearGuestCookieHeader,
+  findGuestUserForRequest,
+  getDevBypassEmail,
+  validateSession,
+  validateSessionOrGuest
+} from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = async ({ request, url }) => {
   // Skip rate limiting when dev bypass is active (including implicit localhost dev)
   if (!getDevBypassEmail(request)) {
     const rl = authLimiter.check(getClientKey(request));
@@ -12,7 +18,23 @@ export const GET: RequestHandler = async ({ request }) => {
   }
 
   try {
-    const user = await validateSessionOrGuest(request);
+    let user = await validateSession(request);
+    let guestMerged = false;
+
+    if (user) {
+      try {
+        const guest = await findGuestUserForRequest(request);
+        if (guest && guest.id !== user.id) {
+          await getDb().mergeUsers(guest.id, user.id);
+          guestMerged = true;
+        }
+      } catch (err) {
+        console.error('[auth/me] guest merge failed:', err);
+      }
+    } else {
+      user = await validateSessionOrGuest(request);
+    }
+
     if (!user) {
       return json({ user: null, credits: null }, { status: 401 });
     }
@@ -36,18 +58,25 @@ export const GET: RequestHandler = async ({ request }) => {
       /* e.g. DATABASE_URL unset or dev fallback user id — still return session */
     }
 
-    return json({
-      user: {
-        avatar_url: user.avatar_url,
-        created_at: user.created_at,
-        display_name: user.display_name,
-        email: user.email,
-        id: user.id,
-        is_guest: user.is_guest === true,
-        role: user.role
+    const headers = new Headers();
+    if (guestMerged)
+      headers.append('Set-Cookie', clearGuestCookieHeader(url.protocol === 'https:'));
+
+    return json(
+      {
+        user: {
+          avatar_url: user.avatar_url,
+          created_at: user.created_at,
+          display_name: user.display_name,
+          email: user.email,
+          id: user.id,
+          is_guest: user.is_guest === true,
+          role: user.role
+        },
+        credits
       },
-      credits
-    });
+      { headers }
+    );
   } catch (e) {
     console.error('[auth/me] Error:', e);
     return json({ error: 'Internal server error' }, { status: 500 });

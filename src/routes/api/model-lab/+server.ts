@@ -9,9 +9,6 @@ import {
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 export const GET: RequestHandler = async ({ request, url }) => {
-  const authResult = await requireAdmin(request);
-  if (authResult instanceof Response) return authResult;
-
   try {
     const provider = parseModelLabProvider(url.searchParams.get('provider'));
     const query = url.searchParams.get('q') ?? '';

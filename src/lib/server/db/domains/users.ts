@@ -120,6 +120,30 @@ export async function upsertUserFromFirebase(
   return mapUser(user);
 }
 
+export async function linkFirebaseUser(
+  db: NeonHttpDatabase<typeof schema>,
+  id: string,
+  data: {
+    firebase_uid: string;
+    display_name?: string | null;
+    avatar_url?: string | null;
+  }
+): Promise<User> {
+  const [user] = await db
+    .update(schema.users)
+    .set({
+      avatar_url: data.avatar_url ?? null,
+      display_name: data.display_name ?? null,
+      email_verified: true,
+      firebase_uid: data.firebase_uid,
+      last_login_at: new Date(),
+      updated_at: new Date()
+    })
+    .where(eq(schema.users.id, id))
+    .returning();
+  return mapUser(user);
+}
+
 export async function updateUser(
   db: NeonHttpDatabase<typeof schema>,
   id: string,
@@ -215,6 +239,25 @@ export async function mergeUsers(
     .set({ user_id: toUserId })
     .where(eq(schema.diagramWorkspaces.user_id, fromUserId));
 
+  // workspace_files has unique (user_id, path). Keep same paths when the
+  // target account does not have them; put conflicts under a deterministic
+  // imported folder so neither side is lost.
+  await db.execute(sql`
+    UPDATE workspace_files AS guest
+    SET
+      user_id = ${toUserId},
+      path = CASE
+        WHEN EXISTS (
+          SELECT 1 FROM workspace_files AS target
+          WHERE target.user_id = ${toUserId}
+            AND target.path = guest.path
+        )
+          THEN 'Imported from guest/' || left(guest.id::text, 8) || '/' || guest.path
+        ELSE guest.path
+      END
+    WHERE guest.user_id = ${fromUserId};
+  `);
+
   await db
     .update(schema.files)
     .set({ user_id: toUserId })
@@ -230,19 +273,23 @@ export async function mergeUsers(
     .set({ user_id: toUserId })
     .where(eq(schema.creditTransactions.user_id, fromUserId));
 
-  // app_settings has unique (user_id, category, key). Move only rows that won't
-  // collide with the destination user's existing settings; drop the rest.
+  // app_settings has unique (user_id, category, key). Move same-key conflicts
+  // under a deterministic guest suffix instead of dropping them.
   await db.execute(sql`
     UPDATE app_settings AS guest
-    SET user_id = ${toUserId}
-    WHERE guest.user_id = ${fromUserId}
-      AND NOT EXISTS (
-        SELECT 1 FROM app_settings AS target
-        WHERE target.user_id = ${toUserId}
-          AND target.category = guest.category
-          AND target.key = guest.key
-      );
-    DELETE FROM app_settings WHERE user_id = ${fromUserId};
+    SET
+      user_id = ${toUserId},
+      key = CASE
+        WHEN EXISTS (
+          SELECT 1 FROM app_settings AS target
+          WHERE target.user_id = ${toUserId}
+            AND target.category = guest.category
+            AND target.key = guest.key
+        )
+          THEN guest.key || '__guest_' || left(guest.id::text, 8)
+        ELSE guest.key
+      END
+    WHERE guest.user_id = ${fromUserId};
   `);
 
   // Credit balance: add the guest's balance into the target's, then drop the

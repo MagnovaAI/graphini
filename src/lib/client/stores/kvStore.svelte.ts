@@ -102,6 +102,11 @@ class KvStore {
 
   /** Sync read from the in-memory cache. */
   get<T = unknown>(category: string, key: string): T | null {
+    if (!this.initialized) {
+      this.lsLoadAll();
+      this.initialized = true;
+      this.isAuthenticated = true;
+    }
     const v = this.memCache.get(cacheKey(category, key));
     return v !== undefined ? (v as T) : null;
   }

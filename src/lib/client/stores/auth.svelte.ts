@@ -4,7 +4,7 @@
  */
 
 import { syncPreferencesFromServer } from '$lib/client/stores/panels.svelte';
-import { setActiveUserId } from '$lib/client/stores/settings.svelte';
+import { mergeLocalSettingsNamespaces, setActiveUserId } from '$lib/client/stores/settings.svelte';
 import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
 
 interface AuthUser {
@@ -83,6 +83,15 @@ async function fetchMe(): Promise<void> {
     const res = await fetch('/api/auth/me', { credentials: 'include' });
     if (res.ok) {
       const data = await res.json();
+      const previousUser = state.user;
+      if (
+        previousUser?.is_guest === true &&
+        data.user?.is_guest !== true &&
+        typeof previousUser.id === 'string' &&
+        typeof data.user?.id === 'string'
+      ) {
+        mergeLocalSettingsNamespaces(previousUser.id, data.user.id);
+      }
       state.user = data.user;
       state.credits = data.credits;
       saveCachedAuth(data.user, data.credits);

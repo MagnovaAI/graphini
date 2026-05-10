@@ -6,18 +6,19 @@
 // Settings (Svelte 5 runes)
 export {
   aiSettings,
-  editorSettings,
   getSessionId,
   getUserId,
+  modelSettings,
   personalizationSettings,
   setUserId,
   uiSettings,
   type AISettings,
-  type EditorSettings,
+  type ModelSettings,
   type PersonalizationRule,
   type PersonalizationSettings,
   type PersonalizationSkill,
-  type UISettings
+  type UISettings,
+  type UserSavedModel
 } from './settings.svelte';
 
 // Model stores for AI model management

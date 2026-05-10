@@ -344,6 +344,15 @@ async function syncUserFromMagnovaAuth(firebaseUid: string): Promise<User | null
     });
 
     const db = getDb();
+    const existingByEmail = await db.getUserByEmail(remote.email);
+    if (existingByEmail && existingByEmail.firebase_uid !== firebaseUid) {
+      return db.linkFirebaseUser(existingByEmail.id, {
+        avatar_url: avatarUrl,
+        display_name: displayName,
+        firebase_uid: firebaseUid
+      });
+    }
+
     return db.upsertUserFromFirebase({
       avatar_url: avatarUrl,
       display_name: displayName,

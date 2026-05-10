@@ -9,17 +9,15 @@
  *   setting's namespace and reloads its value from the new slot.
  *
  *   Two users on the same browser therefore can't see each other's keys or
- *   preferences. A guest who later signs up keeps their guest-namespaced
- *   data in localStorage but the post-sign-up store starts from the new
- *   user.id slot — guest data isn't migrated. Per the revamp's hard-reset
- *   policy, that's intentional.
+ *   preferences. When a guest signs in, `mergeLocalSettingsNamespaces` copies
+ *   browser-only settings into the real account namespace before the active
+ *   namespace swaps, so rules, skills, keys, and UI preferences are not lost.
  *
  *   The `mermaid_` prefix is kept for grep-ability with older builds.
  */
 
 import { browser } from '$app/environment';
 import { kv } from './kvStore.svelte';
-import { hmrRestore, hmrPreserve } from '$lib/client/util/hmr';
 
 // ---------------------------------------------------------------------------
 // Active user namespace
@@ -67,6 +65,105 @@ export function getActiveUserNamespace(): string {
   return activeNamespace;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonEmpty(value: unknown): boolean {
+  return typeof value === 'string'
+    ? value.trim().length > 0
+    : value !== undefined && value !== null;
+}
+
+function mergeUniqueItems(
+  targetItems: unknown,
+  sourceItems: unknown,
+  fallbackPrefix: string
+): unknown[] {
+  const target = Array.isArray(targetItems) ? targetItems : [];
+  const source = Array.isArray(sourceItems) ? sourceItems : [];
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const seen = new Set<string>();
+  const result: unknown[] = [];
+
+  function keyFor(item: unknown): string {
+    if (isPlainRecord(item)) {
+      const id = typeof item.id === 'string' ? item.id.trim().toLowerCase() : '';
+      const name = typeof item.name === 'string' ? item.name.trim().toLowerCase() : '';
+      if (id || name) return `${id}|${name}`;
+    }
+    return `${fallbackPrefix}:${JSON.stringify(item)}`;
+  }
+
+  for (const item of [...target, ...source]) {
+    const key = keyFor(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function mergeSettingValue(key: string, target: unknown, source: unknown): unknown {
+  if (!isPlainRecord(target)) return source;
+  if (!isPlainRecord(source)) return target;
+
+  if (key === 'personalization_settings') {
+    return withDefaultPersonalizationSkills({
+      ...source,
+      ...target,
+      personas: mergeUniqueItems(
+        target.personas,
+        source.personas,
+        'persona'
+      ) as PersonalizationPersona[],
+      rules: mergeUniqueItems(target.rules, source.rules, 'rule') as PersonalizationRule[],
+      skills: mergeUniqueItems(target.skills, source.skills, 'skill') as PersonalizationSkill[]
+    } as PersonalizationSettings);
+  }
+
+  if (key === 'ai_settings') {
+    const merged = { ...target };
+    for (const [field, sourceValue] of Object.entries(source)) {
+      if (!nonEmpty(merged[field]) && nonEmpty(sourceValue)) merged[field] = sourceValue;
+    }
+    return merged;
+  }
+
+  if (key === 'model_settings') {
+    return {
+      ...source,
+      ...target,
+      models: mergeUniqueItems(target.models, source.models, 'model') as UserSavedModel[]
+    } as ModelSettings;
+  }
+
+  return { ...source, ...target };
+}
+
+export function mergeLocalSettingsNamespaces(
+  fromNamespace: string | null | undefined,
+  toNamespace: string | null | undefined
+): void {
+  if (!browser || !fromNamespace || !toNamespace || fromNamespace === toNamespace) return;
+
+  const fromPrefix = `mermaid_${fromNamespace}_`;
+  const toPrefix = `mermaid_${toNamespace}_`;
+  const allSettings = kv.getCategory<unknown>('settings');
+
+  for (const [storedKey, sourceValue] of Object.entries(allSettings)) {
+    if (!storedKey.startsWith(fromPrefix)) continue;
+    const settingKey = storedKey.slice(fromPrefix.length);
+    const targetStorageKey = `${toPrefix}${settingKey}`;
+    const targetValue = kv.get<unknown>('settings', targetStorageKey);
+    kv.set(
+      'settings',
+      targetStorageKey,
+      targetValue === null ? sourceValue : mergeSettingValue(settingKey, targetValue, sourceValue)
+    );
+  }
+}
+
 /**
  * Subscribe to user-namespace changes. The callback fires after the new
  * namespace is in effect; use it to reload your own localStorage-backed
@@ -88,11 +185,13 @@ export class PersistentSetting<T extends object> implements PersistentSettingBas
 
   private readonly key: string;
   private readonly defaultValue: T;
+  private readonly normalize: (value: T) => T;
   private boundNamespace: string;
 
-  constructor(key: string, defaultValue: T) {
+  constructor(key: string, defaultValue: T, normalize: (value: T) => T = (value) => value) {
     this.key = key;
     this.defaultValue = defaultValue;
+    this.normalize = normalize;
     this.boundNamespace = activeNamespace;
     this.value = this.loadFromStorage();
     registeredSettings.add(this);
@@ -103,9 +202,9 @@ export class PersistentSetting<T extends object> implements PersistentSettingBas
   }
 
   private loadFromStorage(): T {
-    if (!browser) return { ...this.defaultValue };
+    if (!browser) return this.normalize({ ...this.defaultValue });
     const stored = kv.get<Partial<T>>('settings', this.storageKey());
-    return stored ? { ...this.defaultValue, ...stored } : { ...this.defaultValue };
+    return this.normalize(stored ? { ...this.defaultValue, ...stored } : { ...this.defaultValue });
   }
 
   /**
@@ -120,8 +219,8 @@ export class PersistentSetting<T extends object> implements PersistentSettingBas
   }
 
   set(newValue: T): void {
-    this.value = newValue;
-    if (browser) kv.set('settings', this.storageKey(), newValue);
+    this.value = this.normalize(newValue);
+    if (browser) kv.set('settings', this.storageKey(), this.value);
   }
 
   update(fn: (v: T) => T): void {
@@ -139,71 +238,80 @@ export class PersistentSetting<T extends object> implements PersistentSettingBas
 
 export interface UISettings {
   theme: 'light' | 'dark' | 'system';
-  sidebarOpen: boolean;
   showReasoning: boolean;
   autoScroll: boolean;
-  compactMode: boolean;
-  fontSize: 'small' | 'medium' | 'large';
 }
 
-export const uiSettings =
-  (hmrRestore('uiSettings') as PersistentSetting<UISettings> | undefined) ??
-  new PersistentSetting<UISettings>('ui_settings', {
-    autoScroll: true,
-    compactMode: false,
-    fontSize: 'medium',
-    showReasoning: true,
-    sidebarOpen: true,
-    theme: 'system'
-  });
-hmrPreserve('uiSettings', () => uiSettings);
+export const uiSettings = new PersistentSetting<UISettings>('ui_settings', {
+  autoScroll: true,
+  showReasoning: true,
+  theme: 'system'
+});
 
 // ---------------------------------------------------------------------------
 // AISettings
 // ---------------------------------------------------------------------------
 
 export interface AISettings {
-  provider: 'openai' | 'anthropic' | 'openrouter' | 'kilo' | 'gemini';
-  model: string;
-  providerModel?: string;
-  baseUrl?: string;
-  temperature: number;
-  maxTokens: number;
-  promptMode: 'simple' | 'advanced' | 'visual';
-  streamResponse: boolean;
-  favoriteModels: string[];
   openaiApiKey?: string;
   anthropicApiKey?: string;
   anthropicAuthToken?: string;
   openrouterApiKey?: string;
-  kiloApiKey?: string;
   geminiApiKey?: string;
   /** Search-provider keys for the webSearch / iconSearch tools. */
   braveSearchApiKey?: string;
   tavilyApiKey?: string;
 }
 
-export const aiSettings =
-  (hmrRestore('aiSettings') as PersistentSetting<AISettings> | undefined) ??
-  new PersistentSetting<AISettings>('ai_settings', {
-    anthropicApiKey: '',
-    anthropicAuthToken: '',
-    braveSearchApiKey: '',
-    favoriteModels: ['gpt-4o', 'anthropic/claude-3.5-sonnet', 'gemini-3-flash-preview'],
-    geminiApiKey: '',
-    kiloApiKey: '',
-    maxTokens: 4000,
-    model: 'gpt-4o',
-    openaiApiKey: '',
-    openrouterApiKey: '',
-    promptMode: 'simple',
-    provider: 'openai',
-    providerModel: 'gpt-4o',
-    streamResponse: true,
-    tavilyApiKey: '',
-    temperature: 0.9
-  });
-hmrPreserve('aiSettings', () => aiSettings);
+export const aiSettings = new PersistentSetting<AISettings>('ai_settings', {
+  anthropicApiKey: '',
+  anthropicAuthToken: '',
+  braveSearchApiKey: '',
+  geminiApiKey: '',
+  openaiApiKey: '',
+  openrouterApiKey: '',
+  tavilyApiKey: ''
+});
+
+// ---------------------------------------------------------------------------
+// ModelSettings
+// ---------------------------------------------------------------------------
+
+export interface UserSavedModel {
+  id: string;
+  name: string;
+  provider: string;
+  category: string;
+  contextWindow: number;
+  toolSupport: boolean;
+  description: string;
+  gemsPerMessage: number;
+  isFree: boolean;
+  isEnabled: boolean;
+  imageSupport: boolean;
+  maxTokens: number;
+}
+
+export interface ModelSettings {
+  models: UserSavedModel[];
+  selectedModelId: string;
+}
+
+function normalizeModelSettings(settings: ModelSettings): ModelSettings {
+  return {
+    models: Array.isArray(settings.models) ? settings.models.filter((model) => model.id) : [],
+    selectedModelId: typeof settings.selectedModelId === 'string' ? settings.selectedModelId : ''
+  };
+}
+
+export const modelSettings = new PersistentSetting<ModelSettings>(
+  'model_settings',
+  {
+    models: [],
+    selectedModelId: ''
+  },
+  normalizeModelSettings
+);
 
 // ---------------------------------------------------------------------------
 // PersonalizationSettings
@@ -214,7 +322,6 @@ export interface PersonalizationRule {
   name: string;
   body: string;
   enabled: boolean;
-  source: 'manual' | 'imported' | 'model';
 }
 
 export interface PersonalizationSkill {
@@ -222,64 +329,68 @@ export interface PersonalizationSkill {
   name: string;
   description: string;
   enabled: boolean;
-  source: 'manual' | 'imported' | 'model';
+}
+
+export interface PersonalizationPersona {
+  id: string;
+  name: string;
+  body: string;
+  enabled: boolean;
 }
 
 export interface PersonalizationSettings {
-  memoryAutoSave: boolean;
-  memorySaveMode: 'conservative' | 'balanced' | 'aggressive';
-  memoryReviewBeforeSave: boolean;
+  personas: PersonalizationPersona[];
   rules: PersonalizationRule[];
   skills: PersonalizationSkill[];
 }
 
-export const personalizationSettings =
-  (hmrRestore('personalizationSettings') as
-    | PersistentSetting<PersonalizationSettings>
-    | undefined) ??
-  new PersistentSetting<PersonalizationSettings>('personalization_settings', {
-    memoryAutoSave: true,
-    memoryReviewBeforeSave: true,
-    memorySaveMode: 'balanced',
+const DEFAULT_PERSONALIZATION_SKILLS: PersonalizationSkill[] = [];
+
+function withDefaultPersonalizationSkills(
+  settings: PersonalizationSettings
+): PersonalizationSettings {
+  const normalized = {
+    ...settings,
+    personas: Array.isArray(settings.personas) ? settings.personas : [],
+    rules: Array.isArray(settings.rules) ? settings.rules : [],
+    skills: Array.isArray(settings.skills)
+      ? settings.skills.filter((skill) => skill.id !== 'default-mermaid-expert')
+      : []
+  };
+  const existing = new Set(
+    normalized.skills.map(
+      (skill) => `${skill.id.trim().toLowerCase()}|${skill.name.trim().toLowerCase()}`
+    )
+  );
+  const missingDefaults = DEFAULT_PERSONALIZATION_SKILLS.filter((skill) => {
+    const id = skill.id.trim().toLowerCase();
+    const name = skill.name.trim().toLowerCase();
+    return (
+      !existing.has(`${id}|${name}`) &&
+      !normalized.skills.some((item) => item.name.trim().toLowerCase() === name)
+    );
+  });
+  return missingDefaults.length > 0
+    ? { ...normalized, skills: [...missingDefaults, ...normalized.skills] }
+    : normalized;
+}
+
+export const personalizationSettings = new PersistentSetting<PersonalizationSettings>(
+  'personalization_settings',
+  withDefaultPersonalizationSkills({
+    personas: [],
     rules: [
       {
         body: 'Keep answers direct, practical, and grounded in the current workspace.',
         enabled: true,
         id: 'default-directness',
-        name: 'Direct workspace help',
-        source: 'manual'
+        name: 'Direct workspace help'
       }
     ],
     skills: []
-  });
-hmrPreserve('personalizationSettings', () => personalizationSettings);
-
-// ---------------------------------------------------------------------------
-// EditorSettings
-// ---------------------------------------------------------------------------
-
-export interface EditorSettings {
-  autoFormat: boolean;
-  lineNumbers: boolean;
-  wordWrap: boolean;
-  minimap: boolean;
-  tabSize: number;
-  autoSave: boolean;
-  autoSaveDelay: number;
-}
-
-export const editorSettings =
-  (hmrRestore('editorSettings') as PersistentSetting<EditorSettings> | undefined) ??
-  new PersistentSetting<EditorSettings>('editor_settings', {
-    autoFormat: true,
-    autoSave: true,
-    autoSaveDelay: 1000,
-    lineNumbers: true,
-    minimap: false,
-    tabSize: 2,
-    wordWrap: true
-  });
-hmrPreserve('editorSettings', () => editorSettings);
+  }),
+  withDefaultPersonalizationSkills
+);
 
 // ---------------------------------------------------------------------------
 // Session helpers

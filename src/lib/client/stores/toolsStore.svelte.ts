@@ -27,7 +27,7 @@ const DEFAULT_TOOLS: ToolConfig[] = [
   {
     category: 'icons',
     description:
-      'Search local and Iconify web icons for diagram nodes; the model applies chosen icons via fileSystem patch',
+      'Search local and Iconify web icons for diagram nodes; the model applies chosen icons with a workspace edit',
     enabled: true,
     id: 'iconSearch',
     label: 'Icon Tool'
@@ -55,7 +55,7 @@ const DEFAULT_TOOLS: ToolConfig[] = [
   },
   {
     category: 'style',
-    description: 'Search style palettes and patch suggestions before applying',
+    description: 'Search style palettes and edit suggestions before applying',
     enabled: true,
     id: 'styleSearch',
     label: 'Style Tool'
@@ -75,22 +75,23 @@ const DEFAULT_TOOLS: ToolConfig[] = [
     label: 'thinking'
   },
   {
-    category: 'files',
-    description: 'List, read, search, and manage uploaded files and attachments',
+    category: 'intelligence',
+    description: 'Load enabled user skills and apply their instructions during the turn',
     enabled: true,
-    id: 'fileManager',
-    label: 'fileManager'
+    id: 'useSkill',
+    label: 'useSkill'
   },
   {
     category: 'files',
-    description: 'Browse and edit the workspace file tree (md, json, yaml, mermaid)',
+    description:
+      'Workspace files: list, read, create, edit, delete, moveFolder, deleteFolder. Uploads are saved here as Markdown files.',
     enabled: true,
     id: 'fileSystem',
-    label: 'File System'
+    label: 'Files'
   },
   {
     category: 'files',
-    description: 'Analyze CSV/Excel data: frequency, groupBy, filter, topN, correlations',
+    description: 'Analyze workspace tables or CSV-like text: frequency, groupBy, filter, topN',
     enabled: true,
     id: 'dataAnalyzer',
     label: 'dataAnalyzer'
@@ -127,12 +128,11 @@ function loadToolsConfig(): ToolConfig[] {
 
 function syncToolsConfigFromKv() {
   const saved = readSavedToolsConfig();
-  if (!saved) return;
   tools = DEFAULT_TOOLS.map((t) => {
     const current = tools.find((tool) => tool.id === t.id);
     return {
       ...t,
-      enabled: saved[t.id] !== undefined ? saved[t.id] : (current?.enabled ?? t.enabled)
+      enabled: saved?.[t.id] !== undefined ? saved[t.id] : (current?.enabled ?? t.enabled)
     };
   });
 }
@@ -170,7 +170,21 @@ export const toolsStore = {
 
   getEnabledToolIds(): string[] {
     syncToolsConfigFromKv();
-    return tools.filter((t) => t.enabled).map((t) => t.id);
+    const enabled: string[] = [];
+    for (const tool of tools) {
+      if (!tool.enabled) continue;
+      enabled.push(tool.id);
+    }
+    return enabled;
+  },
+
+  replace(nextTools: ToolConfig[]) {
+    const enabledById = Object.fromEntries(nextTools.map((tool) => [tool.id, tool.enabled]));
+    tools = DEFAULT_TOOLS.map((tool) => ({
+      ...tool,
+      enabled: tool.id in enabledById ? Boolean(enabledById[tool.id]) : tool.enabled
+    }));
+    saveToolsConfig(tools);
   },
 
   reset() {
