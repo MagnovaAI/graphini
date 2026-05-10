@@ -11,10 +11,16 @@ node_modules/
 !.env.example
 
 # SvelteKit / Vite output
+.astro/
+.astro-home/
 .svelte-kit/
 build/
 dist/
 functions/
+
+# Astro homepage build bridge output
+static/_astro/
+static/index.html
 
 # Vercel
 .vercel/

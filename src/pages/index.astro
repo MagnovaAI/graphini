@@ -1,0 +1,990 @@
+---
+const prompts = [
+  {
+    title: 'Checkout flow',
+    text: 'Create a sequence diagram for checkout: user adds item, payment intent is created, Stripe confirms payment, inventory updates, and email receipt is sent.'
+  },
+  {
+    title: 'Cloud architecture',
+    text: 'Map a cloud microservices architecture with CDN, load balancer, auth service, order service, PostgreSQL, Redis cache, queue, and monitoring.'
+  },
+  {
+    title: 'Incident timeline',
+    text: 'Create an incident timeline for API latency: deploy at 10:05, error spike at 10:12, rollback at 10:30, cache fix at 10:45, resolved at 11:00.'
+  }
+];
+
+const workflow = [
+  ['Prompt', 'Describe rough notes, tickets, or pasted architecture context.'],
+  ['Mermaid', 'Keep diagrams inspectable, portable, and easy to review.'],
+  ['Repair', 'Fix syntax, layout, labels, and missing edges without starting over.'],
+  ['Export', 'Ship SVG, PNG, and Mermaid source into docs, PRs, or issues.']
+];
+
+const features = [
+  {
+    track: 'Always editable',
+    title: 'A diagram workspace that stays close to the source.',
+    text: 'Graphini keeps chat, Mermaid, rendered canvas, and document notes together so a system sketch can become handoff material without changing tools.',
+    points: ['Canvas, code, document, and chat in one workspace', 'Readable Mermaid that can be copied or versioned']
+  },
+  {
+    track: 'Syntax aware',
+    title: 'Repair broken diagrams without flattening intent.',
+    text: 'When Mermaid gets noisy, the assistant can correct syntax and improve structure while preserving the architecture you already described.',
+    points: ['Error-aware fixes for Mermaid output', 'Flowcharts, sequence diagrams, ERDs, timelines, and C4-style maps']
+  },
+  {
+    track: 'Ready to ship',
+    title: 'Export the work into the places decisions happen.',
+    text: 'Send clean assets into project docs, pull requests, architecture reviews, incident reports, and planning notes.',
+    points: ['SVG, PNG, and source export', 'Useful for architecture, API, data, and incident documentation']
+  }
+];
+
+const stats = [
+  ['5', 'diagram formats tuned for technical teams'],
+  ['4', 'workspace surfaces connected by context'],
+  ['0', 'lock-in: Mermaid stays plain text'],
+  ['1', 'place to prompt, edit, repair, and export']
+];
+
+const integrations = [
+  'Mermaid',
+  'Markdown',
+  'GitHub',
+  'OpenRouter',
+  'OpenAI',
+  'Gemini',
+  'SVG',
+  'PNG',
+  'Docs'
+];
+
+const faqs = [
+  ['Is the output editable?', 'Yes. Graphini keeps Mermaid source visible, so diagrams can be edited, copied, reviewed, and versioned.'],
+  ['Can it fix Mermaid errors?', 'Yes. The workspace has a syntax-aware repair loop for broken diagrams and layout issues.'],
+  ['Is this only for architecture diagrams?', 'No. It is useful for system maps, sequence flows, incident timelines, ERDs, and documentation diagrams.']
+];
+
+const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prompt)}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Graphini - AI diagram workspace</title>
+    <meta
+      name="description"
+      content="Create Mermaid diagrams from plain English, edit them in a workspace, repair syntax issues, and export clean assets for docs and presentations."
+    />
+    <meta property="og:title" content="Graphini - AI diagram workspace" />
+    <meta
+      property="og:description"
+      content="Create, edit, repair, and export Mermaid diagrams from one AI-powered workspace."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://graphini.magnova.ai" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://graphini.magnova.ai" />
+    <link rel="icon" type="image/x-icon" href="/favicons/favicon.ico" />
+    <link
+      rel="preload"
+      href="/fonts/Inter-Variable.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous"
+    />
+    <link
+      rel="preload"
+      href="/fonts/JetBrainsMono-Variable.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous"
+    />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="Graphini home">
+          <img src="/brand/logo.png" alt="" />
+          <span>Graphini</span>
+        </a>
+        <nav class="nav-links" aria-label="Primary navigation">
+          <a href="#features">Features</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <div class="header-actions">
+          <a class="icon-link" href="https://github.com/omkarbhad/graphini" rel="noreferrer" target="_blank" aria-label="Open GitHub">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.85 1.25 1.85 1.25 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.66-.3-5.46-1.33-5.46-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.8 5.62-5.47 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"></path></svg>
+          </a>
+          <a class="button button-dark" href="/app">Open app</a>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="container">
+            <div class="hero-copy">
+              <div class="badge">
+                <span class="badge-dot"></span>
+                AI diagram workspace for Mermaid
+              </div>
+              <h1>Diagram systems while the context is still fresh.</h1>
+              <p>
+                Turn rough architecture notes, schemas, incidents, and handoff questions into diagrams
+                that stay readable as code.
+              </p>
+              <div class="hero-actions">
+                <a class="button button-dark" href="/app">Open workspace</a>
+                <a class="button button-primary" href={encodedPrompt(prompts[1].text)}>Generate a diagram</a>
+              </div>
+            </div>
+
+            <form class="prompt-box" action="/app" method="get">
+              <input name="prompt" placeholder="Describe a diagram to generate..." aria-label="Diagram prompt" />
+              <button type="submit">Create</button>
+            </form>
+
+            <div class="prompt-grid" aria-label="Example prompts">
+              {prompts.map((prompt) => (
+                <a href={encodedPrompt(prompt.text)}>
+                  <span>{prompt.title}</span>
+                  <p>{prompt.text}</p>
+                </a>
+              ))}
+            </div>
+
+            <a class="product-frame" href="/app" aria-label="Open Graphini workspace">
+              <div class="frame-top">
+                <span><i></i> System Design</span>
+                <span>Canvas, code, document, chat</span>
+              </div>
+              <img src="/demo2.png" alt="Graphini workspace showing a system diagram canvas and chat panel" />
+            </a>
+          </div>
+        </section>
+
+        <section class="tool-strip" aria-label="Graphini toolchain">
+          <div class="container">
+            <p>Built around portable diagram workflows</p>
+            <div>
+              {integrations.map((item) => <span>{item}</span>)}
+            </div>
+          </div>
+        </section>
+
+        <section id="features" class="feature-track">
+          <div class="container feature-grid">
+            <div class="sticky-copy">
+              <span class="section-kicker">Key Features</span>
+              <h2>More structure for the messy middle of technical thinking.</h2>
+              <div class="track-list">
+                {features.map((feature) => <span>{feature.track}</span>)}
+              </div>
+            </div>
+            <div class="feature-cards">
+              {features.map((feature) => (
+                <article>
+                  <span>{feature.track}</span>
+                  <h3>{feature.title}</h3>
+                  <p>{feature.text}</p>
+                  <ul>
+                    {feature.points.map((point) => <li>{point}</li>)}
+                  </ul>
+                  <div class="mini-canvas" aria-hidden="true">
+                    <div></div><div></div><div></div><div></div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section class="stats-section">
+          <div class="container stats-grid">
+            {stats.map(([value, label]) => (
+              <article>
+                <strong>{value}</strong>
+                <span>{label}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="workflow" class="workflow-section">
+          <div class="container">
+            <div class="section-header">
+              <span class="section-kicker">Essential Workflow</span>
+              <h2>From prompt to diagram asset without leaving the page.</h2>
+            </div>
+            <div class="workflow-grid">
+              {workflow.map(([title, text], index) => (
+                <article>
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section class="integration-section">
+          <div class="container integration-card">
+            <div>
+              <span class="section-kicker">Integration & Tools</span>
+              <h2>Use Graphini where technical work already happens.</h2>
+            </div>
+            <div class="integration-cloud">
+              {integrations.map((item) => <span>{item}</span>)}
+            </div>
+          </div>
+        </section>
+
+        <section id="faq" class="faq-section">
+          <div class="container faq-grid">
+            <div>
+              <span class="section-kicker">FAQ</span>
+              <h2>Small answers before you open the workspace.</h2>
+            </div>
+            <div class="faq-list">
+              {faqs.map(([question, answer]) => (
+                <details>
+                  <summary>{question}</summary>
+                  <p>{answer}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section class="cta-section">
+          <div class="container cta-card">
+            <div>
+              <h2>Start with a messy thought. Leave with a diagram you can ship.</h2>
+              <p>The diagram can get cleaner as your understanding gets sharper.</p>
+            </div>
+            <a class="button button-primary" href="/app">Create a diagram</a>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="container">
+          <span>Graphini</span>
+          <span>&copy; {new Date().getFullYear()} Magnova</span>
+          <a href="https://github.com/omkarbhad/graphini" rel="noreferrer" target="_blank">GitHub</a>
+          <a href="https://github.com/omkarbhad/graphini/blob/main/LICENSE" rel="noreferrer" target="_blank">MIT License</a>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
+
+<style>
+  @font-face {
+    font-family: 'Inter';
+    src: url('/fonts/Inter-Variable.woff2') format('woff2-variations');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Variable.woff2') format('woff2-variations');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    color-scheme: light;
+    --background: hsl(0 0% 100%);
+    --foreground: hsl(240 10% 3.9%);
+    --card: hsl(0 0% 100%);
+    --muted: hsl(240 4.8% 95.9%);
+    --muted-foreground: hsl(240 3.8% 46.1%);
+    --border: hsl(240 5.9% 90%);
+    --primary: #2400ab;
+    --primary-strong: #6000e9;
+    --accent: rgba(96, 0, 233, 0.08);
+    --success: #16a34a;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --background: #181818;
+      --foreground: #e4e4e4;
+      --card: #181818;
+      --muted: #1c1c1c;
+      --muted-foreground: rgba(228, 228, 228, 0.55);
+      --border: #262626;
+      --primary: #6000e9;
+      --primary-strong: #8b5cff;
+      --accent: rgba(96, 0, 233, 0.18);
+      --success: #3fa266;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+  }
+
+  .page-shell {
+    min-height: 100vh;
+    overflow: hidden;
+    background:
+      linear-gradient(90deg, transparent 0, transparent calc(50% - 1px), color-mix(in srgb, var(--border), transparent 45%) calc(50% - 1px), color-mix(in srgb, var(--border), transparent 45%) 50%, transparent 50%),
+      radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--primary-strong), transparent 82%), transparent 34rem),
+      var(--background);
+  }
+
+  .container {
+    width: min(100% - 32px, 1180px);
+    margin: 0 auto;
+  }
+
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    height: 56px;
+    width: min(100% - 32px, 1180px);
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--background), transparent 8%);
+    backdrop-filter: blur(16px);
+  }
+
+  .brand,
+  .header-actions,
+  .nav-links {
+    display: flex;
+    align-items: center;
+  }
+
+  .brand {
+    gap: 8px;
+    font-weight: 650;
+  }
+
+  .brand img {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-links {
+    margin-left: auto;
+    gap: 18px;
+    color: var(--muted-foreground);
+  }
+
+  .nav-links a:hover,
+  .site-footer a:hover {
+    color: var(--foreground);
+  }
+
+  .header-actions {
+    gap: 8px;
+  }
+
+  .icon-link {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted-foreground);
+  }
+
+  .icon-link svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    border-radius: 8px;
+    padding: 0 16px;
+    font-weight: 560;
+    transition:
+      border-color 160ms ease,
+      background 160ms ease,
+      color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .button:hover {
+    transform: translateY(-1px);
+  }
+
+  .button-dark {
+    background: var(--foreground);
+    color: var(--background);
+  }
+
+  .button-primary {
+    border: 1px solid color-mix(in srgb, var(--primary-strong), transparent 25%);
+    background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+    color: white;
+  }
+
+  .hero {
+    position: relative;
+    padding: 74px 0 56px;
+  }
+
+  .hero-rule {
+    position: absolute;
+    inset: 0 auto auto 50%;
+    width: 1px;
+    height: 100%;
+    background: color-mix(in srgb, var(--border), transparent 35%);
+    pointer-events: none;
+  }
+
+  .hero-copy {
+    position: relative;
+    z-index: 1;
+    max-width: 830px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .badge,
+  .section-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted), transparent 25%);
+    color: var(--muted-foreground);
+    padding: 0 12px;
+    font-weight: 520;
+  }
+
+  .badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--success);
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h1 {
+    margin-top: 18px;
+    font-size: clamp(44px, 7vw, 82px);
+    line-height: 1.04;
+    font-weight: 660;
+  }
+
+  .hero-copy p {
+    max-width: 650px;
+    margin: 20px auto 0;
+    color: var(--muted-foreground);
+    font-size: 16px;
+    line-height: 1.7;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 30px;
+  }
+
+  .prompt-box {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    max-width: 760px;
+    margin: 34px auto 0;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--card), transparent 4%);
+    padding: 8px;
+    box-shadow: 0 20px 70px color-mix(in srgb, #000, transparent 88%);
+  }
+
+  .prompt-box input {
+    min-width: 0;
+    height: 42px;
+    border: 0;
+    background: transparent;
+    color: var(--foreground);
+    padding: 0 10px;
+    font: inherit;
+    outline: none;
+  }
+
+  .prompt-box input::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .prompt-box button {
+    height: 42px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--foreground);
+    color: var(--background);
+    padding: 0 18px;
+    font: inherit;
+    font-weight: 560;
+    cursor: pointer;
+  }
+
+  .prompt-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .prompt-grid a,
+  .workflow-grid article,
+  .stats-grid article,
+  .feature-cards article,
+  .integration-card,
+  .cta-card,
+  .faq-list details {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--card), transparent 2%);
+  }
+
+  .prompt-grid a {
+    min-height: 112px;
+    padding: 14px;
+  }
+
+  .prompt-grid span {
+    display: block;
+    font-weight: 620;
+  }
+
+  .prompt-grid p {
+    margin-top: 8px;
+    color: var(--muted-foreground);
+  }
+
+  .product-frame {
+    display: block;
+    overflow: hidden;
+    margin-top: 42px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--card), transparent 6%);
+    padding: 10px;
+    box-shadow: 0 30px 90px color-mix(in srgb, #000, transparent 82%);
+  }
+
+  .frame-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 2px 10px;
+    color: var(--muted-foreground);
+  }
+
+  .frame-top span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--foreground);
+    font-weight: 560;
+  }
+
+  .frame-top i {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--success);
+  }
+
+  .product-frame img {
+    aspect-ratio: 2934 / 1544;
+    width: 100%;
+    border-radius: 10px;
+    object-fit: cover;
+    object-position: left top;
+  }
+
+  .tool-strip,
+  .feature-track,
+  .stats-section,
+  .workflow-section,
+  .integration-section,
+  .faq-section,
+  .cta-section {
+    border-top: 1px solid var(--border);
+    padding: 64px 0;
+  }
+
+  .tool-strip .container {
+    display: grid;
+    gap: 20px;
+    text-align: center;
+  }
+
+  .tool-strip p {
+    color: var(--muted-foreground);
+    font-weight: 560;
+  }
+
+  .tool-strip div div,
+  .integration-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .tool-strip span,
+  .integration-cloud span {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--muted);
+    color: var(--muted-foreground);
+    padding: 8px 12px;
+  }
+
+  .feature-grid,
+  .faq-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    gap: 26px;
+  }
+
+  .sticky-copy {
+    position: sticky;
+    top: 88px;
+    align-self: start;
+  }
+
+  .sticky-copy h2,
+  .section-header h2,
+  .integration-card h2,
+  .faq-grid h2,
+  .cta-card h2 {
+    margin-top: 16px;
+    max-width: 620px;
+    font-size: clamp(30px, 4vw, 54px);
+    line-height: 1.08;
+    font-weight: 640;
+  }
+
+  .track-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 28px;
+    color: var(--muted-foreground);
+    font-size: 16px;
+  }
+
+  .track-list span:first-child {
+    color: var(--primary-strong);
+  }
+
+  .feature-cards {
+    display: grid;
+    gap: 12px;
+  }
+
+  .feature-cards article {
+    position: sticky;
+    top: 88px;
+    overflow: hidden;
+    padding: 28px;
+  }
+
+  .feature-cards article > span {
+    color: var(--primary-strong);
+    font-weight: 620;
+  }
+
+  .feature-cards h3 {
+    margin-top: 12px;
+    max-width: 540px;
+    font-size: 28px;
+    line-height: 1.15;
+  }
+
+  .feature-cards p {
+    max-width: 620px;
+    margin-top: 12px;
+    color: var(--muted-foreground);
+    font-size: 15px;
+  }
+
+  .feature-cards ul {
+    display: grid;
+    gap: 8px;
+    margin: 18px 0 0;
+    padding-left: 18px;
+  }
+
+  .mini-canvas {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 28px;
+    border-radius: 12px;
+    background:
+      linear-gradient(color-mix(in srgb, var(--border), transparent 50%) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--border), transparent 50%) 1px, transparent 1px),
+      var(--muted);
+    background-size: 24px 24px;
+    padding: 18px;
+  }
+
+  .mini-canvas div {
+    min-height: 70px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--card), transparent 8%);
+  }
+
+  .stats-grid,
+  .workflow-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .stats-grid article {
+    min-height: 164px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+  }
+
+  .stats-grid strong {
+    font-size: 56px;
+    line-height: 1;
+    font-weight: 520;
+  }
+
+  .stats-grid span,
+  .workflow-grid p,
+  .cta-card p,
+  .faq-list p {
+    color: var(--muted-foreground);
+  }
+
+  .section-header {
+    max-width: 720px;
+    margin-bottom: 26px;
+  }
+
+  .workflow-grid article {
+    min-height: 190px;
+    padding: 22px;
+  }
+
+  .workflow-grid span {
+    color: var(--primary-strong);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .workflow-grid h3 {
+    margin-top: 46px;
+    font-size: 18px;
+  }
+
+  .workflow-grid p {
+    margin-top: 8px;
+  }
+
+  .integration-card,
+  .cta-card {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: center;
+    gap: 24px;
+    padding: 34px;
+  }
+
+  .faq-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .faq-list details {
+    padding: 18px 20px;
+  }
+
+  .faq-list summary {
+    cursor: pointer;
+    font-weight: 620;
+  }
+
+  .faq-list p {
+    margin-top: 10px;
+  }
+
+  .cta-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .cta-card h2 {
+    margin-top: 0;
+    font-size: clamp(28px, 4vw, 46px);
+  }
+
+  .cta-card p {
+    margin-top: 10px;
+    font-size: 15px;
+  }
+
+  .site-footer {
+    border-top: 1px solid var(--border);
+    padding: 22px 0;
+    color: var(--muted-foreground);
+  }
+
+  .site-footer .container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .site-footer span:first-child {
+    color: var(--foreground);
+    font-weight: 620;
+  }
+
+  @media (max-width: 820px) {
+    .site-header {
+      width: min(100% - 24px, 1180px);
+    }
+
+    .nav-links {
+      display: none;
+    }
+
+    .hero {
+      padding-top: 54px;
+    }
+
+    .prompt-grid,
+    .feature-grid,
+    .faq-grid,
+    .stats-grid,
+    .workflow-grid,
+    .integration-card,
+    .cta-card {
+      grid-template-columns: 1fr;
+    }
+
+    .sticky-copy,
+    .feature-cards article {
+      position: static;
+    }
+
+    .prompt-grid a {
+      min-height: auto;
+    }
+
+    .frame-top {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .integration-card,
+    .cta-card {
+      padding: 22px;
+    }
+
+    .cta-card .button {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .container {
+      width: min(100% - 24px, 1180px);
+    }
+
+    .header-actions .button {
+      display: none;
+    }
+
+    .prompt-box {
+      grid-template-columns: 1fr;
+    }
+
+    .prompt-box button {
+      width: 100%;
+    }
+
+    h1 {
+      font-size: 42px;
+    }
+
+    .hero-copy p {
+      font-size: 15px;
+    }
+
+    .tool-strip,
+    .feature-track,
+    .stats-section,
+    .workflow-section,
+    .integration-section,
+    .faq-section,
+    .cta-section {
+      padding: 46px 0;
+    }
+  }
+</style>
