@@ -38,7 +38,7 @@ function buildMissingDeclarationRepair(lines: string[]) {
 export function createStyleSearchTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Search and preview Mermaid style directives without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use before workspaceFiles operation "edit" when the user asks for colors, themes, styling, light mode, dark mode, or visual polish. Choose `themeMode` based on the requested display mode: light palettes use pale fills with dark text; dark palettes use deeper fills with light text. Return edit suggestions, then choose and apply only the needed lines via workspaceFiles operation "edit".',
+      'Search and preview Mermaid style directives without mutating the diagram. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use before workspaceFiles operation "edit" when the user asks for colors, themes, styling, light mode, dark mode, or visual polish. Choose `themeMode` based on the requested display mode: light palettes use pale fills with dark text; dark palettes use deeper fills with light text. Suggested text colors are contrast-checked against fills; do not mix light-mode fills into dark-mode diagrams or dark-mode fills into light-mode diagrams. Return edit suggestions, then choose and apply only the needed lines via workspaceFiles operation "edit".',
     inputSchema: z.object({
       path: z
         .string()

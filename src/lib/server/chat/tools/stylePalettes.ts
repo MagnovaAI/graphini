@@ -8,6 +8,8 @@ export interface StyleColor {
   text: string;
 }
 
+export const MIN_TEXT_CONTRAST_RATIO = 4.5;
+
 export const STYLE_PALETTE_NAMES = [
   'vibrant',
   'pastel',
@@ -122,13 +124,66 @@ export const STYLE_PALETTES: Record<StyleThemeMode, Record<StylePaletteName, Sty
   }
 };
 
+function hexToRgb(hex: string): { b: number; g: number; r: number } | undefined {
+  const normalized = hex.trim().replace(/^#/, '');
+  if (!/^[\da-f]{6}$/i.test(normalized)) return undefined;
+  return {
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    r: Number.parseInt(normalized.slice(0, 2), 16)
+  };
+}
+
+function channelToLinear(value: number): number {
+  const normalized = value / 255;
+  return normalized <= 0.03928
+    ? normalized / 12.92
+    : Math.pow((normalized + 0.055) / 1.055, 2.4);
+}
+
+export function contrastRatio(foreground: string, background: string): number {
+  const fg = hexToRgb(foreground);
+  const bg = hexToRgb(background);
+  if (!fg || !bg) return 1;
+  const fgLuminance =
+    0.2126 * channelToLinear(fg.r) +
+    0.7152 * channelToLinear(fg.g) +
+    0.0722 * channelToLinear(fg.b);
+  const bgLuminance =
+    0.2126 * channelToLinear(bg.r) +
+    0.7152 * channelToLinear(bg.g) +
+    0.0722 * channelToLinear(bg.b);
+  const lighter = Math.max(fgLuminance, bgLuminance);
+  const darker = Math.min(fgLuminance, bgLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function textCandidates(themeMode: StyleThemeMode, preferred: string): string[] {
+  return themeMode === 'dark'
+    ? [preferred, '#f8fafc', '#ffffff', '#e5e7eb', '#0f172a', '#000000']
+    : [preferred, '#0f172a', '#111827', '#000000', '#f8fafc', '#ffffff'];
+}
+
+function ensureReadableText(color: StyleColor, themeMode: StyleThemeMode): StyleColor {
+  const candidates = textCandidates(themeMode, color.text);
+  const readable = candidates.find(
+    (text) => contrastRatio(text, color.fill) >= MIN_TEXT_CONTRAST_RATIO
+  );
+  if (readable) return { ...color, text: readable };
+
+  const best = candidates.toSorted(
+    (a, b) => contrastRatio(b, color.fill) - contrastRatio(a, color.fill)
+  )[0];
+  return { ...color, text: best ?? color.text };
+}
+
 export function getStylePalette(palette: StylePaletteName, themeMode: StyleThemeMode) {
-  return STYLE_PALETTES[themeMode][palette];
+  return STYLE_PALETTES[themeMode][palette].map((color) => ensureReadableText(color, themeMode));
 }
 
 export function stylePalettePreview(themeMode: StyleThemeMode) {
   return STYLE_PALETTE_NAMES.map((name) => ({
     name,
-    colors: STYLE_PALETTES[themeMode][name].slice(0, 3)
+    colors: getStylePalette(name, themeMode).slice(0, 3)
   }));
 }

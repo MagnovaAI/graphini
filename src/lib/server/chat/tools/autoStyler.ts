@@ -6,7 +6,7 @@ import { getStylePalette } from './stylePalettes';
 export function createAutoStylerTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Automatically style all nodes and subgraphs in a Mermaid diagram with harmonious grouped colors. Pass `path` to target a specific .mermaid file; defaults to the active file when none is given. Use when the user asks to "make it colorful", "style the diagram", or "add colors". Choose `themeMode` based on whether the user wants light-mode or dark-mode colors.',
+      'Automatically style all nodes and subgraphs in a Mermaid diagram with harmonious grouped colors. Pass `path` to target a specific .mermaid file; defaults to the active file when none is given. Use when the user asks to "make it colorful", "style the diagram", or "add colors". Choose `themeMode` based on whether the user wants light-mode or dark-mode colors. Text colors are contrast-checked against fills; do not mix light-mode fills into dark-mode diagrams or dark-mode fills into light-mode diagrams.',
     inputSchema: z.object({
       path: z
         .string()
@@ -131,18 +131,10 @@ export function createAutoStylerTool({ target, userId }: ToolContext) {
       }
 
       // Style subgraphs
-      const sgFills = [
-        { fill: '#f0f0ff', stroke: '#6366f1' },
-        { fill: '#eef2ff', stroke: '#6366f1' },
-        { fill: '#f0fdfa', stroke: '#14b8a6' },
-        { fill: '#fffbeb', stroke: '#f59e0b' },
-        { fill: '#faf5ff', stroke: '#8b5cf6' },
-        { fill: '#ecfeff', stroke: '#06b6d4' }
-      ];
       for (let i = 0; i < subgraphIds.length; i++) {
-        const sf = sgFills[i % sgFills.length];
+        const sf = colors[(i + nodeIds.length) % colors.length];
         styleLines.push(
-          `    style ${subgraphIds[i]} fill:${sf.fill},stroke:${sf.stroke},stroke-width:2px`
+          `    style ${subgraphIds[i]} fill:${sf.fill},stroke:${sf.stroke},stroke-width:2px,color:${sf.text}`
         );
       }
 
