@@ -21,6 +21,7 @@
     "test:unit": "vitest",
     "test:unit:ui": "vitest --ui",
     "test:unit:coverage": "vitest run --coverage",
+    "chat:monitor": "node scripts/chat-monitor.mjs",
     "bench:mermaid-seq": "node scripts/mermaid-seq-bench.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
