@@ -30,26 +30,16 @@
 
 ## AI Tools (all available to the model)
 
-- **diagramRead** — Read current diagram content (supports line ranges)
-- **diagramWrite** — Replace entire diagram with new Mermaid content
-- **diagramPatch** — Surgically replace specific line ranges in the diagram
-- **diagramDelete** — Clear the entire diagram
-- **iconifier** — Attach/remove visual icons to diagram nodes via Iconify API (90% confidence threshold)
-- **autoStyler** — Auto-style all nodes/subgraphs with harmonious color palettes (vibrant, pastel, earth, ocean, sunset, monochrome)
-- **errorChecker** — Validate Mermaid syntax with regex + client-side mermaid.parse()
-- **webSearch** — Search the web for documentation, patterns, and current information
-- **askQuestions** — Present multiple-choice questionnaires to clarify ambiguous requests
-- **markdownRead** — Read content from the document editor panel
-- **markdownWrite** — Write/append documentation to the document editor panel
-- **planner** — Decompose complex tasks into step-by-step plans
-- **planWithProgress** — Create visible checklists with real-time progress tracking
-- **actionItemExtractor** — Extract tasks, risks, KPIs, entities from documents
-- **tableAnalytics** — Analyze CSV/tabular data with statistics, trends, chart suggestions
-- **dataAnalyzer** — Computational analysis on uploaded CSV/Excel files (frequency, top-N, filter, correlate, pivot, custom)
-- **selfCritique** — Evaluate and improve diagrams/documents for quality and completeness
-- **fileManager** — Manage uploaded files (list, read, search, delete, summary)
-- **longTermMemory** — Persist user preferences and context across sessions
-- **sequentialThinking** — Step-by-step visible reasoning for complex problems
+- **fileSystem** — Workspace files: list, read, create, edit, delete, moveFolder, deleteFolder. Uploads are converted into Markdown workspace files.
+- **dataAnalyzer** — Computational analysis on workspace Markdown tables or CSV-like text.
+- **errorChecker** — Validate Mermaid syntax and render-blocking errors.
+- **styleSearch** — Search style palettes and return edit suggestions.
+- **autoStyler** — Apply harmonious Mermaid style directives.
+- **iconSearch** — Find local and Iconify icon candidates for diagram nodes.
+- **webSearch** — Search the web for documentation, patterns, and current information.
+- **askQuestions** — Present multiple-choice questionnaires to clarify ambiguous requests.
+- **thinking** — Show concise public progress checkpoints.
+- **useSkill** — Load enabled user skills before applying their full instructions.
 
 ## Architecture Patterns
 

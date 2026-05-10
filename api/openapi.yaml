@@ -29,7 +29,7 @@ tags:
   - name: Files
   - name: Settings
   - name: Credits
-  - name: Agents
+  - name: MCP
   - name: Admin
 
 paths:
@@ -134,7 +134,7 @@ paths:
       summary: Stream AI chat response
       description: |
         Sends a message to the diagram assistant. The response is streamed by the Vercel AI SDK.
-        Uploaded images and documents should be pre-processed through `/api/upload`.
+        PDF, text, and Markdown uploads should be pre-processed through `/api/upload`, which saves them as Markdown workspace files.
       requestBody:
         required: true
         content:
@@ -571,8 +571,8 @@ paths:
   /upload:
     post:
       tags: [Files]
-      summary: Upload and extract file context
-      description: Accepts `multipart/form-data` with a `file` field and optional `sessionId`. Images are analyzed with a vision model; text-like documents are extracted server-side.
+      summary: Upload into workspace files
+      description: Accepts `multipart/form-data` with a `file` field. Supported PDF, text, and Markdown files are converted or normalized to Markdown and saved under `uploads/*.md` in the user's workspace.
       requestBody:
         required: true
         content:
@@ -584,11 +584,9 @@ paths:
                 file:
                   type: string
                   format: binary
-                sessionId:
-                  type: string
       responses:
-        '200':
-          description: Extracted file metadata and text
+        '201':
+          description: Created workspace Markdown file
           content:
             application/json:
               schema:
@@ -947,7 +945,7 @@ paths:
 
   /mcp/tools:
     get:
-      tags: [Agents]
+      tags: [MCP]
       summary: List available MCP-style tools
       responses:
         '200':
@@ -963,7 +961,7 @@ paths:
                       type: object
                       additionalProperties: true
     post:
-      tags: [Agents]
+      tags: [MCP]
       summary: JSON-RPC tool list response
       requestBody:
         required: false
@@ -975,24 +973,6 @@ paths:
       responses:
         '200':
           description: JSON-RPC response containing tools/list result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JsonRpcResponse'
-
-  /a2a:
-    post:
-      tags: [Agents]
-      summary: Route an A2A JSON-RPC message to a Graphini specialist agent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/JsonRpcRequest'
-      responses:
-        '200':
-          description: JSON-RPC task or error response
           content:
             application/json:
               schema:
@@ -1408,12 +1388,19 @@ components:
           type: string
         type:
           type: string
-        extractedText:
-          type: string
         fileId:
           type: string
         size:
           type: integer
+        pageCount:
+          type: integer
+        workspaceFileId:
+          type: string
+        workspacePath:
+          type: string
+        workspaceFile:
+          type: object
+          additionalProperties: true
 
     Model:
       type: object

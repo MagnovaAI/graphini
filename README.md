@@ -178,7 +178,7 @@ See [.env.example](.env.example) for all supported variables.
 
 ## API
 
-Graphini ships an OpenAPI 3 spec at [api/openapi.yaml](api/openapi.yaml). It documents auth, chat, model settings, workspaces, documents, diagram generation, audio upload, collaborators, credits, admin operations, and the A2A routing endpoint.
+Graphini ships an OpenAPI 3 spec at [api/openapi.yaml](api/openapi.yaml). It documents auth, chat, model settings, workspaces, documents, diagram generation, audio/upload conversion, collaborators, credits, admin operations, and MCP tool discovery.
 
 Useful API groups:
 
@@ -189,7 +189,7 @@ Useful API groups:
 | Workspaces   | `/api/workspaces`, `/api/workspaces/{id}`, `/api/workspaces/{id}/document`            |
 | Diagrams     | `/api/diagram/generate`, `/api/diagram/generate-stream`, `/api/diagram/analyze-error` |
 | Settings     | `/api/app-settings`, `/api/models`, `/api/model-lab`, `/api/admin`                    |
-| Integrations | `/api/upload`, `/api/audio`, `/api/a2a`, `/api/mcp/tools`                             |
+| Integrations | `/api/upload`, `/api/audio`, `/api/mcp/tools`                                         |
 
 ## Development
 
