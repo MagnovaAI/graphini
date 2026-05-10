@@ -1021,7 +1021,7 @@
                 )}>
                 {#if !isMarkdownDocument}
                   <div class="flex shrink-0 flex-col border-b border-border bg-background">
-                    <div class="flex h-9 shrink-0 items-center gap-2 px-3">
+                    <div class="canvas-toolbar-header flex h-9 shrink-0 items-center gap-2 px-3">
                       {#if leftmostVisiblePanel === 'canvas'}
                         <SidebarTrigger class="-ml-1" />
                       {/if}
@@ -1033,7 +1033,7 @@
                         caps the chrome so the toolbar buttons stay aligned.
                       -->
                       <div
-                        class="flex max-w-[40%] min-w-0 shrink items-center gap-2"
+                        class="canvas-toolbar-title flex max-w-[40%] min-w-0 shrink items-center gap-2"
                         title={activeFile ? activeFileName : 'Canvas'}>
                         {#if activeFile && activeFileIcon}
                           <img
@@ -1052,83 +1052,88 @@
                           <span class="text-[13px] text-muted-foreground">{engineShort}</span>
                         {/if}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="toolbar-btn size-7 {isGridVisible ? 'active' : ''}"
-                        title={isGridVisible
-                          ? gridStyle === 'dots'
-                            ? 'Grid: dots'
-                            : 'Grid: squares'
-                          : 'Grid: off'}
-                        onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
-                      {#if isMermaidDiagram}
-                        <div class="relative">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            class="toolbar-btn active size-7"
-                            title="Layout Options"
-                            onclick={() => (showLayoutDropdown = !showLayoutDropdown)}>
-                            <Workflow class="size-4" />
-                          </Button>
-                          {#if showLayoutDropdown}
-                            <div class="layout-menu">
-                              <button
-                                type="button"
-                                class={cn(
-                                  'layout-menu-item',
-                                  currentLayout === 'dagre' && 'active'
-                                )}
-                                onclick={() => handleLayoutChange('dagre')}>
-                                <GitBranch />
-                                <span>Dagre</span>
-                              </button>
-                              <button
-                                type="button"
-                                class={cn('layout-menu-item', currentLayout === 'elk' && 'active')}
-                                onclick={() => handleLayoutChange('elk')}>
-                                <Network />
-                                <span>ELK</span>
-                              </button>
-                            </div>
-                          {/if}
-                        </div>
-                      {/if}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="toolbar-btn size-7"
-                        title="Fullscreen"
-                        onclick={toggleFullscreen}><Maximize2 class="size-4" /></Button>
-                      <div class="toolbar-separator"></div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="toolbar-btn size-7"
-                        title="Zoom In"
-                        onclick={zoomIn}><ZoomIn class="size-4" /></Button>
-                      <div class="toolbar-zoom-label">{zoomLevel}%</div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="toolbar-btn size-7"
-                        title="Zoom Out"
-                        onclick={zoomOut}><ZoomOut class="size-4" /></Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="toolbar-btn size-7"
-                        title="Reset View"
-                        onclick={resetView}><Scan class="size-4" /></Button>
-                      <div class="toolbar-separator"></div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="toolbar-btn size-7 text-muted-foreground hover:text-destructive"
-                        title="Clear diagram"
-                        onclick={clearDiagram}><Eraser class="size-4" /></Button>
-                      <div class="ml-auto">
+                      <div class="canvas-toolbar-actions flex min-w-0 items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="toolbar-btn size-7 {isGridVisible ? 'active' : ''}"
+                          title={isGridVisible
+                            ? gridStyle === 'dots'
+                              ? 'Grid: dots'
+                              : 'Grid: squares'
+                            : 'Grid: off'}
+                          onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
+                        {#if isMermaidDiagram}
+                          <div class="relative shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              class="toolbar-btn active size-7"
+                              title="Layout Options"
+                              onclick={() => (showLayoutDropdown = !showLayoutDropdown)}>
+                              <Workflow class="size-4" />
+                            </Button>
+                            {#if showLayoutDropdown}
+                              <div class="layout-menu">
+                                <button
+                                  type="button"
+                                  class={cn(
+                                    'layout-menu-item',
+                                    currentLayout === 'dagre' && 'active'
+                                  )}
+                                  onclick={() => handleLayoutChange('dagre')}>
+                                  <GitBranch />
+                                  <span>Dagre</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  class={cn(
+                                    'layout-menu-item',
+                                    currentLayout === 'elk' && 'active'
+                                  )}
+                                  onclick={() => handleLayoutChange('elk')}>
+                                  <Network />
+                                  <span>ELK</span>
+                                </button>
+                              </div>
+                            {/if}
+                          </div>
+                        {/if}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="toolbar-btn size-7"
+                          title="Fullscreen"
+                          onclick={toggleFullscreen}><Maximize2 class="size-4" /></Button>
+                        <div class="toolbar-separator"></div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="toolbar-btn size-7"
+                          title="Zoom In"
+                          onclick={zoomIn}><ZoomIn class="size-4" /></Button>
+                        <div class="toolbar-zoom-label">{zoomLevel}%</div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="toolbar-btn size-7"
+                          title="Zoom Out"
+                          onclick={zoomOut}><ZoomOut class="size-4" /></Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="toolbar-btn size-7"
+                          title="Reset View"
+                          onclick={resetView}><Scan class="size-4" /></Button>
+                        <div class="toolbar-separator"></div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="toolbar-btn size-7 text-muted-foreground hover:text-destructive"
+                          title="Clear diagram"
+                          onclick={clearDiagram}><Eraser class="size-4" /></Button>
+                      </div>
+                      <div class="canvas-toolbar-status ml-auto">
                         {#if isMermaidDiagram && viewRenderError}
                           <!--
                             Error badge — same compact shape as the
@@ -1162,7 +1167,7 @@
                     </div>
                     {#if selectedElementType !== null}
                       <div
-                        class="flex min-h-12 items-center gap-1 border-t border-border px-3 py-2">
+                        class="canvas-element-toolbar-row flex min-h-12 items-center gap-1 border-t border-border px-3 py-2">
                         <ElementToolbar mode="inline" />
                       </div>
                     {/if}
@@ -1458,5 +1463,55 @@
   .layout-menu-item.active :global(svg),
   .layout-menu-item:hover :global(svg) {
     @apply text-foreground;
+  }
+
+  @media (max-width: 639px) {
+    .canvas-toolbar-header {
+      @apply grid h-auto min-h-9 grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 px-2 py-1.5;
+    }
+
+    .canvas-toolbar-title {
+      @apply max-w-none;
+    }
+
+    .canvas-toolbar-actions {
+      @apply col-span-2 -mx-1 overflow-x-auto px-1 pb-0.5;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .canvas-toolbar-actions::-webkit-scrollbar {
+      display: none;
+    }
+
+    .canvas-toolbar-actions :global(.toolbar-btn) {
+      @apply shrink-0;
+    }
+
+    .canvas-toolbar-status {
+      @apply ml-0;
+    }
+
+    .canvas-element-toolbar-row {
+      @apply overflow-x-auto px-2;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .canvas-element-toolbar-row::-webkit-scrollbar {
+      display: none;
+    }
+
+    .toolbar-separator {
+      @apply mx-0.5 shrink-0;
+    }
+
+    .toolbar-zoom-label {
+      @apply min-w-9 shrink-0 px-1.5 text-[12px];
+    }
+
+    .layout-menu {
+      @apply right-auto left-0;
+    }
   }
 </style>
