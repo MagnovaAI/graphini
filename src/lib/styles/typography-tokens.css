@@ -1,0 +1,45 @@
+/* ===== Type scale (single source of truth, 16px base) =====
+   Tune these to scale the entire app's typography uniformly.
+   Maps to DESIGN.md type ladder: 80/56/40/28/22/20/18/13/12 px. */
+:root {
+  --fs-display-xl: 5rem; /* 80px */
+  --fs-display-lg: 3.5rem; /* 56px */
+  --fs-display-md: 2.5rem; /* 40px */
+  --fs-headline: 1.75rem; /* 28px */
+  --fs-card-title: 1.375rem; /* 22px */
+  --fs-subhead: 1.25rem; /* 20px */
+  --fs-body-lg: 1.125rem; /* 18px */
+  --fs-body: 0.8125rem; /* 13px — body hard-lock */
+  --fs-caption: var(--fs-body);
+  --fs-button: var(--fs-body);
+  --fs-eyebrow: var(--fs-body);
+  --fs-mono: 0.75rem; /* 12px */
+
+  /* Letter-spacing ladder (paired with type scale, optical sizing) */
+  --tr-display-xl: -0.1875rem;
+  --tr-display-lg: -0.1125rem;
+  --tr-display-md: -0.0625rem;
+  --tr-headline: -0.0375rem;
+  --tr-card-title: -0.025rem;
+  --tr-subhead: -0.0125rem;
+  --tr-body-lg: -0.00625rem;
+  --tr-body: 0;
+  --tr-caption: var(--tr-body);
+  --tr-button: var(--tr-body);
+  --tr-eyebrow: 0.025rem;
+  --tr-mono: 0;
+
+  /* Line-height ladder */
+  --lh-display-xl: 1.05;
+  --lh-display-lg: 1.1;
+  --lh-display-md: 1.15;
+  --lh-headline: 1.2;
+  --lh-card-title: 1.25;
+  --lh-subhead: 1.4;
+  --lh-body-lg: 1.5;
+  --lh-body: 1.5;
+  --lh-caption: 1.4;
+  --lh-button: 1.2;
+  --lh-eyebrow: 1.3;
+  --lh-mono: 1.5;
+}

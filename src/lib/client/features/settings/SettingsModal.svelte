@@ -1783,11 +1783,11 @@ Write the full skill instructions here.
   :global(.settings-send-button),
   :global(.settings-icon-send) {
     border: 1px solid color-mix(in srgb, var(--primary) 70%, var(--border));
-    background: var(--primary);
+    background: var(--primary-gradient);
     color: var(--primary-foreground);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
     transition:
-      background-color 150ms ease,
+      background 150ms ease,
       border-color 150ms ease,
       box-shadow 150ms ease,
       transform 150ms ease;
@@ -1795,7 +1795,7 @@ Write the full skill instructions here.
 
   :global(.settings-send-button:hover:not(:disabled)),
   :global(.settings-icon-send:hover:not(:disabled)) {
-    background: color-mix(in srgb, var(--primary) 86%, white);
+    background: var(--primary-gradient-hover);
     border-color: color-mix(in srgb, var(--primary) 86%, white);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.24);
   }

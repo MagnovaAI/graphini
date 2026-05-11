@@ -14,7 +14,9 @@ const config = {
     })
   ],
   kit: {
-    adapter: adapterVercel()
+    adapter: adapterVercel({
+      runtime: 'nodejs24.x'
+    })
   },
   runes: true
 };

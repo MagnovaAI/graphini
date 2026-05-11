@@ -4274,13 +4274,13 @@
 
   :global(.composer-accent-control) {
     color: var(--primary-foreground);
-    background: var(--primary);
+    background: var(--primary-gradient);
     border: 1px solid transparent;
     box-shadow: none;
   }
 
   :global(.composer-accent-control:hover:not(:disabled)) {
-    background: color-mix(in srgb, var(--primary) 88%, white 12%);
+    background: var(--primary-gradient-hover);
     box-shadow: none;
   }
 

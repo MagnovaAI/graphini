@@ -2,6 +2,8 @@
 
 @import 'tw-animate-css';
 
+@import './lib/styles/typography-tokens.css';
+
 @custom-variant dark (&:is(.dark *));
 
 /* Self-hosted variable fonts. Inter for UI (optical-size axis), Geist Mono for
@@ -58,78 +60,78 @@
   --ds-radius-pill: 9999px;
   --ds-radius-full: 9999px;
 
+  /* Type scale (--fs-*, --tr-*, --lh-*) imported from ./lib/styles/typography-tokens.css */
+
   /* Typography — Inter for UI (optical size variant), Geist Mono for code. */
   --ds-font-sans: 'Inter', 'SF Pro Display', -apple-system, system-ui, 'Segoe UI', Roboto,
     sans-serif;
   --ds-font-text: 'Inter', 'SF Pro Text', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
   --ds-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* Type scale (font-size / line-height / letter-spacing / weight) */
-  --ds-text-display-xl-size: 80px;
-  --ds-text-display-xl-leading: 1.05;
-  --ds-text-display-xl-tracking: -3px;
+  /* --ds-text-* aliases for legacy/Tailwind consumers — point at the type scale above. */
+  --ds-text-display-xl-size: var(--fs-display-xl);
+  --ds-text-display-xl-leading: var(--lh-display-xl);
+  --ds-text-display-xl-tracking: var(--tr-display-xl);
   --ds-text-display-xl-weight: 600;
 
-  --ds-text-display-lg-size: 56px;
-  --ds-text-display-lg-leading: 1.1;
-  --ds-text-display-lg-tracking: -1.8px;
+  --ds-text-display-lg-size: var(--fs-display-lg);
+  --ds-text-display-lg-leading: var(--lh-display-lg);
+  --ds-text-display-lg-tracking: var(--tr-display-lg);
   --ds-text-display-lg-weight: 600;
 
-  --ds-text-display-md-size: 40px;
-  --ds-text-display-md-leading: 1.15;
-  --ds-text-display-md-tracking: -1px;
+  --ds-text-display-md-size: var(--fs-display-md);
+  --ds-text-display-md-leading: var(--lh-display-md);
+  --ds-text-display-md-tracking: var(--tr-display-md);
   --ds-text-display-md-weight: 600;
 
-  --ds-text-headline-size: 28px;
-  --ds-text-headline-leading: 1.2;
-  --ds-text-headline-tracking: -0.6px;
+  --ds-text-headline-size: var(--fs-headline);
+  --ds-text-headline-leading: var(--lh-headline);
+  --ds-text-headline-tracking: var(--tr-headline);
   --ds-text-headline-weight: 600;
 
-  --ds-text-card-title-size: 22px;
-  --ds-text-card-title-leading: 1.25;
-  --ds-text-card-title-tracking: -0.4px;
+  --ds-text-card-title-size: var(--fs-card-title);
+  --ds-text-card-title-leading: var(--lh-card-title);
+  --ds-text-card-title-tracking: var(--tr-card-title);
   --ds-text-card-title-weight: 500;
 
-  --ds-text-subhead-size: 20px;
-  --ds-text-subhead-leading: 1.4;
-  --ds-text-subhead-tracking: -0.2px;
+  --ds-text-subhead-size: var(--fs-subhead);
+  --ds-text-subhead-leading: var(--lh-subhead);
+  --ds-text-subhead-tracking: var(--tr-subhead);
   --ds-text-subhead-weight: 400;
 
-  --ds-text-body-lg-size: 18px;
-  --ds-text-body-lg-leading: 1.5;
-  --ds-text-body-lg-tracking: -0.1px;
+  --ds-text-body-lg-size: var(--fs-body-lg);
+  --ds-text-body-lg-leading: var(--lh-body-lg);
+  --ds-text-body-lg-tracking: var(--tr-body-lg);
   --ds-text-body-lg-weight: 400;
 
-  /* Body hard-lock: body, body-sm, caption, button, eyebrow, mono all at 14px.
-     Heading tiers (≥18px) keep their natural scale. */
-  --ds-text-body-size: 13px;
-  --ds-text-body-leading: 1.5;
-  --ds-text-body-tracking: 0;
+  --ds-text-body-size: var(--fs-body);
+  --ds-text-body-leading: var(--lh-body);
+  --ds-text-body-tracking: var(--tr-body);
   --ds-text-body-weight: 400;
 
-  --ds-text-body-sm-size: 13px;
-  --ds-text-body-sm-leading: 1.5;
-  --ds-text-body-sm-tracking: 0;
+  --ds-text-body-sm-size: var(--fs-body);
+  --ds-text-body-sm-leading: var(--lh-body);
+  --ds-text-body-sm-tracking: var(--tr-body);
   --ds-text-body-sm-weight: 400;
 
-  --ds-text-caption-size: 13px;
-  --ds-text-caption-leading: 1.4;
-  --ds-text-caption-tracking: 0;
+  --ds-text-caption-size: var(--fs-body);
+  --ds-text-caption-leading: var(--lh-caption);
+  --ds-text-caption-tracking: var(--tr-body);
   --ds-text-caption-weight: 400;
 
-  --ds-text-button-size: 13px;
-  --ds-text-button-leading: 1.2;
-  --ds-text-button-tracking: 0;
+  --ds-text-button-size: var(--fs-body);
+  --ds-text-button-leading: var(--lh-button);
+  --ds-text-button-tracking: var(--tr-body);
   --ds-text-button-weight: 500;
 
-  --ds-text-eyebrow-size: 13px;
-  --ds-text-eyebrow-leading: 1.3;
-  --ds-text-eyebrow-tracking: 0.4px;
+  --ds-text-eyebrow-size: var(--fs-body);
+  --ds-text-eyebrow-leading: var(--lh-eyebrow);
+  --ds-text-eyebrow-tracking: var(--tr-eyebrow);
   --ds-text-eyebrow-weight: 500;
 
-  --ds-text-mono-size: 12px;
-  --ds-text-mono-leading: 1.5;
-  --ds-text-mono-tracking: 0;
+  --ds-text-mono-size: var(--fs-mono);
+  --ds-text-mono-leading: var(--lh-mono);
+  --ds-text-mono-tracking: var(--tr-mono);
   --ds-text-mono-weight: 400;
 
   /* Light Theme — adopted from 1code (zinc-tuned neutrals) */
@@ -145,6 +147,9 @@
   --popover-foreground: hsl(240 10% 3.9%);
   --primary: #2400ab;
   --primary-foreground: hsl(0 0% 98%);
+  /* Logo gradient — sampled from static/brand/logo.png. Used on primary CTAs (send, save). */
+  --primary-gradient: linear-gradient(135deg, #2000a7 0%, #6300ee 100%);
+  --primary-gradient-hover: linear-gradient(135deg, #2c0bbe 0%, #7320ff 100%);
   --secondary: hsl(240 4.8% 95.9%);
   --secondary-foreground: hsl(240 5.9% 10%);
   --muted: hsl(240 4.8% 95.9%);
@@ -266,6 +271,9 @@
   --popover-foreground: #e4e4e4;
   --primary: #6000e9;
   --primary-foreground: #ffffff;
+  /* Logo gradient — sampled from static/brand/logo.png. Used on primary CTAs (send, save). */
+  --primary-gradient: linear-gradient(135deg, #2000a7 0%, #6300ee 100%);
+  --primary-gradient-hover: linear-gradient(135deg, #2c0bbe 0%, #7320ff 100%);
   --secondary: #1c1c1c;
   --secondary-foreground: #e4e4e4;
   --muted: #1c1c1c;
@@ -426,8 +434,8 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--ds-font-text);
-    font-size: 13px;
-    line-height: 1.5;
+    font-size: var(--ds-text-body-size);
+    line-height: var(--ds-text-body-leading);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -909,7 +917,7 @@
   color: #475569;
   padding: 2px 10px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--ds-text-caption-size);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -948,7 +956,7 @@
   background-color: var(--mermaid-bg-color);
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--ds-text-mono-size);
 }
 
 /* Arrow markers */

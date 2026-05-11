@@ -1,17 +1,11 @@
 ---
 const prompts = [
-  {
-    title: 'Checkout flow',
-    text: 'Create a sequence diagram for checkout: user adds item, payment intent is created, Stripe confirms payment, inventory updates, and email receipt is sent.'
-  },
-  {
-    title: 'Cloud architecture',
-    text: 'Map a cloud microservices architecture with CDN, load balancer, auth service, order service, PostgreSQL, Redis cache, queue, and monitoring.'
-  },
-  {
-    title: 'Incident timeline',
-    text: 'Create an incident timeline for API latency: deploy at 10:05, error spike at 10:12, rollback at 10:30, cache fix at 10:45, resolved at 11:00.'
-  }
+  { title: 'System design', icon: 'cube', text: 'Design a scalable URL shortener with caching, rate limiting, and analytics.' },
+  { title: 'Product launch', icon: 'rocket', text: 'Plan a 6-week product launch with milestones, owners, and dependencies.' },
+  { title: 'User journey', icon: 'route', text: "Map a user's first-week journey from signup to first 'aha' moment." },
+  { title: 'Decision tree', icon: 'branch', text: 'Should I rent or buy? Walk through the trade-offs as a decision tree.' },
+  { title: 'Trip plan', icon: 'compass', text: 'Plan a 5-day Lisbon trip with daily themes, must-see spots, and food stops.' },
+  { title: 'Family tree', icon: 'people', text: 'Sketch a small family tree across three generations with key relationships.' }
 ];
 
 const workflow = [
@@ -40,6 +34,38 @@ const features = [
     text: 'Send clean assets into project docs, pull requests, architecture reviews, incident reports, and planning notes.',
     points: ['SVG, PNG, and source export', 'Useful for architecture, API, data, and incident documentation']
   }
+];
+
+const essentials = [
+  {
+    title: 'Mermaid-native rendering',
+    text: 'Diagrams render straight from Mermaid source so the canvas always matches the code beside it.'
+  },
+  {
+    title: 'Syntax-aware repair',
+    text: 'When the parser breaks, the assistant patches the diagram without flattening the structure you described.'
+  },
+  {
+    title: 'Live canvas preview',
+    text: 'Pan, zoom, and inspect the diagram while it updates as the conversation moves.'
+  },
+  {
+    title: 'Portable export',
+    text: 'Ship SVG, PNG, and Mermaid source into docs, PRs, and review tools without a re-render step.'
+  },
+  {
+    title: 'Prompt to handoff',
+    text: 'Take a rough note from a ticket and leave with an artifact a teammate can read on their own.'
+  }
+];
+
+const whyChoose = [
+  ['Context-fresh', 'Capture system thinking the moment it lands, before the diagram drifts from the conversation.'],
+  ['Plain Mermaid', 'Diagrams stay as plain text — diff-friendly, copy-friendly, version-friendly.'],
+  ['Repair-first', 'Broken syntax and odd layouts get corrected without losing the structure you described.'],
+  ['Multi-format', 'Sequence flows, flowcharts, ERDs, C4 maps, and incident timelines from one prompt surface.'],
+  ['Portable export', 'SVG, PNG, and source ship into docs, PRs, and review tools without re-rendering.'],
+  ['Stays inspectable', 'Code, canvas, and chat sit side-by-side so the diagram is never a black box.']
 ];
 
 const stats = [
@@ -75,15 +101,16 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Graphini - AI diagram workspace</title>
+    <title>Graphini — a cowork for visual thinking</title>
     <meta
       name="description"
-      content="Create Mermaid diagrams from plain English, edit them in a workspace, repair syntax issues, and export clean assets for docs and presentations."
+      content="Graphini is an AI cowork for visual thinking — diagrams, Mermaid, and Markdown that take shape as you talk through ideas. Fast iteration, editable source, portable export."
     />
-    <meta property="og:title" content="Graphini - AI diagram workspace" />
+    <meta name="keywords" content="AI cowork, visual thinking, AI diagram tool, Mermaid editor, Markdown editor, flowchart AI, sequence diagram AI, ER diagram, system diagram, technical documentation" />
+    <meta property="og:title" content="Graphini — a cowork for visual thinking" />
     <meta
       property="og:description"
-      content="Create, edit, repair, and export Mermaid diagrams from one AI-powered workspace."
+      content="An AI cowork where diagrams, Mermaid, and Markdown take shape as you think. Built for the messy middle of technical work."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://graphini.magnova.ai" />
@@ -106,82 +133,185 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
     />
   </head>
   <body>
+    <!-- Icon sprite — reused by prompt pills. Stays at 0×0, no visual footprint. -->
+    <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <symbol id="i-cube" viewBox="0 0 24 24">
+          <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5L12 12l8-4.5M12 12v9"/>
+        </symbol>
+        <symbol id="i-rocket" viewBox="0 0 24 24">
+          <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 4c4 0 6 2 6 6 0 3-3 6-6 8l-3 1-3-3 1-3c2-3 5-6 8-6 0 0-1 3-3 5M7 14c-2 1-3 4-3 6 2 0 5-1 6-3M9 12l3 3"/>
+        </symbol>
+        <symbol id="i-route" viewBox="0 0 24 24">
+          <circle cx="6" cy="6" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <circle cx="18" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 8.5v3a4 4 0 004 4h4a4 4 0 014 4"/>
+        </symbol>
+        <symbol id="i-branch" viewBox="0 0 24 24">
+          <circle cx="6" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <circle cx="18" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <circle cx="12" cy="19" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M7 7l4 10M17 7l-4 10"/>
+        </symbol>
+        <symbol id="i-compass" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 9l-2 5-5 2 2-5 5-2z"/>
+        </symbol>
+        <symbol id="i-people" viewBox="0 0 24 24">
+          <circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <circle cx="17" cy="9" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 19c0-3 3-5 6-5s6 2 6 5M14 19c0-2 2-4 4-4s4 1.5 4 4"/>
+        </symbol>
+      </defs>
+    </svg>
+
     <div class="page-shell">
       <header class="site-header">
-        <a class="brand" href="/" aria-label="Graphini home">
-          <img src="/brand/logo.png" alt="" />
-          <span>Graphini</span>
-        </a>
-        <nav class="nav-links" aria-label="Primary navigation">
-          <a href="#features">Features</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#faq">FAQ</a>
-        </nav>
-        <div class="header-actions">
-          <a class="icon-link" href="https://github.com/omkarbhad/graphini" rel="noreferrer" target="_blank" aria-label="Open GitHub">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.85 1.25 1.85 1.25 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.66-.3-5.46-1.33-5.46-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.8 5.62-5.47 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"></path></svg>
+        <div class="header-inner">
+          <a class="brand" href="/" aria-label="Graphini home">
+            <img src="/brand/logo.png" alt="" />
+            <span>Graphini</span>
           </a>
-          <a class="button button-dark" href="/app">Open app</a>
+          <nav class="nav-pill" aria-label="Primary navigation">
+            <a href="#features">Features</a>
+            <a href="#workflow">Workflow</a>
+            <a href="#why">Why</a>
+            <a href="#faq">FAQ</a>
+          </nav>
+          <div class="header-actions">
+            <a class="icon-link" href="https://github.com/omkarbhad/graphini" rel="noreferrer" target="_blank" aria-label="Open GitHub">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.85 1.25 1.85 1.25 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.66-.3-5.46-1.33-5.46-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.8 5.62-5.47 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"></path></svg>
+            </a>
+            <a class="anim-button" href="/app">
+              <span class="anim-button-inner">Open app</span>
+            </a>
+          </div>
         </div>
       </header>
 
       <main>
-        <section class="hero">
-          <div class="hero-rule" aria-hidden="true"></div>
+        <section class="section hero">
           <div class="container">
+            <div class="hero-rule" aria-hidden="true"></div>
+
             <div class="hero-copy">
               <div class="badge">
-                <span class="badge-dot"></span>
-                AI diagram workspace for Mermaid
+                <span class="badge-label">
+                  <span class="badge-dot" aria-hidden="true"></span>
+                  Cowork for visual thinking
+                </span>
               </div>
-              <h1>Diagram systems while the context is still fresh.</h1>
-              <p>
-                Turn rough architecture notes, schemas, incidents, and handoff questions into diagrams
-                that stay readable as code.
+              <h1 class="hero-text">
+                See what
+                <mark>you're thinking.</mark>
+              </h1>
+              <p class="hero-sub">
+                Talk an idea through and watch it take shape — diagrams and Markdown that move
+                at the speed of thought.
               </p>
-              <div class="hero-actions">
-                <a class="button button-dark" href="/app">Open workspace</a>
-                <a class="button button-primary" href={encodedPrompt(prompts[1].text)}>Generate a diagram</a>
-              </div>
             </div>
 
             <form class="prompt-box" action="/app" method="get">
-              <input name="prompt" placeholder="Describe a diagram to generate..." aria-label="Diagram prompt" />
-              <button type="submit">Create</button>
+              <textarea
+                class="prompt-box-input"
+                name="prompt"
+                rows="2"
+                placeholder="Describe your diagram…"
+                aria-label="Diagram prompt"
+                data-prompt-input
+              ></textarea>
+              <div class="prompt-box-toolbar">
+                <div class="prompt-box-tools-left">
+                  <button class="prompt-box-secondary" type="button" aria-label="Attach files" disabled>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16">
+                      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/>
+                    </svg>
+                  </button>
+                  <button class="prompt-box-model" type="button" aria-label="Select model" disabled>
+                    <span class="prompt-box-model-dot" aria-hidden="true"></span>
+                    <span class="prompt-box-model-name">Claude Haiku 4.5</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" width="12" height="12">
+                      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="prompt-box-tools-right">
+                  <button class="prompt-box-submit" type="submit" aria-label="Send prompt">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14">
+                      <path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M12 19V5M5 12l7-7 7 7"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </form>
 
-            <div class="prompt-grid" aria-label="Example prompts">
-              {prompts.map((prompt) => (
-                <a href={encodedPrompt(prompt.text)}>
-                  <span>{prompt.title}</span>
-                  <p>{prompt.text}</p>
-                </a>
+            <ul class="prompt-pills" aria-label="Try a prompt" data-prompt-pills>
+              {prompts.map((prompt, i) => (
+                <li>
+                  <a
+                    href={encodedPrompt(prompt.text)}
+                    data-prompt={prompt.text}
+                    aria-current={i === 0 ? 'true' : 'false'}
+                  >
+                    <svg class="prompt-pill-icon" aria-hidden="true" focusable="false" width="14" height="14">
+                      <use href={`#i-${prompt.icon}`} />
+                    </svg>
+                    <span>{prompt.title}</span>
+                  </a>
+                </li>
               ))}
-            </div>
+            </ul>
+          </div>
 
-            <a class="product-frame" href="/app" aria-label="Open Graphini workspace">
-              <div class="frame-top">
-                <span><i></i> System Design</span>
-                <span>Canvas, code, document, chat</span>
+          <div class="hero-shape" aria-hidden="true">
+            <div class="hero-shape-dome"></div>
+          </div>
+        </section>
+
+        <section class="section product-showcase" aria-label="Graphini in action">
+          <div class="container">
+            <a class="product-image" href="/app" aria-label="Open Graphini workspace">
+              <div class="product-slideshow" role="img" aria-label="Graphini workspace screenshots: ER and sequence diagrams in dark mode">
+                <img
+                  class="slide"
+                  src="/demos/demo-dark-er@1x.webp"
+                  srcset="/demos/demo-dark-er@1x.webp 900w, /demos/demo-dark-er@2x.webp 1800w"
+                  sizes="(min-width: 1024px) 1100px, 100vw"
+                  width="1800"
+                  height="906"
+                  loading="lazy"
+                  decoding="async"
+                  alt=""
+                />
+                <img
+                  class="slide"
+                  src="/demos/demo-dark-sequence@1x.webp"
+                  srcset="/demos/demo-dark-sequence@1x.webp 900w, /demos/demo-dark-sequence@2x.webp 1800w"
+                  sizes="(min-width: 1024px) 1100px, 100vw"
+                  width="1800"
+                  height="906"
+                  loading="lazy"
+                  decoding="async"
+                  alt=""
+                />
               </div>
-              <img src="/demo2.png" alt="Graphini workspace showing a system diagram canvas and chat panel" />
             </a>
           </div>
         </section>
 
-        <section class="tool-strip" aria-label="Graphini toolchain">
+        <section class="section tool-strip" aria-label="Graphini toolchain">
           <div class="container">
-            <p>Built around portable diagram workflows</p>
-            <div>
+            <p class="tool-strip-label">Built around portable diagram workflows</p>
+            <div class="tool-strip-pills">
               {integrations.map((item) => <span>{item}</span>)}
             </div>
           </div>
         </section>
 
-        <section id="features" class="feature-track">
+        <section id="features" class="section feature-track">
           <div class="container feature-grid">
             <div class="sticky-copy">
-              <span class="section-kicker">Key Features</span>
+              <div class="badge"><span class="badge-label">Key Features</span></div>
               <h2>More structure for the messy middle of technical thinking.</h2>
               <div class="track-list">
                 {features.map((feature) => <span>{feature.track}</span>)}
@@ -190,14 +320,18 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
             <div class="feature-cards">
               {features.map((feature) => (
                 <article>
-                  <span>{feature.track}</span>
+                  <span class="feature-track-label">{feature.track}</span>
                   <h3>{feature.title}</h3>
                   <p>{feature.text}</p>
                   <ul>
                     {feature.points.map((point) => <li>{point}</li>)}
                   </ul>
-                  <div class="mini-canvas" aria-hidden="true">
-                    <div></div><div></div><div></div><div></div>
+                  <div class="card-shape" aria-hidden="true">
+                    <div class="card-shape-glow card-shape-glow-tr"></div>
+                    <div class="card-shape-glow card-shape-glow-bl"></div>
+                    <div class="mini-canvas">
+                      <div></div><div></div><div></div><div></div>
+                    </div>
                   </div>
                 </article>
               ))}
@@ -205,7 +339,7 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
           </div>
         </section>
 
-        <section class="stats-section">
+        <section class="section stats-section">
           <div class="container stats-grid">
             {stats.map(([value, label]) => (
               <article>
@@ -216,16 +350,397 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
           </div>
         </section>
 
-        <section id="workflow" class="workflow-section">
+        <section class="section essentials-section">
           <div class="container">
             <div class="section-header">
-              <span class="section-kicker">Essential Workflow</span>
+              <div class="badge"><span class="badge-label">Essential Features</span></div>
+              <h2>Everything a diagramming workspace owes the engineer using it.</h2>
+            </div>
+            <div class="essentials-grid">
+              {essentials.map((feature, index) => (
+                <article class={index <= 1 ? 'essentials-card essentials-card-wide' : 'essentials-card'}>
+                  <div class="essentials-halo" aria-hidden="true"></div>
+                  <div class="essentials-preview" aria-hidden="true">
+                    {feature.title === 'Live canvas preview' && (
+                      <svg class="canvas-mock" viewBox="0 0 570 310" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Diagram canvas with three connected nodes">
+                        <defs>
+                          <pattern id="canvasDots" width="20" height="20" patternUnits="userSpaceOnUse">
+                            <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.08)"/>
+                          </pattern>
+                          <radialGradient id="canvasVignette" cx="50%" cy="50%" r="70%">
+                            <stop offset="0%" stop-color="rgba(124,58,237,0.05)"/>
+                            <stop offset="100%" stop-color="transparent"/>
+                          </radialGradient>
+                          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/>
+                          </marker>
+                        </defs>
+                        <rect width="570" height="310" fill="url(#canvasDots)"/>
+                        <rect width="570" height="310" fill="url(#canvasVignette)"/>
+                        <path d="M 200 110 C 230 110, 250 155, 280 155" fill="none" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)" stroke-opacity="0.7"/>
+                        <path d="M 400 155 C 430 155, 450 220, 480 220" fill="none" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)" stroke-opacity="0.7"/>
+                        <g>
+                          <rect x="60" y="84" width="140" height="52" rx="10" fill="#131313" stroke="#262626"/>
+                          <rect x="60" y="84" width="140" height="20" rx="10" fill="rgba(124,58,237,0.06)"/>
+                          <rect x="60" y="98" width="140" height="6" fill="rgba(124,58,237,0.06)"/>
+                          <circle cx="76" cy="94" r="3" fill="#7c3aed"/>
+                          <text x="88" y="98" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.55)" text-transform="uppercase" letter-spacing="0.5">node</text>
+                          <text x="74" y="124" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#e4e4e4">User</text>
+                        </g>
+                        <g>
+                          <rect x="240" y="129" width="140" height="52" rx="10" fill="#131313" stroke="#7c3aed" stroke-width="1.5"/>
+                          <rect x="240" y="129" width="140" height="20" rx="10" fill="rgba(124,58,237,0.12)"/>
+                          <rect x="240" y="143" width="140" height="6" fill="rgba(124,58,237,0.12)"/>
+                          <circle cx="256" cy="139" r="3" fill="#3fa266"/>
+                          <text x="268" y="143" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.65)" text-transform="uppercase" letter-spacing="0.5">selected</text>
+                          <text x="254" y="169" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#e4e4e4">API service</text>
+                        </g>
+                        <g>
+                          <rect x="420" y="194" width="140" height="52" rx="10" fill="#131313" stroke="#262626"/>
+                          <rect x="420" y="194" width="140" height="20" rx="10" fill="rgba(124,58,237,0.06)"/>
+                          <rect x="420" y="208" width="140" height="6" fill="rgba(124,58,237,0.06)"/>
+                          <circle cx="436" cy="204" r="3" fill="#7c3aed"/>
+                          <text x="448" y="208" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.55)" text-transform="uppercase" letter-spacing="0.5">store</text>
+                          <text x="434" y="234" font-family="Inter, sans-serif" font-size="13" font-weight="500" fill="#e4e4e4">Database</text>
+                        </g>
+                        <g>
+                          <rect x="220" y="115" width="6" height="6" fill="#7c3aed" stroke="#0a0a0a"/>
+                          <rect x="394" y="115" width="6" height="6" fill="#7c3aed" stroke="#0a0a0a"/>
+                          <rect x="220" y="171" width="6" height="6" fill="#7c3aed" stroke="#0a0a0a"/>
+                          <rect x="394" y="171" width="6" height="6" fill="#7c3aed" stroke="#0a0a0a"/>
+                        </g>
+                        <g transform="translate(450, 16)">
+                          <rect x="0" y="0" width="104" height="28" rx="8" fill="rgba(19,19,19,0.92)" stroke="#262626"/>
+                          <text x="13" y="19" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#e4e4e4">−</text>
+                          <text x="52" y="18" font-family="'JetBrains Mono', monospace" font-size="10" fill="rgba(228,228,228,0.65)" text-anchor="middle">100%</text>
+                          <text x="89" y="19" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#e4e4e4">+</text>
+                          <line x1="28" y1="7" x2="28" y2="21" stroke="#262626"/>
+                          <line x1="76" y1="7" x2="76" y2="21" stroke="#262626"/>
+                        </g>
+                        <g transform="translate(414, 16)">
+                          <rect x="0" y="0" width="28" height="28" rx="8" fill="rgba(19,19,19,0.92)" stroke="#262626"/>
+                          <path d="M 8 8 L 8 12 M 8 8 L 12 8 M 20 8 L 20 12 M 20 8 L 16 8 M 8 20 L 8 16 M 8 20 L 12 20 M 20 20 L 20 16 M 20 20 L 16 20" stroke="#e4e4e4" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+                        </g>
+                        <g transform="translate(16, 16)">
+                          <rect x="0" y="0" width="68" height="28" rx="8" fill="rgba(19,19,19,0.92)" stroke="#262626"/>
+                          <circle cx="14" cy="14" r="3" fill="#3fa266"/>
+                          <circle cx="14" cy="14" r="3" fill="#3fa266" opacity="0.4">
+                            <animate attributeName="r" values="3;8;3" dur="2.4s" repeatCount="indefinite"/>
+                            <animate attributeName="opacity" values="0.4;0;0.4" dur="2.4s" repeatCount="indefinite"/>
+                          </circle>
+                          <text x="26" y="18" font-family="'JetBrains Mono', monospace" font-size="10" fill="rgba(228,228,228,0.75)" text-transform="uppercase" letter-spacing="0.5">live</text>
+                        </g>
+                        <g transform="translate(16, 278)">
+                          <text x="0" y="11" font-family="'JetBrains Mono', monospace" font-size="10" fill="rgba(228,228,228,0.45)">x: 240  y: 155  zoom: 1.00</text>
+                        </g>
+                      </svg>
+                    )}
+
+                    {feature.title === 'Mermaid-native rendering' && (
+                      <svg class="canvas-mock" viewBox="0 0 570 310" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mermaid source code rendering into a diagram">
+                        <defs>
+                          <pattern id="mermaidDots" width="20" height="20" patternUnits="userSpaceOnUse">
+                            <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.06)"/>
+                          </pattern>
+                        </defs>
+                        <rect x="32" y="40" width="240" height="232" rx="12" fill="#0a0a0a" stroke="#262626"/>
+                        <rect x="32" y="40" width="240" height="36" fill="#131313"/>
+                        <path d="M 32 52 a 12 12 0 0 1 12 -12 L 260 40 a 12 12 0 0 1 12 12 L 272 76 L 32 76 Z" fill="#131313"/>
+                        <circle cx="50" cy="58" r="4" fill="#ff6b6b"/>
+                        <circle cx="64" cy="58" r="4" fill="#f4c000"/>
+                        <circle cx="78" cy="58" r="4" fill="#3fa266"/>
+                        <rect x="116" y="48" width="100" height="20" rx="6" fill="#0a0a0a" stroke="#262626"/>
+                        <text x="166" y="61" font-family="'JetBrains Mono', monospace" font-size="10" fill="rgba(228,228,228,0.65)" text-anchor="middle">diagram.mmd</text>
+                        <line x1="32" y1="76" x2="272" y2="76" stroke="#262626"/>
+                        <g font-family="'JetBrains Mono', monospace" font-size="11">
+                          <text x="48" y="100" fill="rgba(228,228,228,0.35)">1</text>
+                          <text x="64" y="100" fill="#7c3aed">flowchart</text>
+                          <text x="118" y="100" fill="#e4e4e4">LR</text>
+                          <text x="48" y="122" fill="rgba(228,228,228,0.35)">2</text>
+                          <text x="76" y="122" fill="#3fa266">A</text>
+                          <text x="84" y="122" fill="#e4e4e4">[Source]</text>
+                          <text x="146" y="122" fill="#7c3aed">--&gt;</text>
+                          <text x="174" y="122" fill="#3fa266">B</text>
+                          <text x="48" y="144" fill="rgba(228,228,228,0.35)">3</text>
+                          <text x="76" y="144" fill="#3fa266">B</text>
+                          <text x="84" y="144" fill="#e4e4e4">[Parse]</text>
+                          <text x="138" y="144" fill="#7c3aed">--&gt;</text>
+                          <text x="166" y="144" fill="#3fa266">C</text>
+                          <text x="48" y="166" fill="rgba(228,228,228,0.35)">4</text>
+                          <text x="76" y="166" fill="#3fa266">C</text>
+                          <text x="84" y="166" fill="#e4e4e4">[Render]</text>
+                          <text x="48" y="200" fill="rgba(228,228,228,0.35)">5</text>
+                          <text x="48" y="222" fill="rgba(228,228,228,0.35)">6</text>
+                          <text x="64" y="222" fill="rgba(228,228,228,0.4)">// auto-render</text>
+                        </g>
+                        <g transform="translate(290, 153)">
+                          <line x1="0" y1="10" x2="22" y2="10" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="3 3"/>
+                          <path d="M 18 4 L 24 10 L 18 16" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </g>
+                        <g transform="translate(322, 40)">
+                          <rect x="0" y="0" width="216" height="232" rx="12" fill="#131313" stroke="#262626"/>
+                          <rect x="0" y="0" width="216" height="32" fill="rgba(255,255,255,0.02)"/>
+                          <path d="M 0 12 a 12 12 0 0 1 12 -12 L 204 0 a 12 12 0 0 1 12 12 L 216 32 L 0 32 Z" fill="rgba(255,255,255,0.02)"/>
+                          <text x="16" y="20" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.55)" text-transform="uppercase" letter-spacing="0.5">preview</text>
+                          <circle cx="196" cy="16" r="3" fill="#3fa266"/>
+                          <line x1="0" y1="32" x2="216" y2="32" stroke="#262626"/>
+                          <rect x="0" y="32" width="216" height="200" fill="url(#mermaidDots)"/>
+                          <g>
+                            <rect x="32" y="64" width="68" height="36" rx="8" fill="#0a0a0a" stroke="#7c3aed" stroke-width="1.2"/>
+                            <text x="66" y="86" font-family="Inter, sans-serif" font-size="11" font-weight="500" fill="#e4e4e4" text-anchor="middle">Source</text>
+                          </g>
+                          <path d="M 100 82 L 116 82" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#arrow)"/>
+                          <g>
+                            <rect x="116" y="64" width="68" height="36" rx="8" fill="#0a0a0a" stroke="#7c3aed" stroke-width="1.2"/>
+                            <text x="150" y="86" font-family="Inter, sans-serif" font-size="11" font-weight="500" fill="#e4e4e4" text-anchor="middle">Parse</text>
+                          </g>
+                          <path d="M 150 100 C 150 130, 100 130, 100 156" fill="none" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#arrow)"/>
+                          <g>
+                            <rect x="66" y="156" width="68" height="36" rx="8" fill="#0a0a0a" stroke="#7c3aed" stroke-width="1.2"/>
+                            <text x="100" y="178" font-family="Inter, sans-serif" font-size="11" font-weight="500" fill="#e4e4e4" text-anchor="middle">Render</text>
+                          </g>
+                        </g>
+                      </svg>
+                    )}
+
+                    {feature.title === 'Syntax-aware repair' && (
+                      <svg class="canvas-mock" viewBox="0 0 570 310" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Broken Mermaid syntax being corrected by the assistant">
+                        <rect x="40" y="40" width="490" height="230" rx="12" fill="#0a0a0a" stroke="#262626"/>
+                        <path d="M 40 52 a 12 12 0 0 1 12 -12 L 518 40 a 12 12 0 0 1 12 12 L 530 76 L 40 76 Z" fill="#131313"/>
+                        <circle cx="58" cy="58" r="4" fill="#ff6b6b"/>
+                        <circle cx="72" cy="58" r="4" fill="#f4c000"/>
+                        <circle cx="86" cy="58" r="4" fill="#3fa266"/>
+                        <rect x="220" y="48" width="130" height="20" rx="6" fill="#0a0a0a" stroke="#262626"/>
+                        <text x="285" y="61" font-family="'JetBrains Mono', monospace" font-size="10" fill="rgba(228,228,228,0.65)" text-anchor="middle">diagram.mmd</text>
+                        <g transform="translate(486, 50)">
+                          <rect x="0" y="0" width="34" height="16" rx="4" fill="rgba(255,107,107,0.12)" stroke="rgba(255,107,107,0.4)"/>
+                          <text x="17" y="11" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="600" fill="#ff6b6b" text-anchor="middle">2 ERR</text>
+                        </g>
+                        <line x1="40" y1="76" x2="530" y2="76" stroke="#262626"/>
+                        <g font-family="'JetBrains Mono', monospace" font-size="11">
+                          <text x="56" y="100" fill="rgba(228,228,228,0.35)">1</text>
+                          <text x="76" y="100" fill="#7c3aed">flowchart</text>
+                          <text x="130" y="100" fill="#e4e4e4">LR</text>
+                          <rect x="40" y="106" width="490" height="22" fill="rgba(255,107,107,0.08)"/>
+                          <rect x="40" y="106" width="3" height="22" fill="#ff6b6b"/>
+                          <text x="56" y="121" fill="rgba(228,228,228,0.35)">2</text>
+                          <text x="76" y="121" fill="#ff6b6b">−</text>
+                          <text x="92" y="121" fill="rgba(228,228,228,0.7)">A[Source</text>
+                          <text x="158" y="121" fill="#ff6b6b" font-weight="600">--&gt;</text>
+                          <text x="190" y="121" fill="rgba(228,228,228,0.7)">B[Parse</text>
+                          <circle cx="252" cy="117" r="6" fill="rgba(255,107,107,0.2)" stroke="#ff6b6b"/>
+                          <text x="252" y="121" font-size="9" font-weight="700" fill="#ff6b6b" text-anchor="middle">!</text>
+                          <rect x="40" y="134" width="490" height="22" fill="rgba(63,162,102,0.08)"/>
+                          <rect x="40" y="134" width="3" height="22" fill="#3fa266"/>
+                          <text x="56" y="149" fill="rgba(228,228,228,0.35)">2</text>
+                          <text x="76" y="149" fill="#3fa266">+</text>
+                          <text x="92" y="149" fill="#e4e4e4">A[Source]</text>
+                          <text x="166" y="149" fill="#7c3aed">--&gt;</text>
+                          <text x="194" y="149" fill="#e4e4e4">B[Parse]</text>
+                          <text x="56" y="173" fill="rgba(228,228,228,0.35)">3</text>
+                          <text x="76" y="173" fill="#3fa266">B</text>
+                          <text x="84" y="173" fill="#e4e4e4">[Parse]</text>
+                          <text x="138" y="173" fill="#7c3aed">--&gt;</text>
+                          <text x="166" y="173" fill="#3fa266">C</text>
+                        </g>
+                        <g font-family="'JetBrains Mono', monospace" font-size="10">
+                          <text x="56" y="208" fill="rgba(228,228,228,0.35)" text-transform="uppercase" letter-spacing="0.5">assistant</text>
+                          <text x="56" y="224" fill="rgba(228,228,228,0.7)">→ closed unmatched brackets, kept flow direction LR</text>
+                        </g>
+                        <g transform="translate(56, 240)">
+                          <rect x="0" y="0" width="98" height="22" rx="6" fill="rgba(63,162,102,0.15)" stroke="rgba(63,162,102,0.45)"/>
+                          <circle cx="12" cy="11" r="2.5" fill="#3fa266"/>
+                          <text x="22" y="15" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#3fa266">Syntax fixed</text>
+                        </g>
+                        <g transform="translate(166, 240)">
+                          <rect x="0" y="0" width="116" height="22" rx="6" fill="rgba(124,58,237,0.12)" stroke="rgba(124,58,237,0.45)"/>
+                          <text x="12" y="15" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#b07eff">Intent preserved</text>
+                        </g>
+                        <g transform="translate(294, 240)">
+                          <rect x="0" y="0" width="94" height="22" rx="6" fill="rgba(255,255,255,0.04)" stroke="#262626"/>
+                          <text x="12" y="15" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="500" fill="rgba(228,228,228,0.65)">2 lines diff</text>
+                        </g>
+                      </svg>
+                    )}
+
+                    {feature.title === 'Portable export' && (
+                      <svg class="canvas-mock" viewBox="0 0 570 310" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Three export formats: SVG, PNG, and Mermaid source">
+                        <text x="40" y="38" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.45)" text-transform="uppercase" letter-spacing="0.5">export</text>
+                        <text x="530" y="38" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.45)" text-transform="uppercase" letter-spacing="0.5" text-anchor="end">3 formats</text>
+                        <line x1="40" y1="48" x2="530" y2="48" stroke="#262626"/>
+
+                        <g transform="translate(40, 68)">
+                          <rect x="0" y="0" width="156" height="206" rx="14" fill="#131313" stroke="#7c3aed" stroke-width="1.2"/>
+                          <rect x="14" y="14" width="128" height="96" rx="8" fill="#0a0a0a" stroke="rgba(124,58,237,0.4)"/>
+                          <g transform="translate(38, 36)">
+                            <rect x="0" y="0" width="20" height="14" rx="3" fill="rgba(124,58,237,0.2)" stroke="#7c3aed" stroke-width="0.8"/>
+                            <rect x="26" y="0" width="20" height="14" rx="3" fill="#0a0a0a" stroke="rgba(124,58,237,0.6)" stroke-width="0.8"/>
+                            <line x1="20" y1="7" x2="26" y2="7" stroke="#7c3aed" stroke-width="0.8"/>
+                            <rect x="52" y="0" width="20" height="14" rx="3" fill="#0a0a0a" stroke="rgba(124,58,237,0.6)" stroke-width="0.8"/>
+                            <line x1="46" y1="7" x2="52" y2="7" stroke="#7c3aed" stroke-width="0.8"/>
+                            <rect x="13" y="32" width="20" height="14" rx="3" fill="#0a0a0a" stroke="rgba(124,58,237,0.6)" stroke-width="0.8"/>
+                            <path d="M 36 14 Q 36 24 23 32" fill="none" stroke="#7c3aed" stroke-width="0.8"/>
+                          </g>
+                          <text x="78" y="138" font-family="Inter, sans-serif" font-size="22" font-weight="700" fill="#7c3aed" text-anchor="middle">SVG</text>
+                          <text x="78" y="158" font-family="Inter, sans-serif" font-size="11" font-weight="500" fill="#e4e4e4" text-anchor="middle">Vector</text>
+                          <text x="78" y="176" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.55)" text-anchor="middle">scales · animatable</text>
+                          <line x1="14" y1="186" x2="142" y2="186" stroke="#262626"/>
+                          <text x="22" y="200" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.5)">12 KB</text>
+                          <g transform="translate(118, 192)">
+                            <rect x="0" y="0" width="20" height="12" rx="3" fill="rgba(124,58,237,0.18)" stroke="rgba(124,58,237,0.4)"/>
+                            <path d="M 6 6 L 10 6 M 8 4 L 8 8" stroke="#b07eff" stroke-width="1" stroke-linecap="round"/>
+                            <text x="14" y="9" font-family="'JetBrains Mono', monospace" font-size="7" fill="#b07eff">↓</text>
+                          </g>
+                        </g>
+
+                        <g transform="translate(208, 68)">
+                          <rect x="0" y="0" width="156" height="206" rx="14" fill="#131313" stroke="#262626"/>
+                          <rect x="14" y="14" width="128" height="96" rx="8" fill="#0a0a0a" stroke="#262626"/>
+                          <g transform="translate(40, 32)">
+                            <rect x="0" y="0" width="48" height="48" rx="4" fill="rgba(255,255,255,0.04)"/>
+                            <rect x="2" y="2" width="44" height="44" rx="3" fill="url(#mermaidDots)" stroke="#262626" stroke-width="0.5"/>
+                            <rect x="8" y="10" width="14" height="14" rx="2" fill="rgba(124,58,237,0.3)"/>
+                            <rect x="26" y="10" width="14" height="14" rx="2" fill="rgba(124,58,237,0.3)"/>
+                            <rect x="17" y="28" width="14" height="14" rx="2" fill="rgba(124,58,237,0.3)"/>
+                            <line x1="15" y1="17" x2="33" y2="17" stroke="#7c3aed" stroke-width="0.6"/>
+                            <line x1="24" y1="24" x2="24" y2="28" stroke="#7c3aed" stroke-width="0.6"/>
+                          </g>
+                          <text x="78" y="138" font-family="Inter, sans-serif" font-size="22" font-weight="700" fill="#e4e4e4" text-anchor="middle">PNG</text>
+                          <text x="78" y="158" font-family="Inter, sans-serif" font-size="11" font-weight="500" fill="#e4e4e4" text-anchor="middle">Raster</text>
+                          <text x="78" y="176" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.55)" text-anchor="middle">2× retina · ready</text>
+                          <line x1="14" y1="186" x2="142" y2="186" stroke="#262626"/>
+                          <text x="22" y="200" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.5)">86 KB</text>
+                          <g transform="translate(118, 192)">
+                            <rect x="0" y="0" width="20" height="12" rx="3" fill="rgba(255,255,255,0.04)" stroke="#262626"/>
+                            <text x="10" y="9" font-family="'JetBrains Mono', monospace" font-size="7" fill="rgba(228,228,228,0.55)" text-anchor="middle">↓</text>
+                          </g>
+                        </g>
+
+                        <g transform="translate(376, 68)">
+                          <rect x="0" y="0" width="156" height="206" rx="14" fill="#131313" stroke="#262626"/>
+                          <rect x="14" y="14" width="128" height="96" rx="8" fill="#0a0a0a" stroke="#262626"/>
+                          <g font-family="'JetBrains Mono', monospace" font-size="8">
+                            <text x="22" y="32" fill="rgba(228,228,228,0.35)">1</text>
+                            <text x="34" y="32" fill="#7c3aed">flowchart</text>
+                            <text x="76" y="32" fill="#e4e4e4">LR</text>
+                            <text x="22" y="48" fill="rgba(228,228,228,0.35)">2</text>
+                            <text x="34" y="48" fill="#e4e4e4">A[Source]</text>
+                            <text x="22" y="64" fill="rgba(228,228,228,0.35)">3</text>
+                            <text x="34" y="64" fill="#e4e4e4">B[Parse]</text>
+                            <text x="22" y="80" fill="rgba(228,228,228,0.35)">4</text>
+                            <text x="34" y="80" fill="#e4e4e4">A --&gt; B</text>
+                            <text x="22" y="96" fill="rgba(228,228,228,0.35)">5</text>
+                          </g>
+                          <text x="78" y="138" font-family="'JetBrains Mono', monospace" font-size="20" font-weight="600" fill="#e4e4e4" text-anchor="middle">.mmd</text>
+                          <text x="78" y="158" font-family="Inter, sans-serif" font-size="11" font-weight="500" fill="#e4e4e4" text-anchor="middle">Source</text>
+                          <text x="78" y="176" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.55)" text-anchor="middle">diff · review · pr</text>
+                          <line x1="14" y1="186" x2="142" y2="186" stroke="#262626"/>
+                          <text x="22" y="200" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.5)">1.2 KB</text>
+                          <g transform="translate(118, 192)">
+                            <rect x="0" y="0" width="20" height="12" rx="3" fill="rgba(255,255,255,0.04)" stroke="#262626"/>
+                            <text x="10" y="9" font-family="'JetBrains Mono', monospace" font-size="7" fill="rgba(228,228,228,0.55)" text-anchor="middle">↓</text>
+                          </g>
+                        </g>
+                      </svg>
+                    )}
+
+                    {feature.title === 'Prompt to handoff' && (
+                      <svg class="canvas-mock" viewBox="0 0 570 310" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Plain text prompt transforming into a documented diagram artifact">
+                        <g transform="translate(32, 56)">
+                          <rect x="0" y="0" width="200" height="198" rx="14" fill="#131313" stroke="#262626"/>
+                          <rect x="0" y="0" width="200" height="32" fill="rgba(124,58,237,0.06)"/>
+                          <path d="M 0 12 a 12 12 0 0 1 12 -12 L 188 0 a 12 12 0 0 1 12 12 L 200 32 L 0 32 Z" fill="rgba(124,58,237,0.06)"/>
+                          <text x="16" y="20" font-family="'JetBrains Mono', monospace" font-size="9" fill="#7c3aed" text-transform="uppercase" letter-spacing="0.5">prompt</text>
+                          <circle cx="184" cy="16" r="3" fill="rgba(124,58,237,0.6)"/>
+                          <line x1="0" y1="32" x2="200" y2="32" stroke="#262626"/>
+                          <g transform="translate(16, 48)">
+                            <rect x="0" y="0" width="14" height="14" rx="3" fill="rgba(124,58,237,0.15)" stroke="rgba(124,58,237,0.4)"/>
+                            <text x="7" y="11" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#b07eff" text-anchor="middle">U</text>
+                            <text x="22" y="11" font-family="Inter, sans-serif" font-size="10" font-weight="500" fill="rgba(228,228,228,0.7)">Engineer</text>
+                          </g>
+                          <rect x="16" y="74" width="168" height="5" rx="2.5" fill="rgba(228,228,228,0.65)"/>
+                          <rect x="16" y="86" width="156" height="5" rx="2.5" fill="rgba(228,228,228,0.55)"/>
+                          <rect x="16" y="98" width="170" height="5" rx="2.5" fill="rgba(228,228,228,0.55)"/>
+                          <rect x="16" y="110" width="120" height="5" rx="2.5" fill="rgba(228,228,228,0.45)"/>
+                          <g transform="translate(16, 130)">
+                            <rect x="0" y="0" width="56" height="20" rx="6" fill="rgba(124,58,237,0.15)" stroke="rgba(124,58,237,0.5)"/>
+                            <path d="M 8 10 L 10 12 L 13 8 M 10 7 L 10 13" stroke="#b07eff" stroke-width="1" stroke-linecap="round" fill="none"/>
+                            <text x="36" y="13" font-family="Inter, sans-serif" font-size="9" font-weight="600" fill="#b07eff" text-anchor="middle">ticket</text>
+                          </g>
+                          <g transform="translate(80, 130)">
+                            <rect x="0" y="0" width="44" height="20" rx="6" fill="rgba(255,255,255,0.04)" stroke="#262626"/>
+                            <text x="22" y="13" font-family="Inter, sans-serif" font-size="9" font-weight="500" fill="rgba(228,228,228,0.7)" text-anchor="middle">notes</text>
+                          </g>
+                          <line x1="16" y1="164" x2="184" y2="164" stroke="#262626" stroke-dasharray="2 3"/>
+                          <text x="16" y="180" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(228,228,228,0.4)">// thinking out loud…</text>
+                        </g>
+                        <g transform="translate(252, 145)">
+                          <line x1="0" y1="10" x2="48" y2="10" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="3 3"/>
+                          <path d="M 44 4 L 50 10 L 44 16" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                          <text x="25" y="-2" font-family="'JetBrains Mono', monospace" font-size="8" fill="rgba(228,228,228,0.5)" text-anchor="middle" text-transform="uppercase" letter-spacing="0.5">distill</text>
+                        </g>
+                        <g transform="translate(316, 36)">
+                          <rect x="0" y="0" width="220" height="238" rx="14" fill="#131313" stroke="#262626"/>
+                          <rect x="0" y="0" width="220" height="32" fill="rgba(63,162,102,0.08)"/>
+                          <path d="M 0 12 a 12 12 0 0 1 12 -12 L 208 0 a 12 12 0 0 1 12 12 L 220 32 L 0 32 Z" fill="rgba(63,162,102,0.08)"/>
+                          <text x="16" y="20" font-family="'JetBrains Mono', monospace" font-size="9" fill="#3fa266" text-transform="uppercase" letter-spacing="0.5">handoff.md</text>
+                          <circle cx="204" cy="16" r="3" fill="#3fa266"/>
+                          <line x1="0" y1="32" x2="220" y2="32" stroke="#262626"/>
+                          <text x="16" y="52" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#e4e4e4">Auth flow review</text>
+                          <text x="16" y="64" font-family="'JetBrains Mono', monospace" font-size="8" fill="rgba(228,228,228,0.45)">ENG-1284 · 2 min read</text>
+                          <rect x="14" y="76" width="192" height="78" rx="8" fill="#0a0a0a" stroke="#262626"/>
+                          <rect x="14" y="76" width="192" height="78" rx="8" fill="url(#mermaidDots)" stroke="#262626"/>
+                          <g>
+                            <rect x="30" y="96" width="44" height="20" rx="6" fill="#131313" stroke="#7c3aed" stroke-width="1.2"/>
+                            <text x="52" y="109" font-family="Inter, sans-serif" font-size="9" font-weight="500" fill="#e4e4e4" text-anchor="middle">User</text>
+                            <path d="M 74 106 L 88 106" stroke="#7c3aed" stroke-width="1" marker-end="url(#arrow)"/>
+                            <rect x="88" y="96" width="44" height="20" rx="6" fill="#131313" stroke="#7c3aed" stroke-width="1.2"/>
+                            <text x="110" y="109" font-family="Inter, sans-serif" font-size="9" font-weight="500" fill="#e4e4e4" text-anchor="middle">Auth</text>
+                            <path d="M 132 106 L 146 106" stroke="#7c3aed" stroke-width="1" marker-end="url(#arrow)"/>
+                            <rect x="146" y="96" width="44" height="20" rx="6" fill="#131313" stroke="#7c3aed" stroke-width="1.2"/>
+                            <text x="168" y="109" font-family="Inter, sans-serif" font-size="9" font-weight="500" fill="#e4e4e4" text-anchor="middle">DB</text>
+                            <path d="M 110 116 Q 110 132 88 132" fill="none" stroke="#7c3aed" stroke-width="1"/>
+                            <rect x="68" y="124" width="40" height="16" rx="4" fill="#131313" stroke="#262626"/>
+                            <text x="88" y="135" font-family="Inter, sans-serif" font-size="8" fill="rgba(228,228,228,0.7)" text-anchor="middle">Cache</text>
+                          </g>
+                          <rect x="14" y="164" width="160" height="5" rx="2.5" fill="rgba(228,228,228,0.55)"/>
+                          <rect x="14" y="176" width="192" height="5" rx="2.5" fill="rgba(228,228,228,0.55)"/>
+                          <rect x="14" y="188" width="120" height="5" rx="2.5" fill="rgba(228,228,228,0.45)"/>
+                          <line x1="14" y1="204" x2="206" y2="204" stroke="#262626"/>
+                          <g transform="translate(14, 212)">
+                            <rect x="0" y="0" width="76" height="18" rx="5" fill="rgba(63,162,102,0.12)" stroke="rgba(63,162,102,0.45)"/>
+                            <text x="38" y="12" font-family="Inter, sans-serif" font-size="9" font-weight="600" fill="#3fa266" text-anchor="middle">SVG attached</text>
+                          </g>
+                          <g transform="translate(100, 212)">
+                            <rect x="0" y="0" width="92" height="18" rx="5" fill="rgba(255,255,255,0.04)" stroke="#262626"/>
+                            <text x="46" y="12" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="500" fill="rgba(228,228,228,0.65)" text-anchor="middle">ready to share</text>
+                          </g>
+                        </g>
+                      </svg>
+                    )}
+                  </div>
+                  <div class="essentials-body">
+                    <h3>{feature.title}</h3>
+                    <p>{feature.text}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="workflow" class="section workflow-section">
+          <div class="container">
+            <div class="section-header">
+              <div class="badge"><span class="badge-label">Essential Workflow</span></div>
               <h2>From prompt to diagram asset without leaving the page.</h2>
             </div>
             <div class="workflow-grid">
               {workflow.map(([title, text], index) => (
                 <article>
-                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <div class="workflow-icon" aria-hidden="true">
+                    <span>{String(index + 1).padStart(2, '0')}</span>
+                  </div>
                   <h3>{title}</h3>
                   <p>{text}</p>
                 </article>
@@ -234,10 +749,34 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
           </div>
         </section>
 
-        <section class="integration-section">
+        <section id="why" class="section why-section">
+          <div class="container">
+            <div class="section-header">
+              <div class="badge"><span class="badge-label">Why Graphini</span></div>
+              <h2>Built for the way technical thinking actually flows.</h2>
+            </div>
+            <div class="why-grid">
+              {whyChoose.map(([title, text]) => (
+                <article>
+                  <div class="icon-box" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h10M4 17h16"></path></svg>
+                  </div>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </article>
+              ))}
+              <span class="why-star why-star-1" aria-hidden="true"></span>
+              <span class="why-star why-star-2" aria-hidden="true"></span>
+              <span class="why-star why-star-3" aria-hidden="true"></span>
+              <span class="why-star why-star-4" aria-hidden="true"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section integration-section">
           <div class="container integration-card">
             <div>
-              <span class="section-kicker">Integration & Tools</span>
+              <div class="badge"><span class="badge-label">Integration & Tools</span></div>
               <h2>Use Graphini where technical work already happens.</h2>
             </div>
             <div class="integration-cloud">
@@ -246,16 +785,19 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
           </div>
         </section>
 
-        <section id="faq" class="faq-section">
-          <div class="container faq-grid">
-            <div>
-              <span class="section-kicker">FAQ</span>
+        <section id="faq" class="section faq-section">
+          <div class="container">
+            <div class="section-header faq-header">
+              <div class="badge"><span class="badge-label">FAQ</span></div>
               <h2>Small answers before you open the workspace.</h2>
             </div>
             <div class="faq-list">
               {faqs.map(([question, answer]) => (
                 <details>
-                  <summary>{question}</summary>
+                  <summary>
+                    <span>{question}</span>
+                    <i aria-hidden="true"></i>
+                  </summary>
                   <p>{answer}</p>
                 </details>
               ))}
@@ -263,30 +805,138 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
           </div>
         </section>
 
-        <section class="cta-section">
-          <div class="container cta-card">
-            <div>
-              <h2>Start with a messy thought. Leave with a diagram you can ship.</h2>
-              <p>The diagram can get cleaner as your understanding gets sharper.</p>
-            </div>
-            <a class="button button-primary" href="/app">Create a diagram</a>
+        <section class="section cta-section">
+          <div class="cta-stars" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div class="cta-pulses" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="container cta-content">
+            <h2 class="hero-text">
+              Start with a messy thought.
+              <mark>Leave with a diagram you can ship.</mark>
+            </h2>
+            <p>The diagram can get cleaner as your understanding gets sharper.</p>
+            <a class="anim-button anim-button-primary" href="/app">
+              <span class="anim-button-inner">Create a diagram</span>
+            </a>
+          </div>
+          <div class="cta-shape" aria-hidden="true">
+            <div class="cta-shape-ribbon"></div>
+            <div class="cta-shape-dome"></div>
           </div>
         </section>
       </main>
 
       <footer class="site-footer">
         <div class="container">
-          <span>Graphini</span>
-          <span>&copy; {new Date().getFullYear()} Magnova</span>
-          <a href="https://github.com/omkarbhad/graphini" rel="noreferrer" target="_blank">GitHub</a>
-          <a href="https://github.com/omkarbhad/graphini/blob/main/LICENSE" rel="noreferrer" target="_blank">MIT License</a>
+          <div class="footer-grid">
+            <div>
+              <a class="brand" href="/">
+                <img src="/brand/logo.png" alt="" />
+                <span>Graphini</span>
+              </a>
+              <p>Diagram while context is fresh.</p>
+              <a class="footer-cta" href="/app">Open workspace →</a>
+            </div>
+            <div>
+              <h4>Product</h4>
+              <a href="#features">Features</a>
+              <a href="#workflow">Workflow</a>
+              <a href="#why">Why Graphini</a>
+              <a href="#faq">FAQ</a>
+            </div>
+            <div>
+              <h4>Resources</h4>
+              <a href="https://github.com/omkarbhad/graphini" rel="noreferrer" target="_blank">GitHub</a>
+              <a href="https://github.com/omkarbhad/graphini/blob/main/LICENSE" rel="noreferrer" target="_blank">License</a>
+              <a href="/app">Workspace</a>
+            </div>
+            <div>
+              <h4>Legal</h4>
+              <a href="https://github.com/omkarbhad/graphini/blob/main/LICENSE" rel="noreferrer" target="_blank">MIT License</a>
+            </div>
+          </div>
+          <div class="footer-wordmark" aria-hidden="true">GRAPHINI</div>
+          <div class="footer-meta">
+            <span>&copy; {new Date().getFullYear()} Magnova</span>
+            <span>Built for clear technical thinking.</span>
+          </div>
         </div>
       </footer>
     </div>
+
+    <!-- Prompt pill + placeholder cycler. Stops the moment the user
+         focuses the textarea so we never overwrite their input. -->
+    <script is:inline>
+      (function () {
+        var pills = document.querySelectorAll('[data-prompt-pills] a[data-prompt]');
+        var input = document.querySelector('[data-prompt-input]');
+        if (!pills.length || !input) return;
+
+        var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reducedMotion) {
+          input.setAttribute('placeholder', pills[0].getAttribute('data-prompt'));
+          return;
+        }
+
+        var i = 0;
+        var stopped = false;
+        var timer;
+
+        function applyActive(idx) {
+          for (var j = 0; j < pills.length; j++) {
+            pills[j].setAttribute('aria-current', j === idx ? 'true' : 'false');
+          }
+          input.setAttribute('placeholder', pills[idx].getAttribute('data-prompt'));
+        }
+
+        function tick() {
+          if (stopped) return;
+          i = (i + 1) % pills.length;
+          applyActive(i);
+          timer = setTimeout(tick, 4500);
+        }
+
+        function stop() {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+          input.setAttribute('placeholder', 'Describe your diagram…');
+        }
+
+        // Initial state.
+        applyActive(0);
+        timer = setTimeout(tick, 4500);
+
+        // User intent stops the cycler.
+        input.addEventListener('focus', stop, { once: true });
+        input.addEventListener('input', stop, { once: true });
+
+        // Tapping a pill stops the cycler too — they've made their choice.
+        for (var k = 0; k < pills.length; k++) {
+          pills[k].addEventListener('click', function () {
+            stopped = true;
+            if (timer) clearTimeout(timer);
+          });
+          // Hovering a pill pauses the cycle so the user can read it.
+          pills[k].addEventListener('mouseenter', function () {
+            if (timer) clearTimeout(timer);
+          });
+          pills[k].addEventListener('mouseleave', function () {
+            if (!stopped) timer = setTimeout(tick, 1500);
+          });
+        }
+      })();
+    </script>
   </body>
 </html>
 
 <style>
+  @import '../lib/styles/typography-tokens.css';
+
   @font-face {
     font-family: 'Inter';
     src: url('/fonts/Inter-Variable.woff2') format('woff2-variations');
@@ -304,33 +954,54 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
   }
 
   :root {
-    color-scheme: light;
-    --background: hsl(0 0% 100%);
-    --foreground: hsl(240 10% 3.9%);
-    --card: hsl(0 0% 100%);
-    --muted: hsl(240 4.8% 95.9%);
-    --muted-foreground: hsl(240 3.8% 46.1%);
-    --border: hsl(240 5.9% 90%);
-    --primary: #2400ab;
-    --primary-strong: #6000e9;
-    --accent: rgba(96, 0, 233, 0.08);
-    --success: #16a34a;
-  }
+    color-scheme: dark;
+    --header-height: 64px;
+    --body: #0a0a0a;
+    --card: #131313;
+    --card-2: #1c1c1c;
+    --text: #e4e4e4;
+    --text-light: #e4e4e4;
+    --text-muted: rgba(228, 228, 228, 0.65);
+    --border: #262626;
+    --border-2: rgba(228, 228, 228, 0.10);
+    --border-3: rgba(228, 228, 228, 0.20);
+    /* ===== Accent tonal scale =====
+       Derived from brand hue 264° (sampled from static/brand/logo.png).
+       Constant hue, descending lightness — one hue, 9 predictable stops.
+       Use --accent-500 as the default solid accent; the others for hover,
+       active, disabled, soft fills, deep shadows, etc. */
+    --accent-50:  #f4ecff;  /* near-white tint — backgrounds, soft fills */
+    --accent-100: #e7d4ff;
+    --accent-200: #cea8ff;
+    --accent-300: #b07eff;
+    --accent-400: #9659f6;
+    --accent-500: #7c3aed;  /* default solid accent */
+    --accent-600: #6300ee;  /* brand violet */
+    --accent-700: #4f00c7;
+    --accent-800: #3700ad;
+    --accent-900: #2000a7;  /* brand indigo */
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --background: #181818;
-      --foreground: #e4e4e4;
-      --card: #181818;
-      --muted: #1c1c1c;
-      --muted-foreground: rgba(228, 228, 228, 0.55);
-      --border: #262626;
-      --primary: #6000e9;
-      --primary-strong: #8b5cff;
-      --accent: rgba(96, 0, 233, 0.18);
-      --success: #3fa266;
-    }
+    /* Semantic aliases — call sites should prefer these. */
+    --primary:    var(--accent-900);
+    --secondary:  var(--accent-600);
+    --accent:     var(--accent-500);
+    --accent-soft: rgba(124, 58, 237, 0.12);
+
+    /* Single accent gradient — used for buttons, gradient text fills, decorative accents. */
+    --gradient-accent: linear-gradient(135deg, var(--accent-900) 0%, var(--accent-600) 100%);
+    --gradient-dark: linear-gradient(180deg, #0d0d0d 0%, #161616 100%);
+    --gradient-text-hero: linear-gradient(270deg, #fff 2.46%, var(--accent-600) 50.39%, #fff 98.32%);
+    /* Soft atmosphere — logo midpoint hue for decorative glows. */
+    --atmosphere: radial-gradient(circle, var(--accent-600) 0%, var(--accent-900) 70%);
+    --atmosphere-soft: var(--accent-700);
+    --success: #3fa266;
+
+    /* Composer (matches app chat input surface, --chat-input-bg in app.css). */
+    --chat-input-bg: #1c1c1c;
+
+    /* Type scale tokens (--fs-*, --lh-*, --tr-*) live in src/app.css */
+    --font-sans: 'Inter', 'SF Pro Display', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   }
 
   * {
@@ -343,11 +1014,12 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
 
   body {
     margin: 0;
-    background: var(--background);
-    color: var(--foreground);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 13px;
-    line-height: 1.5;
+    background: #0a0a0a;
+    color: var(--text-light);
+    font-family: var(--font-sans);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    letter-spacing: var(--tr-body);
     -webkit-font-smoothing: antialiased;
   }
 
@@ -361,65 +1033,116 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
     max-width: 100%;
   }
 
+  h1, h2, h3, h4, h5, h6, p {
+    margin: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--text);
+    font-weight: 600;
+    line-height: 1.2;
+    scroll-margin-top: 96px;
+  }
+
+  /* Default heading sizes from the DESIGN.md ladder; specific sections override below. */
+  h1 { font-size: var(--fs-display-lg); line-height: var(--lh-display-lg); letter-spacing: var(--tr-display-lg); font-weight: 600; }
+  h2 { font-size: var(--fs-display-md); line-height: var(--lh-display-md); letter-spacing: var(--tr-display-md); font-weight: 600; }
+  h3 { font-size: var(--fs-headline);   line-height: var(--lh-headline);   letter-spacing: var(--tr-headline);   font-weight: 600; }
+  h4 { font-size: var(--fs-card-title); line-height: var(--lh-card-title); letter-spacing: var(--tr-card-title); font-weight: 500; }
+
+  p {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    letter-spacing: var(--tr-body);
+  }
+
   .page-shell {
     min-height: 100vh;
     overflow: hidden;
-    background:
-      linear-gradient(90deg, transparent 0, transparent calc(50% - 1px), color-mix(in srgb, var(--border), transparent 45%) calc(50% - 1px), color-mix(in srgb, var(--border), transparent 45%) 50%, transparent 50%),
-      radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--primary-strong), transparent 82%), transparent 34rem),
-      var(--background);
+    background: linear-gradient(180deg, #0a0a0a 0%, #121212 100%);
+    background-attachment: fixed;
   }
 
   .container {
-    width: min(100% - 32px, 1180px);
+    width: min(100% - 32px, 1300px);
     margin: 0 auto;
+    padding: 0 16px;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
   }
 
+  .section {
+    padding: 96px 0;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  /* ===== Header ===== */
   .site-header {
     position: sticky;
     top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    height: 56px;
-    width: min(100% - 32px, 1180px);
-    margin: 0 auto;
-    border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--background), transparent 8%);
+    z-index: 30;
+    padding: 16px 0;
+    background: color-mix(in srgb, var(--body), transparent 20%);
     backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
   }
 
-  .brand,
-  .header-actions,
-  .nav-links {
+  .header-inner {
+    width: min(100% - 32px, 1300px);
+    margin: 0 auto;
+    padding: 0 16px;
     display: flex;
     align-items: center;
+    gap: 16px;
   }
 
   .brand {
+    display: inline-flex;
+    align-items: center;
     gap: 8px;
-    font-weight: 650;
+    color: var(--text);
+    font-weight: 600;
+    font-size: var(--fs-card-title);
+    line-height: var(--lh-card-title);
+    letter-spacing: var(--tr-card-title);
   }
 
   .brand img {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
   }
 
-  .nav-links {
+  .nav-pill {
     margin-left: auto;
-    gap: 18px;
-    color: var(--muted-foreground);
+    margin-right: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 8px 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--card), transparent 50%);
   }
 
-  .nav-links a:hover,
-  .site-footer a:hover {
-    color: var(--foreground);
+  .nav-pill a {
+    color: var(--text-muted);
+    font-size: var(--fs-button);
+    line-height: var(--lh-button);
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: 9999px;
+    transition: color 160ms ease;
+  }
+
+  .nav-pill a:hover {
+    color: var(--accent);
   }
 
   .header-actions {
-    gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .icon-link {
@@ -428,8 +1151,14 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
     width: 32px;
     height: 32px;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--muted-foreground);
+    border-radius: 9999px;
+    color: var(--text-muted);
+    transition: color 160ms ease, border-color 160ms ease;
+  }
+
+  .icon-link:hover {
+    color: var(--text);
+    border-color: var(--border-2);
   }
 
   .icon-link svg {
@@ -437,39 +1166,111 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
     height: 16px;
   }
 
-  .button {
+  /* ===== Animated Button ===== */
+  .anim-button {
+    display: inline-block;
+    padding: 4px;
+    border: 1px solid var(--border-3);
+    border-radius: 9999px;
+    transition: padding 200ms ease, border-color 200ms ease;
+    line-height: 1;
+  }
+
+  .anim-button:hover {
+    padding: 0;
+    border-color: var(--border-3);
+  }
+
+  .anim-button-inner {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.20);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    color: var(--text);
+    font-size: var(--fs-button);
+    line-height: var(--lh-button);
+    font-weight: 500;
+    transition: padding 200ms ease, background 200ms ease, border-color 200ms ease;
+  }
+
+  .anim-button:hover .anim-button-inner {
+    padding: 16px 32px;
+  }
+
+  .anim-button:not(.anim-button-primary):hover .anim-button-inner {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.30);
+  }
+
+  .anim-button-primary .anim-button-inner {
+    background: var(--gradient-accent);
+    border-color: var(--primary);
+  }
+
+  .anim-button-primary:hover .anim-button-inner {
+    filter: brightness(1.08);
+  }
+
+  /* ===== Badge — gradient ring, dark inner pill, eyebrow label =====
+     Markup: <div class="badge"><span class="badge-label">[<span class="badge-dot">] text</span></div>
+     The dot lives inside the label so flex-gap handles spacing. */
+  .badge {
+    display: inline-flex;
+    background: var(--gradient-accent);
+    padding: 1px;
+    border-radius: 9999px;
+  }
+
+  .badge-label {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    min-height: 36px;
-    border-radius: 8px;
-    padding: 0 16px;
-    font-weight: 560;
-    transition:
-      border-color 160ms ease,
-      background 160ms ease,
-      color 160ms ease,
-      transform 160ms ease;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 9999px;
+    background: var(--gradient-dark);
+    color: var(--text);
+    font-size: var(--fs-eyebrow);
+    line-height: var(--lh-eyebrow);
+    letter-spacing: var(--tr-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
   }
 
-  .button:hover {
-    transform: translateY(-1px);
+  /* When a dot is present, push the row inward so the halo clears the pill's
+     rounded edge. Pill height ~32px → border-radius effective ≈16px on the
+     left curve, so 24px left padding keeps the 4px halo fully inside. */
+  .badge-label:has(.badge-dot) {
+    padding-left: 24px;
   }
 
-  .button-dark {
-    background: var(--foreground);
-    color: var(--background);
+  .badge-dot {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--success);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--success), transparent 70%);
   }
 
-  .button-primary {
-    border: 1px solid color-mix(in srgb, var(--primary-strong), transparent 25%);
-    background: linear-gradient(135deg, var(--primary), var(--primary-strong));
-    color: white;
-  }
-
+  /* ===== Hero =====
+     Fits the viewport on first paint — header height is subtracted so the
+     hero content vertically centers inside what's visible after the sticky
+     header. min-height not height so tall content doesn't get clipped. */
   .hero {
+    min-height: calc(100dvh - var(--header-height, 64px));
+    padding: 48px 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .hero .container {
     position: relative;
-    padding: 74px 0 56px;
+    z-index: 2;
   }
 
   .hero-rule {
@@ -477,514 +1278,1568 @@ const encodedPrompt = (prompt: string) => `/app?prompt=${encodeURIComponent(prom
     inset: 0 auto auto 50%;
     width: 1px;
     height: 100%;
-    background: color-mix(in srgb, var(--border), transparent 35%);
+    background: rgba(255, 255, 255, 0.04);
     pointer-events: none;
+    z-index: 1;
   }
 
   .hero-copy {
     position: relative;
-    z-index: 1;
-    max-width: 830px;
+    max-width: 880px;
     margin: 0 auto;
     text-align: center;
+    z-index: 2;
   }
 
-  .badge,
-  .section-kicker {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 28px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--muted), transparent 25%);
-    color: var(--muted-foreground);
-    padding: 0 12px;
-    font-weight: 520;
+  .hero-text {
+    margin-top: 24px;
+    font-size: clamp(var(--fs-headline), 4.5vw, var(--fs-display-lg));
+    line-height: var(--lh-display-lg);
+    letter-spacing: var(--tr-display-lg);
+    font-weight: 600;
   }
 
-  .badge-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 999px;
-    background: var(--success);
+  .hero-text mark {
+    background: var(--gradient-text-hero);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: heroShine 6s ease-in-out infinite;
   }
 
-  h1,
-  h2,
-  h3,
-  p {
-    margin: 0;
+  @keyframes heroShine {
+    0%, 100% { background-position: 0% 50%; }
+    50%      { background-position: 100% 50%; }
   }
 
-  h1 {
-    margin-top: 18px;
-    font-size: clamp(44px, 7vw, 82px);
-    line-height: 1.04;
-    font-weight: 660;
-  }
-
-  .hero-copy p {
-    max-width: 650px;
-    margin: 20px auto 0;
-    color: var(--muted-foreground);
-    font-size: 16px;
-    line-height: 1.7;
+  .hero-sub {
+    max-width: 560px;
+    margin: 24px auto 0;
+    color: var(--text-muted);
+    font-size: var(--fs-body-lg);
+    line-height: var(--lh-body-lg);
+    letter-spacing: var(--tr-body-lg);
   }
 
   .hero-actions {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 12px;
-    margin-top: 30px;
+    gap: 16px;
+    margin-top: 32px;
   }
 
+  /* Match the app's chat composer: stacked frame, lifted dark surface, rounded-28, focus-within border lift. */
+  /* Mirrors the app chat composer: 28px-radius pill, lifted dark surface,
+     focus-within border lift, textarea body, dense toolbar. */
   .prompt-box {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px;
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
     max-width: 760px;
-    margin: 34px auto 0;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--card), transparent 4%);
-    padding: 8px;
-    box-shadow: 0 20px 70px color-mix(in srgb, #000, transparent 88%);
+    margin: 32px auto 0;
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    border-radius: 28px;
+    background: var(--chat-input-bg);
+    overflow: hidden;
+    transition: border-color 150ms ease;
   }
 
-  .prompt-box input {
-    min-width: 0;
-    height: 42px;
+  .prompt-box:focus-within {
+    border-color: rgba(228, 228, 228, 0.25);
+  }
+
+  .prompt-box-input {
+    display: block;
+    width: 100%;
+    min-height: 56px;
+    max-height: 200px;
+    padding: 16px 16px 8px;
     border: 0;
     background: transparent;
-    color: var(--foreground);
-    padding: 0 10px;
-    font: inherit;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    resize: none;
     outline: none;
   }
 
-  .prompt-box input::placeholder {
-    color: var(--muted-foreground);
+  .prompt-box-input::placeholder {
+    color: color-mix(in srgb, var(--text-muted) 50%, transparent);
   }
 
-  .prompt-box button {
-    height: 42px;
-    border: 0;
-    border-radius: 10px;
-    background: var(--foreground);
-    color: var(--background);
-    padding: 0 18px;
-    font: inherit;
-    font-weight: 560;
-    cursor: pointer;
-  }
-
-  .prompt-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 12px;
-  }
-
-  .prompt-grid a,
-  .workflow-grid article,
-  .stats-grid article,
-  .feature-cards article,
-  .integration-card,
-  .cta-card,
-  .faq-list details {
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--card), transparent 2%);
-  }
-
-  .prompt-grid a {
-    min-height: 112px;
-    padding: 14px;
-  }
-
-  .prompt-grid span {
-    display: block;
-    font-weight: 620;
-  }
-
-  .prompt-grid p {
-    margin-top: 8px;
-    color: var(--muted-foreground);
-  }
-
-  .product-frame {
-    display: block;
-    overflow: hidden;
-    margin-top: 42px;
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--card), transparent 6%);
-    padding: 10px;
-    box-shadow: 0 30px 90px color-mix(in srgb, #000, transparent 82%);
-  }
-
-  .frame-top {
+  .prompt-box-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 2px 2px 10px;
-    color: var(--muted-foreground);
+    gap: 4px;
+    padding: 0 8px 8px;
   }
 
-  .frame-top span:first-child {
+  .prompt-box-tools-left,
+  .prompt-box-tools-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  /* Icon button — matches app .composer-secondary-control size-7 rounded-md */
+  .prompt-box-secondary {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+
+  .prompt-box-secondary:hover:not(:disabled) {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+  }
+
+  .prompt-box-secondary:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  /* Model picker pill — matches app .composer-model-trigger (h-7 rounded-md) */
+  .prompt-box-model {
     display: inline-flex;
     align-items: center;
+    gap: 6px;
+    height: 28px;
+    min-width: 0;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    line-height: 1;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+
+  .prompt-box-model:hover:not(:disabled) {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+  }
+
+  .prompt-box-model:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .prompt-box-model-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--gradient-accent);
+    flex-shrink: 0;
+  }
+
+  .prompt-box-model-name {
+    min-width: 0;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Submit — matches app .composer-accent-control size-8 rounded-full */
+  .prompt-box-submit {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    background: var(--gradient-accent);
+    color: #fff;
+    cursor: pointer;
+    transition: filter 150ms ease, box-shadow 150ms ease;
+  }
+
+  .prompt-box-submit:hover {
+    filter: brightness(1.08);
+  }
+
+  .prompt-box-submit:active {
+    filter: brightness(0.95);
+  }
+
+  /* Suggested prompts — compact pills, one-tap to start a thought.
+     Generic enough for anyone (not just engineers). The active pill
+     cycles every 4s in sync with the prompt-box placeholder. */
+  .prompt-pills {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 8px;
-    color: var(--foreground);
-    font-weight: 560;
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
   }
 
-  .frame-top i {
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: var(--success);
+  .prompt-pills a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid var(--border-2);
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--card), transparent 40%);
+    color: var(--text-light);
+    font-size: var(--fs-body);
+    line-height: 1;
+    font-weight: 500;
+    white-space: nowrap;
+    transition:
+      border-color 250ms ease,
+      color 250ms ease,
+      background 250ms ease,
+      transform 200ms ease;
   }
 
-  .product-frame img {
-    aspect-ratio: 2934 / 1544;
+  .prompt-pill-icon {
+    flex-shrink: 0;
+    color: currentColor;
+    opacity: 0.85;
+  }
+
+  .prompt-pills a:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent), transparent 40%);
+    background: color-mix(in srgb, var(--accent), transparent 88%);
+    transform: translateY(-1px);
+  }
+
+  .prompt-pills a:active {
+    transform: translateY(0);
+  }
+
+  /* Active pill — synced with the cycling placeholder. */
+  .prompt-pills a[aria-current="true"] {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent), transparent 30%);
+    background: color-mix(in srgb, var(--accent), transparent 82%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 92%);
+  }
+
+  .prompt-pills a[aria-current="true"] .prompt-pill-icon {
+    opacity: 1;
+    color: var(--accent-300);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .prompt-pills a {
+      transition: none;
+    }
+  }
+
+  .product-image {
+    position: relative;
+    z-index: 2;
+    display: block;
+    margin-top: 48px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 40px 120px rgba(66, 0, 203, 0.18);
+  }
+
+  /* Slideshow — 2 dark-mode slides with staggered fade cycles.
+     Total cycle is 10s (2 slides × 5s each), each visible ~4s with
+     ~1s crossfade. Stacks via absolute positioning so the container
+     has a fixed aspect from the first child. */
+  .product-slideshow {
+    position: relative;
     width: 100%;
-    border-radius: 10px;
+    aspect-ratio: 2934 / 1544;
+    background: var(--card);
+  }
+
+  .product-slideshow .slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     object-position: left top;
+    opacity: 0;
+    animation: slideshowFade 10s infinite;
   }
 
-  .tool-strip,
-  .feature-track,
-  .stats-section,
-  .workflow-section,
-  .integration-section,
-  .faq-section,
-  .cta-section {
-    border-top: 1px solid var(--border);
-    padding: 64px 0;
+  /* Stagger each slide by 5s into the 10s cycle. */
+  .product-slideshow .slide:nth-child(1) { animation-delay: 0s; }
+  .product-slideshow .slide:nth-child(2) { animation-delay: 5s; }
+
+  @keyframes slideshowFade {
+    0%   { opacity: 0; }
+    10%  { opacity: 1; }
+    50%  { opacity: 1; }
+    60%  { opacity: 0; }
+    100% { opacity: 0; }
+  }
+
+  /* Respect reduced motion — show only the first slide statically. */
+  @media (prefers-reduced-motion: reduce) {
+    .product-slideshow .slide {
+      animation: none;
+    }
+    .product-slideshow .slide:nth-child(1) {
+      opacity: 1;
+    }
+  }
+
+  /* Hero shape — gradient ribbon + dome */
+  .hero-shape {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(100%, 1500px);
+    height: 700px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .hero-shape-dome {
+    position: absolute;
+    bottom: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 700px;
+    height: 320px;
+    background: radial-gradient(ellipse at center bottom, var(--accent-600) 0%, transparent 70%);
+    filter: blur(100px);
+    opacity: 0.40;
+    border-radius: 50% 50% 0 0;
+  }
+
+  /* ===== Tool Strip ===== */
+  .tool-strip {
+    padding: 48px 0;
   }
 
   .tool-strip .container {
     display: grid;
-    gap: 20px;
+    gap: 24px;
     text-align: center;
   }
 
-  .tool-strip p {
-    color: var(--muted-foreground);
-    font-weight: 560;
+  .tool-strip-label {
+    color: var(--text-muted);
+    font-size: var(--fs-eyebrow);
+    line-height: var(--lh-eyebrow);
+    font-weight: 500;
+    letter-spacing: var(--tr-eyebrow);
+    text-transform: uppercase;
   }
 
-  .tool-strip div div,
-  .integration-cloud {
+  .tool-strip-pills {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 10px;
+    gap: 8px;
   }
 
-  .tool-strip span,
-  .integration-cloud span {
+  .tool-strip-pills span {
+    padding: 8px 16px;
     border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--muted);
-    color: var(--muted-foreground);
-    padding: 8px 12px;
+    border-radius: 9999px;
+    background: var(--gradient-dark);
+    color: var(--text-muted);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: 500;
   }
 
-  .feature-grid,
-  .faq-grid {
+  /* ===== Feature Track (Key Features) ===== */
+  .feature-track {
+    padding: 96px 0;
+  }
+
+  .feature-grid {
     display: grid;
-    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
-    gap: 26px;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 48px;
   }
 
   .sticky-copy {
     position: sticky;
-    top: 88px;
+    top: 100px;
     align-self: start;
   }
 
-  .sticky-copy h2,
-  .section-header h2,
-  .integration-card h2,
-  .faq-grid h2,
-  .cta-card h2 {
+  .sticky-copy h2 {
     margin-top: 16px;
-    max-width: 620px;
-    font-size: clamp(30px, 4vw, 54px);
-    line-height: 1.08;
-    font-weight: 640;
+    max-width: 540px;
+    font-size: clamp(var(--fs-headline), 2.6vw, var(--fs-display-md));
+    line-height: var(--lh-display-md);
+    letter-spacing: var(--tr-display-md);
+    font-weight: 600;
   }
 
   .track-list {
     display: grid;
-    gap: 10px;
-    margin-top: 28px;
-    color: var(--muted-foreground);
-    font-size: 16px;
+    gap: 12px;
+    margin-top: 32px;
+  }
+
+  .track-list span {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: var(--fs-body-lg);
+    line-height: var(--lh-body-lg);
+    letter-spacing: var(--tr-body-lg);
+    transition: color 200ms ease, transform 200ms ease;
   }
 
   .track-list span:first-child {
-    color: var(--primary-strong);
+    color: var(--accent);
+    transform: translateX(8px);
   }
 
   .feature-cards {
     display: grid;
-    gap: 12px;
+    gap: 16px;
   }
 
   .feature-cards article {
-    position: sticky;
-    top: 88px;
+    position: relative;
+    padding: 32px;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: var(--card);
     overflow: hidden;
-    padding: 28px;
   }
 
-  .feature-cards article > span {
-    color: var(--primary-strong);
-    font-weight: 620;
+  .feature-track-label {
+    display: inline-block;
+    color: var(--accent);
+    font-weight: 500;
+    font-size: var(--fs-eyebrow);
+    line-height: var(--lh-eyebrow);
+    letter-spacing: var(--tr-eyebrow);
+    text-transform: uppercase;
   }
 
   .feature-cards h3 {
-    margin-top: 12px;
-    max-width: 540px;
-    font-size: 28px;
-    line-height: 1.15;
+    margin-top: 16px;
+    max-width: 480px;
+    font-size: var(--fs-headline);
+    line-height: var(--lh-headline);
+    letter-spacing: var(--tr-headline);
+    font-weight: 600;
   }
 
   .feature-cards p {
-    max-width: 620px;
+    max-width: 520px;
     margin-top: 12px;
-    color: var(--muted-foreground);
-    font-size: 15px;
+    color: var(--text-muted);
+    font-size: var(--fs-body-lg);
+    line-height: var(--lh-body-lg);
+    letter-spacing: var(--tr-body-lg);
   }
 
   .feature-cards ul {
     display: grid;
     gap: 8px;
-    margin: 18px 0 0;
-    padding-left: 18px;
+    margin: 16px 0 0;
+    padding-left: 24px;
+  }
+
+  .feature-cards ul li {
+    color: var(--text-light);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: 500;
+  }
+
+  .feature-cards ul li::marker {
+    color: var(--accent);
+  }
+
+  .card-shape {
+    position: relative;
+    margin-top: 24px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--card), transparent 50%);
+    padding: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+  }
+
+  .card-shape-glow {
+    position: absolute;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--atmosphere-soft) 0%, transparent 70%);
+    filter: blur(60px);
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
+  .card-shape-glow-tr {
+    top: -80px;
+    right: -60px;
+  }
+
+  .card-shape-glow-bl {
+    bottom: -90px;
+    left: -70px;
   }
 
   .mini-canvas {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-    margin-top: 28px;
+    gap: 8px;
     border-radius: 12px;
     background:
-      linear-gradient(color-mix(in srgb, var(--border), transparent 50%) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--border), transparent 50%) 1px, transparent 1px),
-      var(--muted);
+      linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+      color-mix(in srgb, var(--card-2), transparent 30%);
     background-size: 24px 24px;
-    padding: 18px;
+    padding: 16px;
+    z-index: 1;
   }
 
   .mini-canvas div {
-    min-height: 70px;
+    min-height: 72px;
     border: 1px solid var(--border);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--card), transparent 8%);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card), transparent 30%);
   }
 
-  .stats-grid,
-  .workflow-grid {
+  /* ===== Essential Features (PowerAI 6-col asymmetric grid) ===== */
+  .essentials-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+
+  .essentials-card {
+    position: relative;
+    grid-column: span 2;
+    overflow: hidden;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: var(--gradient-dark);
+  }
+
+  .essentials-card-wide {
+    grid-column: span 3;
+  }
+
+  .essentials-halo {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 420px;
+    height: 420px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--atmosphere-soft) 0%, transparent 60%);
+    filter: blur(50px);
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
+  .essentials-preview {
+    position: relative;
+    z-index: 1;
+    aspect-ratio: 570 / 310;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background:
+      radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+      var(--card);
+    background-size: 20px 20px;
+    background-position: 0 0;
+    overflow: hidden;
+  }
+
+  .essentials-preview-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
+    padding: 24px;
+    height: 100%;
+  }
+
+  .essentials-preview-grid > div {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card-2), transparent 30%);
+  }
+
+  .canvas-mock {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .canvas-mock animate { display: none; }
+  }
+
+  .essentials-body {
+    position: relative;
+    z-index: 1;
+    padding: 24px 24px 48px;
+  }
+
+  .essentials-body h3 {
+    margin-bottom: 16px;
+    font-size: var(--fs-card-title);
+    line-height: var(--lh-card-title);
+    letter-spacing: var(--tr-card-title);
+    font-weight: 500;
+  }
+
+  .essentials-body p {
+    color: var(--text-muted);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+  }
+
+  /* ===== Stats ===== */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
   }
 
   .stats-grid article {
-    min-height: 164px;
+    min-height: 180px;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    align-items: center;
     gap: 12px;
-    padding: 24px;
+    padding: 32px;
     text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: var(--gradient-dark);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stats-grid article::before {
+    content: '';
+    position: absolute;
+    inset: -40% -20% auto auto;
+    width: 240px;
+    height: 240px;
+    background: radial-gradient(circle, var(--atmosphere-soft) 0%, transparent 70%);
+    filter: blur(70px);
+    opacity: 0.10;
+    pointer-events: none;
   }
 
   .stats-grid strong {
-    font-size: 56px;
-    line-height: 1;
-    font-weight: 520;
+    position: relative;
+    font-size: var(--fs-display-lg);
+    line-height: var(--lh-display-lg);
+    letter-spacing: var(--tr-display-lg);
+    font-weight: 600;
+    color: var(--text);
   }
 
-  .stats-grid span,
-  .workflow-grid p,
-  .cta-card p,
-  .faq-list p {
-    color: var(--muted-foreground);
+  .stats-grid span {
+    position: relative;
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
   }
 
+  /* ===== Section Headers ===== */
   .section-header {
-    max-width: 720px;
-    margin-bottom: 26px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+    max-width: 640px;
+    margin: 0 auto 56px;
+  }
+
+  .section-header h2 {
+    font-size: clamp(var(--fs-headline), 2.6vw, var(--fs-display-md));
+    line-height: var(--lh-display-md);
+    letter-spacing: var(--tr-display-md);
+    font-weight: 600;
+  }
+
+  /* ===== Workflow ===== */
+  .workflow-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
   }
 
   .workflow-grid article {
-    min-height: 190px;
-    padding: 22px;
+    position: relative;
+    min-height: 220px;
+    padding: 32px;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: var(--gradient-dark);
+    overflow: hidden;
   }
 
-  .workflow-grid span {
-    color: var(--primary-strong);
-    font-family: 'JetBrains Mono', monospace;
+  .workflow-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    display: grid;
+    place-items: center;
+    margin-bottom: 24px;
+  }
+
+  .workflow-icon span {
+    background: var(--gradient-accent);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-family: var(--font-mono);
+    font-size: var(--fs-mono);
+    line-height: var(--lh-mono);
+    font-weight: 500;
   }
 
   .workflow-grid h3 {
-    margin-top: 46px;
-    font-size: 18px;
+    font-size: var(--fs-card-title);
+    line-height: var(--lh-card-title);
+    letter-spacing: var(--tr-card-title);
+    font-weight: 500;
   }
 
   .workflow-grid p {
     margin-top: 8px;
+    color: var(--text-muted);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
   }
 
-  .integration-card,
-  .cta-card {
+  /* ===== Why ===== */
+  .why-section .container {
+    position: relative;
+  }
+
+  .why-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+  }
+
+  .why-grid article {
+    padding: 32px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .why-grid article:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .why-grid article:nth-last-child(-n+3):not(.why-star) {
+    border-bottom: 0;
+  }
+
+  .icon-box {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--gradient-dark);
+    display: grid;
+    place-items: center;
+    margin-bottom: 24px;
+    color: var(--accent);
+  }
+
+  .icon-box svg {
+    width: 26px;
+    height: 26px;
+  }
+
+  .why-grid article h3 {
+    font-size: var(--fs-card-title);
+    line-height: var(--lh-card-title);
+    letter-spacing: var(--tr-card-title);
+    font-weight: 500;
+  }
+
+  .why-grid article p {
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+  }
+
+  /* 8-point star markers at grid intersections (CSS-only) */
+  .why-star {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: var(--body);
+    border: 1px solid var(--border-2);
+    transform: rotate(45deg);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .why-star::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--body);
+    border: 1px solid var(--border-2);
+    transform: rotate(45deg);
+  }
+
+  .why-star-1 { top: calc(33.333% - 9px); left: calc(33.333% - 9px); }
+  .why-star-2 { top: calc(33.333% - 9px); left: calc(66.666% - 9px); }
+  .why-star-3 { top: calc(66.666% - 9px); left: calc(33.333% - 9px); }
+  .why-star-4 { top: calc(66.666% - 9px); left: calc(66.666% - 9px); }
+
+  /* ===== Integration ===== */
+  .integration-card {
     display: grid;
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
     align-items: center;
-    gap: 24px;
-    padding: 34px;
+    gap: 48px;
+    padding: 48px;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: var(--gradient-dark);
+    box-shadow: 0 24px 48px -16px rgba(0, 0, 0, 0.4);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .integration-card::before {
+    content: '';
+    position: absolute;
+    inset: auto -10% -50% auto;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, var(--atmosphere-soft) 0%, transparent 70%);
+    filter: blur(110px);
+    opacity: 0.10;
+    pointer-events: none;
+  }
+
+  .integration-card h2 {
+    margin-top: 16px;
+    font-size: clamp(var(--fs-card-title), 2.2vw, var(--fs-headline));
+    line-height: var(--lh-headline);
+    letter-spacing: var(--tr-headline);
+    font-weight: 600;
+  }
+
+  .integration-cloud {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .integration-cloud span {
+    padding: 8px 16px;
+    border: 1px solid var(--border-2);
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--card), transparent 30%);
+    color: var(--text-light);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: 500;
+    transition: border-color 200ms ease, transform 200ms ease;
+  }
+
+  .integration-cloud span:hover {
+    border-color: color-mix(in srgb, var(--accent), transparent 50%);
+    transform: translateY(-2px);
+  }
+
+  /* ===== FAQ ===== */
+  .faq-section .section-header {
+    margin-bottom: 48px;
   }
 
   .faq-list {
+    max-width: 820px;
+    margin: 0 auto;
     display: grid;
-    gap: 10px;
+    gap: 12px;
   }
 
   .faq-list details {
-    padding: 18px 20px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+    padding: 16px 24px;
+    transition: border-color 200ms ease, background 200ms ease;
+  }
+
+  .faq-list details[open] {
+    border-color: var(--border-2);
+    background: var(--card-2);
   }
 
   .faq-list summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
     cursor: pointer;
-    font-weight: 620;
+    list-style: none;
+    color: var(--text);
+    font-weight: 500;
+    font-size: var(--fs-card-title);
+    line-height: var(--lh-card-title);
+    letter-spacing: var(--tr-card-title);
+  }
+
+  .faq-list summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq-list summary i {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 9999px;
+    background: var(--gradient-accent);
+    position: relative;
+    transition: transform 200ms ease;
+  }
+
+  .faq-list summary i::before,
+  .faq-list summary i::after {
+    content: '';
+    position: absolute;
+    background: white;
+    border-radius: 1px;
+  }
+
+  .faq-list summary i::before {
+    inset: calc(50% - 1px) 6px;
+    height: 2px;
+  }
+
+  .faq-list summary i::after {
+    inset: 6px calc(50% - 1px);
+    width: 2px;
+    transition: transform 200ms ease, opacity 200ms ease;
+  }
+
+  .faq-list details[open] summary i::after {
+    transform: scaleY(0);
+    opacity: 0;
   }
 
   .faq-list p {
-    margin-top: 10px;
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: var(--fs-body-lg);
+    line-height: var(--lh-body-lg);
+    letter-spacing: var(--tr-body-lg);
   }
 
-  .cta-card {
-    grid-template-columns: minmax(0, 1fr) auto;
+  /* ===== CTA ===== */
+  .cta-section {
+    position: relative;
+    padding: 96px 0;
+    overflow: hidden;
+    text-align: center;
   }
 
-  .cta-card h2 {
-    margin-top: 0;
-    font-size: clamp(28px, 4vw, 46px);
+  .cta-section > .container {
+    border-left: 0;
+    border-right: 0;
   }
 
-  .cta-card p {
-    margin-top: 10px;
-    font-size: 15px;
+  .cta-content {
+    position: relative;
+    z-index: 3;
+    max-width: 880px;
+    margin: 0 auto;
+    text-align: center;
   }
 
+  .cta-content h2 {
+    font-size: clamp(var(--fs-headline), 3vw, var(--fs-display-md));
+    line-height: var(--lh-display-md);
+    letter-spacing: var(--tr-display-md);
+    font-weight: 600;
+  }
+
+  .cta-content p {
+    max-width: 560px;
+    margin: 24px auto 0;
+    color: var(--text-muted);
+    font-size: var(--fs-body-lg);
+    line-height: var(--lh-body-lg);
+    letter-spacing: var(--tr-body-lg);
+  }
+
+  .cta-content .anim-button {
+    margin-top: 32px;
+  }
+
+  .cta-shape {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(100%, 1500px);
+    height: 360px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .cta-shape-ribbon {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1100px;
+    height: 240px;
+    background: radial-gradient(ellipse at center, var(--atmosphere-soft) 0%, transparent 70%);
+    filter: blur(80px);
+    opacity: 0.20;
+    clip-path: polygon(10% 100%, 90% 100%, 78% 0%, 22% 0%);
+    animation: ctaRibbon 10s ease-in-out infinite;
+  }
+
+  @keyframes ctaRibbon {
+    0%, 100% { opacity: 0.18; transform: translateX(-50%) scaleX(1); }
+    50%      { opacity: 0.26; transform: translateX(-50%) scaleX(1.04); }
+  }
+
+  .cta-shape-dome {
+    position: absolute;
+    bottom: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 540px;
+    height: 260px;
+    background: radial-gradient(ellipse at center bottom, var(--atmosphere-soft) 0%, transparent 70%);
+    filter: blur(90px);
+    opacity: 0.14;
+    border-radius: 50% 50% 0 0;
+    animation: ctaDome 9s ease-in-out infinite;
+  }
+
+  @keyframes ctaDome {
+    0%, 100% { opacity: 0.12; }
+    50%      { opacity: 0.20; }
+  }
+
+  /* Twinkling stars */
+  .cta-stars {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .cta-stars span {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 9999px;
+    opacity: 0.6;
+    animation: twinkle 3s ease-in-out infinite;
+  }
+
+  .cta-stars span:nth-child(1)  { top: 12%; left: 8%;  animation-delay: 0.2s; }
+  .cta-stars span:nth-child(2)  { top: 22%; left: 18%; animation-delay: 0.6s; width: 1.5px; height: 1.5px; }
+  .cta-stars span:nth-child(3)  { top: 14%; left: 36%; animation-delay: 1.0s; width: 1px; height: 1px; }
+  .cta-stars span:nth-child(4)  { top: 30%; left: 52%; animation-delay: 1.5s; }
+  .cta-stars span:nth-child(5)  { top: 18%; left: 68%; animation-delay: 0.8s; width: 1.5px; height: 1.5px; }
+  .cta-stars span:nth-child(6)  { top: 26%; left: 84%; animation-delay: 1.8s; }
+  .cta-stars span:nth-child(7)  { top: 42%; left: 4%;  animation-delay: 2.4s; width: 1px; height: 1px; }
+  .cta-stars span:nth-child(8)  { top: 38%; left: 92%; animation-delay: 0.4s; width: 2.5px; height: 2.5px; }
+  .cta-stars span:nth-child(9)  { top: 56%; left: 14%; animation-delay: 1.3s; }
+  .cta-stars span:nth-child(10) { top: 60%; left: 76%; animation-delay: 2.0s; width: 1.5px; height: 1.5px; }
+  .cta-stars span:nth-child(11) { top: 70%; left: 26%; animation-delay: 0.7s; width: 1px; height: 1px; }
+  .cta-stars span:nth-child(12) { top: 74%; left: 60%; animation-delay: 1.6s; }
+  .cta-stars span:nth-child(13) { top: 50%; left: 44%; animation-delay: 2.6s; width: 1px; height: 1px; }
+  .cta-stars span:nth-child(14) { top: 64%; left: 88%; animation-delay: 1.1s; }
+  .cta-stars span:nth-child(15) { top: 32%; left: 30%; animation-delay: 2.2s; width: 1.5px; height: 1.5px; }
+
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.2; transform: scale(0.8); }
+    50%      { opacity: 1;   transform: scale(1.2); }
+  }
+
+  /* Sonar pulses */
+  .cta-pulses {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .cta-pulses span {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--atmosphere-soft);
+    border-radius: 9999px;
+    opacity: 0;
+    animation: sonar 5s ease-out infinite;
+  }
+
+  .cta-pulses span:nth-child(1) { top: 30%; left: 22%; animation-delay: 0s; }
+  .cta-pulses span:nth-child(2) { top: 60%; left: 78%; animation-delay: 1.8s; }
+  .cta-pulses span:nth-child(3) { top: 45%; left: 56%; animation-delay: 3.2s; }
+
+  @keyframes sonar {
+    0%   { transform: scale(1);  opacity: 0.30; }
+    80%  { transform: scale(8);  opacity: 0; }
+    100% { transform: scale(8);  opacity: 0; }
+  }
+
+  /* ===== Footer ===== */
   .site-footer {
+    position: relative;
+    padding-top: 96px;
+    background: var(--body);
     border-top: 1px solid var(--border);
-    padding: 22px 0;
-    color: var(--muted-foreground);
+    overflow: hidden;
   }
 
-  .site-footer .container {
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr 1fr;
+    gap: 48px;
+    padding-bottom: 48px;
+  }
+
+  .footer-grid > div:first-child p {
+    margin-top: 16px;
+    max-width: 360px;
+    color: var(--text-muted);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+  }
+
+  .footer-cta {
+    display: inline-block;
+    margin-top: 16px;
+    color: var(--accent);
+    font-weight: 500;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+  }
+
+  .footer-cta:hover {
+    color: var(--text);
+  }
+
+  .footer-grid h4 {
+    color: var(--text);
+    font-size: var(--fs-eyebrow);
+    line-height: var(--lh-eyebrow);
+    font-weight: 500;
+    letter-spacing: var(--tr-eyebrow);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .footer-grid > div > a {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    margin-top: 8px;
+    transition: color 160ms ease;
+  }
+
+  .footer-grid > div > a:hover {
+    color: var(--text);
+  }
+
+  .footer-wordmark {
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 0.95;
+    font-size: clamp(64px, 18vw, 240px);
+    background: linear-gradient(0deg, var(--body) 23.53%, rgba(255, 255, 255, 0.10) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    user-select: none;
+    margin-top: 48px;
+  }
+
+  .footer-meta {
     display: flex;
+    justify-content: space-between;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 14px;
+    gap: 12px;
+    padding: 24px 0;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    margin-top: -30px;
+    position: relative;
+    z-index: 1;
   }
 
-  .site-footer span:first-child {
-    color: var(--foreground);
-    font-weight: 620;
-  }
-
-  @media (max-width: 820px) {
-    .site-header {
-      width: min(100% - 24px, 1180px);
-    }
-
-    .nav-links {
-      display: none;
-    }
-
-    .hero {
-      padding-top: 54px;
-    }
-
-    .prompt-grid,
-    .feature-grid,
-    .faq-grid,
-    .stats-grid,
-    .workflow-grid,
-    .integration-card,
-    .cta-card {
+  /* ===== Responsive =====
+     Breakpoints (matches Tailwind defaults):
+       lg: 1024 — tablet landscape / small laptop
+       md: 768  — tablet portrait
+       sm: 480  — phone */
+  @media (max-width: 1024px) {
+    .feature-grid {
       grid-template-columns: 1fr;
+      gap: 24px;
     }
 
-    .sticky-copy,
-    .feature-cards article {
+    .sticky-copy {
       position: static;
     }
 
-    .prompt-grid a {
-      min-height: auto;
+    .stats-grid,
+    .workflow-grid {
+      grid-template-columns: repeat(2, 1fr);
     }
 
-    .frame-top {
-      align-items: flex-start;
-      flex-direction: column;
+    .essentials-grid {
+      grid-template-columns: repeat(2, 1fr);
     }
 
-    .integration-card,
-    .cta-card {
-      padding: 22px;
+    .essentials-card,
+    .essentials-card-wide {
+      grid-column: span 1;
     }
 
-    .cta-card .button {
-      width: 100%;
+    .why-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .why-grid article:nth-child(3n) { border-right: 1px solid var(--border); }
+    .why-grid article:nth-child(2n) { border-right: 0; }
+
+    /* In 2-col layout, last row is items 5+6 — drop their bottom border
+       so the grid doesn't end with an orphan line. */
+    .why-grid article:nth-last-child(-n+2) {
+      border-bottom: 0;
+    }
+
+    .why-star { display: none; }
+
+    .integration-card {
+      grid-template-columns: 1fr;
+      padding: 32px;
+    }
+
+    .footer-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .footer-grid > div:first-child {
+      grid-column: 1 / -1;
     }
   }
 
-  @media (max-width: 520px) {
-    .container {
-      width: min(100% - 24px, 1180px);
-    }
-
-    .header-actions .button {
+  @media (max-width: 768px) {
+    .nav-pill {
       display: none;
     }
 
+    /* Header CTA hidden earlier — at 480 the GitHub icon is the only header
+       action; between 481-767 we keep the CTA only if there's still room. */
+    .header-actions {
+      gap: 8px;
+    }
+
+    .section {
+      padding: 64px 0;
+    }
+
+    .hero {
+      padding: 32px 0 48px;
+    }
+
+    .hero-actions {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      width: 100%;
+      max-width: 320px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero-actions .anim-button {
+      display: block;
+      text-align: center;
+    }
+
+    .feature-cards article {
+      padding: 24px;
+    }
+
+    .stats-grid article,
+    .workflow-grid article {
+      padding: 24px;
+    }
+
+    .essentials-body {
+      padding: 24px;
+    }
+
+    /* Bento mockups get tighter on tablet portrait */
+    .essentials-preview {
+      border-radius: 12px;
+    }
+
+    .integration-card {
+      padding: 32px 24px;
+      gap: 32px;
+    }
+
+    /* Footer drops to 2-col at 768 — 4 narrow columns crammed under 768
+       lose their link-list readability. */
+    .footer-grid {
+      grid-template-columns: 1.6fr 1fr 1fr;
+      gap: 32px;
+      padding-bottom: 48px;
+    }
+
+    .footer-grid > div:first-child {
+      grid-column: 1 / -1;
+    }
+
+    .container {
+      width: min(100% - 24px, 1300px);
+      padding: 0 12px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .header-actions .anim-button {
+      display: none;
+    }
+
+    .container {
+      width: 100%;
+      padding: 0 16px;
+      border-left: 0;
+      border-right: 0;
+    }
+
+    .section {
+      padding: 48px 0;
+    }
+
+    /* Smaller header on phone → shrink the hero min-height offset too. */
+    :root {
+      --header-height: 56px;
+    }
+
+    .hero {
+      padding: 24px 0 32px;
+    }
+
+    .site-header {
+      padding: 12px 0;
+    }
+
+    .header-inner {
+      width: 100%;
+      padding: 0 16px;
+    }
+
+    /* Hero stays one tier above section headings on phone */
+    .hero-text {
+      font-size: var(--fs-display-md);
+      line-height: var(--lh-display-md);
+      letter-spacing: var(--tr-display-md);
+    }
+
+    .brand {
+      font-size: var(--fs-body-lg);
+    }
+
+    .brand img {
+      width: 20px;
+      height: 20px;
+    }
+
+    .badge-label {
+      padding: 6px 12px;
+    }
+
     .prompt-box {
+      border-radius: 24px;
+    }
+
+    .prompt-box-input {
+      /* Bumped to 16px on mobile to prevent iOS auto-zoom on focus */
+      font-size: 1rem;
+      min-height: 48px;
+      padding: 14px 14px 8px;
+    }
+
+    .prompt-box-toolbar {
+      padding: 4px 8px 8px;
+      gap: 8px;
+    }
+
+    /* Bump touch targets to ≥44pt on phone — Apple HIG / Material both
+       require this for tappable controls. */
+    .prompt-box-secondary {
+      width: 36px;
+      height: 36px;
+    }
+
+    .prompt-box-model {
+      height: 36px;
+      padding: 0 10px;
+    }
+
+    .prompt-box-model-name {
+      max-width: 96px;
+    }
+
+    .prompt-box-submit {
+      width: 40px;
+      height: 40px;
+    }
+
+    .stats-grid,
+    .workflow-grid,
+    .why-grid,
+    .essentials-grid {
       grid-template-columns: 1fr;
     }
 
-    .prompt-box button {
-      width: 100%;
+    .stats-grid {
+      gap: 12px;
     }
 
-    h1 {
-      font-size: 42px;
+    .stats-grid article {
+      min-height: 140px;
+      padding: 24px;
     }
 
-    .hero-copy p {
-      font-size: 15px;
+    .workflow-grid article {
+      min-height: auto;
     }
 
-    .tool-strip,
-    .feature-track,
-    .stats-section,
-    .workflow-section,
-    .integration-section,
-    .faq-section,
-    .cta-section {
-      padding: 46px 0;
+    .essentials-body {
+      padding: 20px;
+    }
+
+    .essentials-body h3 {
+      margin-bottom: 12px;
+    }
+
+    /* Bento mockups: at <480 the inline SVGs scale to sub-readable text
+       (~6px effective). Hide the preview entirely on phone — the title +
+       description carry the meaning. */
+    .essentials-preview {
+      display: none;
+    }
+
+    .essentials-card,
+    .essentials-card-wide {
+      min-height: auto;
+    }
+
+    .why-grid article {
+      border-right: 0 !important;
+      border-bottom: 1px solid var(--border) !important;
+      padding: 24px 0;
+    }
+
+    .why-grid article:last-child {
+      border-bottom: 0 !important;
+    }
+
+    .integration-card {
+      padding: 24px;
+      gap: 24px;
+    }
+
+    .feature-cards article {
+      padding: 24px;
+    }
+
+    .feature-cards h3 {
+      max-width: 100%;
+    }
+
+    .feature-cards p {
+      max-width: 100%;
+    }
+
+    .footer-grid {
+      grid-template-columns: 1fr;
+      gap: 24px;
+      padding-bottom: 32px;
+    }
+
+    .product-image {
+      margin-top: 32px;
+    }
+
+    .tool-strip {
+      padding: 32px 0;
+    }
+
+    .tool-strip-pills {
+      gap: 8px;
+    }
+
+    .section-header {
+      margin-bottom: 32px;
+    }
+
+    .faq-section .section-header {
+      margin-bottom: 32px;
+    }
+
+    .faq-list details {
+      padding: 16px;
+    }
+
+    .site-footer {
+      padding-top: 64px;
     }
   }
 </style>
