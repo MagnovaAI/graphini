@@ -93,6 +93,7 @@
     Check,
     ChevronDown,
     ChevronRight,
+    ChevronUp,
     Database,
     FileText,
     MessageCircleQuestion,
@@ -637,10 +638,33 @@
   let isDataReady = $state(false);
   let messages: Record<string, unknown>[] = $state([]);
   let inputText = $state('');
+  let inputExpanded = $state(false);
+  let inputOverflow = $state(false);
+  let inputEl = $state<HTMLTextAreaElement | null>(null);
   let fileError = $state<string | null>(null);
   let isLoading = $state(false);
   let conversationStarted = $state(false);
   let conversationTitle = $state<string | null>(null);
+
+  const INPUT_COLLAPSED_MAX = 144;
+
+  $effect(() => {
+    void inputText;
+    if (!inputEl) return;
+    queueMicrotask(() => {
+      if (!inputEl) return;
+      const prevExpanded = inputExpanded;
+      if (!prevExpanded) {
+        inputOverflow = inputEl.scrollHeight - 1 > INPUT_COLLAPSED_MAX;
+      } else {
+        inputOverflow = true;
+      }
+      if (!inputText) {
+        inputExpanded = false;
+        inputOverflow = false;
+      }
+    });
+  });
 
   // Checkpoint system: save diagram state before each user message
   let checkpoints = $state<Checkpoint[]>([]);
@@ -4001,10 +4025,15 @@
             <PromptInputAttachment data={file} />
           {/snippet}
         </PromptInputAttachments>
-        <PromptInputBody>
+        <PromptInputBody class="relative">
           <Textarea
-            class="relative z-0 block field-sizing-content w-full resize-none rounded-none border-none bg-transparent px-4 pt-4 pb-2 text-[16px] leading-[1.5] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/50 focus-visible:ring-0 sm:text-[14px] dark:bg-transparent"
-            style="min-height: 56px; max-height: var(--ds-input-max-height);"
+            bind:ref={inputEl}
+            class="relative z-0 block field-sizing-content w-full resize-none rounded-none border-none bg-transparent pt-4 pb-2 text-[16px] leading-[1.5] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/50 focus-visible:ring-0 sm:text-[14px] dark:bg-transparent"
+            style="min-height: 56px; max-height: {inputExpanded
+              ? 'min(60vh, 480px)'
+              : `${INPUT_COLLAPSED_MAX}px`}; padding-left: 1rem; padding-right: {inputOverflow
+              ? '2.5rem'
+              : '1rem'};"
             name="message"
             aria-label="Message"
             autocomplete="off"
@@ -4025,6 +4054,21 @@
                 if (form) form.requestSubmit();
               }
             }} />
+          {#if inputOverflow}
+            <button
+              type="button"
+              aria-label={inputExpanded ? 'Collapse input' : 'Expand input'}
+              aria-pressed={inputExpanded}
+              class="absolute top-2 right-2 z-10 inline-flex size-6 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:text-foreground"
+              style="background-color: var(--chat-input-bg);"
+              onclick={() => (inputExpanded = !inputExpanded)}>
+              {#if inputExpanded}
+                <ChevronDown class="size-3.5" />
+              {:else}
+                <ChevronUp class="size-3.5" />
+              {/if}
+            </button>
+          {/if}
         </PromptInputBody>
         <PromptInputToolbar
           class="composer-toolbar relative z-20 min-w-0 gap-1 overflow-visible px-2 pt-0 pb-2">
