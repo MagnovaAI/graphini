@@ -1,10 +1,15 @@
 import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
-import { getDb } from '$lib/server/db';
-import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { getDrizzle } from '$lib/server/db';
 import { workspaceFiles } from '$lib/server/db/schema';
 import type { ProviderKeys } from '$lib/server/auth/provider-keys';
 import type { PersonalizationSkillContext } from '$lib/server/chat/harness/types';
+
+function requireDrizzle() {
+  const db = getDrizzle();
+  if (!db) throw new Error('Workspace file context requires a Drizzle-backed database adapter.');
+  return db;
+}
 
 export interface WorkspaceToolTab {
   engine: string;
@@ -114,7 +119,7 @@ export async function persistActiveFileContent(
   content: string
 ): Promise<void> {
   if (!target?.activeFile || !userId) return;
-  const db = (getDb() as NeonAdapter).db;
+  const db = requireDrizzle();
   await db
     .update(workspaceFiles)
     .set({ content, updated_at: new Date() })
@@ -131,7 +136,7 @@ export async function readActiveFileContent(
   userId: string | undefined
 ): Promise<string> {
   if (!target?.activeFile || !userId) return '';
-  const db = (getDb() as NeonAdapter).db;
+  const db = requireDrizzle();
   const [row] = await db
     .select({ content: workspaceFiles.content })
     .from(workspaceFiles)
@@ -159,7 +164,7 @@ export async function resolveMermaidTarget(
   | { ok: false; reason: string; hint?: string }
 > {
   if (!userId) return { ok: false, reason: 'No user context — cannot read files.' };
-  const db = (getDb() as NeonAdapter).db;
+  const db = requireDrizzle();
 
   if (explicitPath) {
     const [row] = await db
@@ -216,7 +221,7 @@ export async function persistFileContentById(
   userId: string,
   content: string
 ): Promise<void> {
-  const db = (getDb() as NeonAdapter).db;
+  const db = requireDrizzle();
   await db
     .update(workspaceFiles)
     .set({ content, updated_at: new Date() })

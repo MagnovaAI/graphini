@@ -1,12 +1,15 @@
-import { getDb } from '$lib/server/db';
-import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { getDrizzle } from '$lib/server/db';
 import { workspaceFiles } from '$lib/server/db/schema';
 import { tool } from 'ai';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ToolContext } from './context';
 
-const drizzleDb = () => (getDb() as NeonAdapter).db;
+const drizzleDb = () => {
+  const db = getDrizzle();
+  if (!db) throw new Error('Data analyzer requires a Drizzle-backed database adapter.');
+  return db;
+};
 
 export function createDataAnalyzerTool({ userId }: ToolContext) {
   return tool({

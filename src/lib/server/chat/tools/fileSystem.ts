@@ -26,8 +26,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { and, asc, eq, like, sql } from 'drizzle-orm';
-import { getDb } from '$lib/server/db';
-import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { getDrizzle } from '$lib/server/db';
 import { workspaceFiles, users as usersTable } from '$lib/server/db/schema';
 import { PATH_RE, FOLDER_RE, deriveKind, type FileKind } from '$lib/server/workspace-paths';
 import { MERMAID_DIAGRAM_DECLARATION, findMermaidDeclarations } from '$lib/server/chat/mermaid';
@@ -35,7 +34,11 @@ import { validateContentForKind } from '$lib/server/workspace-content-validation
 import type { FileSystemTurnGuard, ToolContext } from './context';
 import { runGrep } from './fileSystem-grep';
 
-const drizzleDb = () => (getDb() as NeonAdapter).db;
+const drizzleDb = () => {
+  const db = getDrizzle();
+  if (!db) throw new Error('Workspace file tools require a Drizzle-backed database adapter.');
+  return db;
+};
 
 const GUEST_QUOTA = 15;
 const USER_QUOTA = 30;

@@ -1,8 +1,7 @@
 import { validateSessionOrGuest } from '$lib/server/auth';
 import { extractProviderKeys, missingProviderKeyError } from '$lib/server/auth/provider-keys';
 import { graphiniMcpTools } from '$lib/server/agents/tool-catalog';
-import { getDb } from '$lib/server/db';
-import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { getDb, getDrizzle } from '$lib/server/db';
 import { workspaceFiles } from '$lib/server/db/schema';
 import { hasProviderKey, normalizeChatModelId, resolveChatModelFor } from '$lib/server/chat/model';
 import type { ChatProvider } from '$lib/server/chat/model';
@@ -191,7 +190,8 @@ async function resolveActiveFile(
   activeFileId: string | null | undefined
 ): Promise<{ context: ActiveFileContext; content: string } | null> {
   if (!activeFileId) return null;
-  const db = (getDb() as NeonAdapter).db;
+  const db = getDrizzle();
+  if (!db) return null;
   const [row] = await db
     .select({
       id: workspaceFiles.id,
@@ -338,7 +338,7 @@ function withContextUsageEvents(
 }
 
 export async function runChatTurn(request: Request): Promise<Response> {
-  const body = (await request.clone().json()) as ChatRequestBody;
+  const body = (await request.json()) as ChatRequestBody;
   const { message, model, conversationId, sessionId, enabledTools, messages: uiMessages } = body;
 
   if (!message || !model) {
