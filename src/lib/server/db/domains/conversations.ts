@@ -2,7 +2,7 @@
  * Domain helper — Conversations, Messages, Snapshots, Files, Usage Stats
  */
 
-import { and, asc, desc, eq, inArray, not, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, not, sql, type SQL } from 'drizzle-orm';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import type {
   Conversation,
@@ -147,7 +147,7 @@ export async function listConversations(
   const limit = options?.limit || 50;
   const offset = options?.offset || 0;
 
-  const conditions = [];
+  const conditions: SQL[] = [];
   if (options?.user_id) conditions.push(eq(schema.conversations.user_id, options.user_id));
   if (options?.workspace_id)
     conditions.push(eq(schema.conversations.workspace_id, options.workspace_id));
