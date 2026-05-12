@@ -16,6 +16,7 @@
     "allowSyntheticDefaultImports": true,
     "strictNullChecks": true,
     "moduleResolution": "bundler",
+    "skipLibCheck": true,
     "types": ["@sveltejs/kit", "vitest/importMeta", "@playwright/test"]
   },
   "extends": "./.svelte-kit/tsconfig.json"
