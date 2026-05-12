@@ -50,6 +50,20 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1000
   },
+  optimizeDeps: {
+    // Pre-bundle the shiki language modules that shikiSetup imports
+    // dynamically. Without this, Vite discovers them lazily, generates a
+    // hashed `.vite/deps/` chunk, then re-discovers them on the next dev
+    // start and invalidates the hash — the browser keeps the old hash
+    // cached and produces "Failed to fetch dynamically imported module"
+    // errors. Listing them here pins the hashes for the dev session.
+    include: [
+      'shiki/dist/langs/json.mjs',
+      'shiki/dist/langs/yaml.mjs',
+      'shiki/dist/langs/markdown.mjs',
+      'shiki/dist/langs/mermaid.mjs'
+    ]
+  },
   test: {
     environment: 'jsdom',
     // in-source testing

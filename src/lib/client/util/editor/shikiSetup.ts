@@ -1,47 +1,83 @@
 import type * as Monaco from 'monaco-editor';
 import { shikiToMonaco, textmateThemeToMonacoTheme } from '@shikijs/monaco';
-import { createHighlighter, type Highlighter } from 'shiki';
+// JavaScript regex engine — works in every environment without wasm. The
+// default oniguruma engine pulls in shiki/wasm at runtime and can fail when
+// Vite's wasm handling isn't perfectly set up. shiki v4 re-exports this
+// engine creator, so we don't need a direct dep on @shikijs/engine-javascript.
+import { createHighlighter, createJavaScriptRegexEngine, type Highlighter } from 'shiki';
 
 let highlighter: Highlighter | null = null;
 let highlighterPromise: Promise<Highlighter> | null = null;
+let highlighterFailed = false;
 let installed = false;
+
+function formatErr(err: unknown): string {
+  if (err instanceof Error) return err.stack ?? err.message ?? err.name;
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
 
 /**
  * Shared shiki highlighter — used by Monaco (editor) and the chat code block
  * so syntax colors are guaranteed identical across both surfaces.
  *
- * Failure recovery: if init throws, the cached promise is cleared so the next
- * caller can retry. Errors are logged loudly so silent fallback to plain text
- * isn't mysterious.
+ * Failure handling: if init throws once, we set highlighterFailed and refuse
+ * to retry. Callers get a rejected promise immediately and fall back to plain
+ * text instead of spamming the console with hundreds of identical errors.
  */
 export function getSharedHighlighter(): Promise<Highlighter> {
   if (highlighter) return Promise.resolve(highlighter);
+  if (highlighterFailed) return Promise.reject(new Error('shiki highlighter previously failed'));
   if (highlighterPromise) return highlighterPromise;
   highlighterPromise = (async () => {
+    const step = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err) {
+        // Re-throw with the label so the final catch reports WHICH step
+        // failed — shiki's empty-error problem made the previous version
+        // useless for debugging.
+        const wrapped = new Error(`[shiki:${label}] ${formatErr(err)}`);
+        if (err instanceof Error && err.stack) wrapped.stack = err.stack;
+        throw wrapped;
+      }
+    };
     try {
       const mermaidGrammar = await buildStandaloneMermaidGrammar().catch((err) => {
-        console.warn('[shiki] mermaid grammar load failed; continuing without it:', err);
+        console.warn('[shiki] mermaid grammar load failed; continuing without it:', formatErr(err));
         return null;
       });
-      const langs: unknown[] = [
-        (await import('shiki/dist/langs/json.mjs')).default,
-        (await import('shiki/dist/langs/yaml.mjs')).default,
-        (await import('shiki/dist/langs/markdown.mjs')).default
-      ];
+      const jsonLang = await step('load-json', () => import('shiki/dist/langs/json.mjs'));
+      const yamlLang = await step('load-yaml', () => import('shiki/dist/langs/yaml.mjs'));
+      const mdLang = await step('load-markdown', () => import('shiki/dist/langs/markdown.mjs'));
+      const langs: unknown[] = [jsonLang.default, yamlLang.default, mdLang.default];
       if (mermaidGrammar) langs.unshift(mermaidGrammar);
-      const hl = await createHighlighter({
-        // dark-plus / light-plus are the Monaco-shiki bridge's hardcoded
-        // themes; the GitHub themes are used by the markdown DocumentPanel
-        // so prose code blocks match the broader GitHub look.
-        themes: ['dark-plus', 'light-plus', 'github-dark', 'github-light'],
-        langs: langs as never
-      });
+      const hl = await step('createHighlighter', () =>
+        createHighlighter({
+          // dark-plus / light-plus are the Monaco-shiki bridge's hardcoded
+          // themes; the GitHub themes are used by the markdown DocumentPanel
+          // so prose code blocks match the broader GitHub look.
+          themes: ['dark-plus', 'light-plus', 'github-dark', 'github-light'],
+          langs: langs as never,
+          // Use the JS-only regex engine so we don't depend on shiki/wasm
+          // being resolved correctly at runtime (the wasm path was a
+          // source of silent init failures in v4).
+          engine: createJavaScriptRegexEngine()
+        })
+      );
       highlighter = hl;
       return hl;
     } catch (err) {
-      // Clear the cached rejected promise so next call can retry.
+      // Latch on failure so we don't spam the console retrying every render.
+      // Page reload (or the user fixing whatever caused the failure and HMR)
+      // will reset the module state.
+      highlighterFailed = true;
       highlighterPromise = null;
-      console.error('[shiki] highlighter init failed:', err);
+      console.error('[shiki] highlighter init failed (will not retry):', formatErr(err));
       throw err;
     }
   })();
