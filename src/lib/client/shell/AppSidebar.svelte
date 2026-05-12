@@ -315,7 +315,7 @@
             type="button"
             role="tab"
             aria-selected={mode === 'chats'}
-            class="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62 transition-[background-color,color] hover:bg-sidebar-accent/30 hover:text-sidebar-foreground aria-selected:bg-sidebar-accent/60 aria-selected:font-medium aria-selected:text-sidebar-foreground"
+            class="sb-tab-control flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62"
             onclick={() => (mode = 'chats')}>
             <MessageSquare class="size-3.5" />
             <span>Chats</span>
@@ -324,7 +324,7 @@
             type="button"
             role="tab"
             aria-selected={mode === 'files'}
-            class="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62 transition-[background-color,color] hover:bg-sidebar-accent/30 hover:text-sidebar-foreground aria-selected:bg-sidebar-accent/60 aria-selected:font-medium aria-selected:text-sidebar-foreground"
+            class="sb-tab-control flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62"
             onclick={() => (mode = 'files')}>
             <FolderTree class="size-3.5" />
             <span>Files</span>
@@ -368,7 +368,7 @@
                   <button
                     type="button"
                     data-active={isActive}
-                    class="peer/sidebar-row relative flex h-8 w-full cursor-pointer items-center rounded-md px-3 pr-9 text-left text-[13px] text-sidebar-foreground/72 transition-[background-color,color] before:absolute before:top-1.5 before:bottom-1.5 before:left-1 before:w-px before:rounded-full before:bg-transparent hover:bg-sidebar-accent/20 hover:text-sidebar-foreground data-[active=true]:bg-sidebar-accent/42 data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground data-[active=true]:before:bg-sidebar-foreground/75"
+                    class="sb-row-control peer/sidebar-row relative flex h-8 w-full cursor-pointer items-center rounded-md px-3 pr-9 text-left text-[13px] text-sidebar-foreground/72 before:absolute before:top-1.5 before:bottom-1.5 before:left-1 before:w-px before:rounded-full before:bg-transparent data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground data-[active=true]:before:bg-sidebar-foreground/75"
                     onclick={() => onSelectConversation(conv.id)}
                     onmouseenter={() => onPrefetchConversation?.(conv.id)}
                     onfocus={() => onPrefetchConversation?.(conv.id)}>
@@ -529,7 +529,7 @@
           aria-pressed={panels.panels.chat.visible}
           use:tooltip={{ text: 'Chat', side: 'top' }}
           onclick={() => onTogglePanel('chat')}
-          class="flex h-7 w-full items-center justify-center gap-1.5 rounded-sm text-[12px] font-medium text-muted-foreground transition-[background-color,color] outline-none group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-md hover:bg-sidebar-accent/18 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/22 focus-visible:text-sidebar-foreground aria-pressed:bg-transparent aria-pressed:text-sidebar-foreground group-data-[collapsible=icon]:aria-pressed:bg-sidebar-accent/16">
+          class="sb-panel-control flex h-7 w-full items-center justify-center gap-1.5 rounded-sm text-[12px] font-medium text-muted-foreground outline-none group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-md">
           <MessageSquare class="size-3.5 shrink-0" />
           <span class="group-data-[collapsible=icon]:hidden">Chat</span>
         </button>
@@ -543,7 +543,7 @@
               aria-pressed={isActive}
               use:tooltip={{ text: btn.label, side: 'top' }}
               onclick={() => onTogglePanel(btn.id)}
-              class="flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-sm text-[12px] font-medium text-muted-foreground transition-[background-color,color] outline-none group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-md hover:bg-sidebar-accent/18 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/22 focus-visible:text-sidebar-foreground aria-pressed:bg-transparent aria-pressed:text-sidebar-foreground group-data-[collapsible=icon]:aria-pressed:bg-sidebar-accent/16">
+              class="sb-panel-control flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-sm text-[12px] font-medium text-muted-foreground outline-none group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-md">
               <Icon class="size-3.5 shrink-0" />
               <span class="min-w-0 truncate group-data-[collapsible=icon]:hidden">{btn.label}</span>
             </button>
@@ -559,7 +559,7 @@
               {#snippet child({ props })}
                 <Sidebar.MenuButton
                   tooltipContent="Account"
-                  class="h-11 gap-2 rounded-lg px-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0! focus-visible:bg-sidebar-accent/28 focus-visible:ring-0"
+                  class="h-11 gap-2 rounded-lg pr-9 pl-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0! focus-visible:bg-sidebar-accent/28 focus-visible:ring-0"
                   {...props}>
                   <Avatar class="size-7 rounded-full group-data-[collapsible=icon]:size-8">
                     {#if authStore.user?.avatar_url}
@@ -571,7 +571,7 @@
                       {initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span class="min-w-0">
+                  <span class="flex min-w-0 flex-1 flex-col leading-tight">
                     <span class="block truncate text-[13px] font-medium">
                       {authStore.user?.display_name || authStore.user?.email || 'User'}
                     </span>
@@ -585,7 +585,7 @@
             <Sidebar.MenuAction
               onclick={onOpenSettings}
               aria-label="Settings"
-              class="top-2 right-1 size-7 text-muted-foreground/80 group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent/40 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/35 focus-visible:ring-0 [&>svg]:size-4">
+              class="top-1/2! right-2 size-7 -translate-y-1/2 text-muted-foreground/80 group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent/40 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/35 focus-visible:ring-0 [&>svg]:size-4">
               <Settings />
             </Sidebar.MenuAction>
             <DropdownMenu.Content
@@ -654,14 +654,14 @@
               {#snippet child({ props })}
                 <Sidebar.MenuButton
                   tooltipContent="Account"
-                  class="h-11 gap-2 rounded-lg px-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0! focus-visible:bg-sidebar-accent/28 focus-visible:ring-0"
+                  class="h-11 gap-2 rounded-lg pr-9 pl-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0! focus-visible:bg-sidebar-accent/28 focus-visible:ring-0"
                   {...props}>
                   <Avatar class="size-7 rounded-full group-data-[collapsible=icon]:size-8">
                     <AvatarFallback class="rounded-full bg-muted text-[11px] font-medium">
                       {guestDisplayName.slice(0, 1).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <span class="min-w-0">
+                  <span class="flex min-w-0 flex-1 flex-col leading-tight">
                     <span class="block truncate text-[13px] font-medium">{guestDisplayName}</span>
                     <span class="block truncate text-[11px] font-normal text-muted-foreground">
                       Local settings
@@ -673,7 +673,7 @@
             <Sidebar.MenuAction
               onclick={onOpenSettings}
               aria-label="Settings"
-              class="top-2 right-1 size-7 text-muted-foreground/80 group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent/40 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/35 focus-visible:ring-0 [&>svg]:size-4">
+              class="top-1/2! right-2 size-7 -translate-y-1/2 text-muted-foreground/80 group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent/40 hover:text-sidebar-foreground focus-visible:bg-sidebar-accent/35 focus-visible:ring-0 [&>svg]:size-4">
               <Settings />
             </Sidebar.MenuAction>
             <DropdownMenu.Content
@@ -725,3 +725,97 @@
     </Sidebar.Menu>
   </Sidebar.Footer>
 </Sidebar.Root>
+
+<style>
+  /* Sidebar interactive controls share one contrast model:
+     in light mode, hover/active darken (foreground tint over white surface);
+     in dark mode, hover/active lighten (white tint over near-black surface).
+     We avoid blending toward --sidebar-accent because it sits within ~5% L
+     of the surface in both modes and produces no visible separation. */
+
+  /* Tabs (Chats / Files) */
+  :global(.sb-tab-control) {
+    transition:
+      background-color 120ms ease,
+      color 120ms ease,
+      transform 120ms ease;
+  }
+  :global(.sb-tab-control:hover) {
+    color: var(--sidebar-foreground);
+    background: color-mix(in srgb, var(--sidebar-foreground) 8%, transparent);
+  }
+  :global(.sb-tab-control:active) {
+    transform: scale(0.97);
+    background: color-mix(in srgb, var(--sidebar-foreground) 14%, transparent);
+  }
+  :global(.sb-tab-control[aria-selected='true']) {
+    color: var(--sidebar-foreground);
+    font-weight: 500;
+    background: color-mix(in srgb, var(--sidebar-foreground) 12%, transparent);
+  }
+  :global(.dark .sb-tab-control:hover) {
+    background: rgb(255 255 255 / 0.08);
+  }
+  :global(.dark .sb-tab-control:active) {
+    background: rgb(255 255 255 / 0.14);
+  }
+  :global(.dark .sb-tab-control[aria-selected='true']) {
+    background: rgb(255 255 255 / 0.1);
+  }
+
+  /* Conversation rows */
+  :global(.sb-row-control) {
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+  :global(.sb-row-control:hover) {
+    color: var(--sidebar-foreground);
+    background: color-mix(in srgb, var(--sidebar-foreground) 7%, transparent);
+  }
+  :global(.sb-row-control[data-active='true']) {
+    background: color-mix(in srgb, var(--sidebar-foreground) 12%, transparent);
+  }
+  :global(.dark .sb-row-control:hover) {
+    background: rgb(255 255 255 / 0.07);
+  }
+  :global(.dark .sb-row-control[data-active='true']) {
+    background: rgb(255 255 255 / 0.1);
+  }
+
+  /* Panel toggles (Chat / Canvas / Code / Document) */
+  :global(.sb-panel-control) {
+    transition:
+      background-color 120ms ease,
+      color 120ms ease,
+      transform 120ms ease;
+  }
+  :global(.sb-panel-control:hover) {
+    color: var(--sidebar-foreground);
+    background: color-mix(in srgb, var(--sidebar-foreground) 8%, transparent);
+  }
+  :global(.sb-panel-control:active) {
+    transform: scale(0.96);
+    background: color-mix(in srgb, var(--sidebar-foreground) 14%, transparent);
+  }
+  :global(.sb-panel-control:focus-visible) {
+    color: var(--sidebar-foreground);
+    background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
+  }
+  :global(.sb-panel-control[aria-pressed='true']) {
+    color: var(--sidebar-foreground);
+    background: color-mix(in srgb, var(--sidebar-foreground) 12%, transparent);
+  }
+  :global(.dark .sb-panel-control:hover) {
+    background: rgb(255 255 255 / 0.08);
+  }
+  :global(.dark .sb-panel-control:active) {
+    background: rgb(255 255 255 / 0.14);
+  }
+  :global(.dark .sb-panel-control:focus-visible) {
+    background: rgb(255 255 255 / 0.1);
+  }
+  :global(.dark .sb-panel-control[aria-pressed='true']) {
+    background: rgb(255 255 255 / 0.1);
+  }
+</style>

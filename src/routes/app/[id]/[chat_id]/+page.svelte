@@ -814,9 +814,13 @@
       }
       return;
     }
-    // Viewer button — single-select. Clicking the active viewer is a no-op
-    // (we never end up with zero viewers when chat is also hidden).
-    if (panels.currentViewer() === panel) return;
+    // Viewer button — single-select. Clicking the active viewer toggles it
+    // off, unless chat is also hidden (would leave the user staring at nothing).
+    if (panels.currentViewer() === panel) {
+      if (!panels.panels.chat.visible) return;
+      panels.hide(panel);
+      return;
+    }
     panels.showViewer(panel as 'canvas' | 'document' | 'code');
   }
 
