@@ -21,105 +21,118 @@ export const STYLE_PALETTE_NAMES = [
 
 export const STYLE_THEME_MODES = ['light', 'dark'] as const satisfies readonly StyleThemeMode[];
 
+// Each palette: 6 fill+stroke+text triples per theme mode.
+//  • Light fills use *-100/50 tints; stroke = *-700 sibling; text leans *-900.
+//  • Dark  fills use *-950/900 "tinted blacks"; stroke = *-300/400 sibling;
+//    text leans *-50/100.
+//  • ensureReadableText() at the bottom of this file is the safety net — any
+//    triple that drops below 4.5:1 has its text channel swapped for the
+//    nearest readable neutral, so these values stay coherent under audit.
 export const STYLE_PALETTES: Record<StyleThemeMode, Record<StylePaletteName, StyleColor[]>> = {
   dark: {
+    // Muted, organic — clay, moss, bark, lichen.
     earth: [
-      { fill: '#713f12', stroke: '#a16207', text: '#fef3c7' },
-      { fill: '#064e3b', stroke: '#059669', text: '#d1fae5' },
-      { fill: '#7c2d12', stroke: '#c2410c', text: '#fed7aa' },
-      { fill: '#1e3a5f', stroke: '#3b82f6', text: '#dbeafe' },
-      { fill: '#4a1942', stroke: '#a21caf', text: '#fae8ff' },
-      { fill: '#365314', stroke: '#65a30d', text: '#ecfccb' }
+      { fill: '#451a03', stroke: '#fcd34d', text: '#fef3c7' }, // amber
+      { fill: '#1c1917', stroke: '#d6d3d1', text: '#f5f5f4' }, // stone
+      { fill: '#431407', stroke: '#fdba74', text: '#ffedd5' }, // orange
+      { fill: '#052e16', stroke: '#86efac', text: '#dcfce7' }, // green
+      { fill: '#1a2e05', stroke: '#bef264', text: '#ecfccb' }, // lime
+      { fill: '#022c22', stroke: '#6ee7b7', text: '#d1fae5' } //  emerald
     ],
+    // Greyscale ladder; one accent line per surface for hierarchy.
     monochrome: [
-      { fill: '#111827', stroke: '#4b5563', text: '#f9fafb' },
-      { fill: '#1f2937', stroke: '#6b7280', text: '#f9fafb' },
-      { fill: '#374151', stroke: '#9ca3af', text: '#f9fafb' },
-      { fill: '#4b5563', stroke: '#d1d5db', text: '#ffffff' },
-      { fill: '#0f172a', stroke: '#64748b', text: '#e2e8f0' },
-      { fill: '#27272a', stroke: '#a1a1aa', text: '#fafafa' }
+      { fill: '#0f172a', stroke: '#94a3b8', text: '#f8fafc' }, // slate 900
+      { fill: '#1f2937', stroke: '#9ca3af', text: '#f9fafb' }, // gray 800
+      { fill: '#262626', stroke: '#a3a3a3', text: '#fafafa' }, // neutral 800
+      { fill: '#1c1917', stroke: '#a8a29e', text: '#fafaf9' }, // stone 900
+      { fill: '#18181b', stroke: '#a1a1aa', text: '#fafafa' }, // zinc 900
+      { fill: '#0a0a0a', stroke: '#737373', text: '#e5e5e5' } //  neutral 950
     ],
+    // Cool, watery hues — teal, cyan, sky, indigo.
     ocean: [
-      { fill: '#075985', stroke: '#38bdf8', text: '#f0f9ff' },
-      { fill: '#155e75', stroke: '#22d3ee', text: '#ecfeff' },
-      { fill: '#134e4a', stroke: '#2dd4bf', text: '#f0fdfa' },
-      { fill: '#1e3a8a', stroke: '#60a5fa', text: '#eff6ff' },
-      { fill: '#312e81', stroke: '#818cf8', text: '#eef2ff' },
-      { fill: '#164e63', stroke: '#67e8f9', text: '#ecfeff' }
+      { fill: '#022c22', stroke: '#5eead4', text: '#ccfbf1' }, // teal
+      { fill: '#083344', stroke: '#67e8f9', text: '#cffafe' }, // cyan
+      { fill: '#082f49', stroke: '#7dd3fc', text: '#e0f2fe' }, // sky
+      { fill: '#172554', stroke: '#93c5fd', text: '#dbeafe' }, // blue
+      { fill: '#1e1b4b', stroke: '#a5b4fc', text: '#e0e7ff' }, // indigo
+      { fill: '#042f2e', stroke: '#5eead4', text: '#ccfbf1' } //  teal deep
     ],
+    // Soft jewel tones — readable but never loud.
     pastel: [
-      { fill: '#312e81', stroke: '#a5b4fc', text: '#eef2ff' },
-      { fill: '#134e4a', stroke: '#5eead4', text: '#f0fdfa' },
-      { fill: '#713f12', stroke: '#facc15', text: '#fef9c3' },
-      { fill: '#7f1d1d', stroke: '#fca5a5', text: '#fef2f2' },
-      { fill: '#4c1d95', stroke: '#c4b5fd', text: '#f5f3ff' },
-      { fill: '#14532d', stroke: '#86efac', text: '#f0fdf4' }
+      { fill: '#1e1b4b', stroke: '#a5b4fc', text: '#e0e7ff' }, // indigo
+      { fill: '#042f2e', stroke: '#5eead4', text: '#ccfbf1' }, // teal
+      { fill: '#451a03', stroke: '#fcd34d', text: '#fef3c7' }, // amber
+      { fill: '#450a0a', stroke: '#fca5a5', text: '#fee2e2' }, // red
+      { fill: '#2e1065', stroke: '#c4b5fd', text: '#ede9fe' }, // violet
+      { fill: '#052e16', stroke: '#86efac', text: '#dcfce7' } //  green
     ],
+    // Warm dusk — reds through violets.
     sunset: [
-      { fill: '#7f1d1d', stroke: '#f87171', text: '#fef2f2' },
-      { fill: '#7c2d12', stroke: '#fb923c', text: '#fff7ed' },
-      { fill: '#713f12', stroke: '#fbbf24', text: '#fffbeb' },
-      { fill: '#581c87', stroke: '#c084fc', text: '#faf5ff' },
-      { fill: '#881337', stroke: '#fb7185', text: '#fff1f2' },
-      { fill: '#3730a3', stroke: '#818cf8', text: '#eef2ff' }
+      { fill: '#450a0a', stroke: '#fca5a5', text: '#fee2e2' }, // red
+      { fill: '#431407', stroke: '#fdba74', text: '#ffedd5' }, // orange
+      { fill: '#451a03', stroke: '#fcd34d', text: '#fef3c7' }, // amber
+      { fill: '#500724', stroke: '#f9a8d4', text: '#fce7f3' }, // pink
+      { fill: '#4a044e', stroke: '#f0abfc', text: '#fae8ff' }, // fuchsia
+      { fill: '#2e1065', stroke: '#c4b5fd', text: '#ede9fe' } //  violet
     ],
+    // Saturated but disciplined — one chip per hue family.
     vibrant: [
-      { fill: '#3730a3', stroke: '#818cf8', text: '#eef2ff' },
-      { fill: '#0f766e', stroke: '#2dd4bf', text: '#f0fdfa' },
-      { fill: '#92400e', stroke: '#fbbf24', text: '#fffbeb' },
-      { fill: '#6d28d9', stroke: '#c4b5fd', text: '#f5f3ff' },
-      { fill: '#0e7490', stroke: '#67e8f9', text: '#ecfeff' },
-      { fill: '#be123c', stroke: '#fb7185', text: '#fff1f2' }
+      { fill: '#172554', stroke: '#60a5fa', text: '#dbeafe' }, // blue
+      { fill: '#022c22', stroke: '#2dd4bf', text: '#ccfbf1' }, // teal
+      { fill: '#451a03', stroke: '#fbbf24', text: '#fef3c7' }, // amber
+      { fill: '#2e1065', stroke: '#a78bfa', text: '#ede9fe' }, // violet
+      { fill: '#4a044e', stroke: '#e879f9', text: '#fae8ff' }, // fuchsia
+      { fill: '#450a0a', stroke: '#f87171', text: '#fee2e2' } //  red
     ]
   },
   light: {
     earth: [
-      { fill: '#fef3c7', stroke: '#d97706', text: '#78350f' },
-      { fill: '#d1fae5', stroke: '#059669', text: '#064e3b' },
-      { fill: '#fed7aa', stroke: '#ea580c', text: '#7c2d12' },
-      { fill: '#dbeafe', stroke: '#2563eb', text: '#1e3a8a' },
-      { fill: '#fae8ff', stroke: '#c026d3', text: '#701a75' },
-      { fill: '#ecfccb', stroke: '#65a30d', text: '#365314' }
+      { fill: '#fef3c7', stroke: '#b45309', text: '#451a03' }, // amber
+      { fill: '#f5f5f4', stroke: '#57534e', text: '#1c1917' }, // stone
+      { fill: '#ffedd5', stroke: '#c2410c', text: '#431407' }, // orange
+      { fill: '#dcfce7', stroke: '#15803d', text: '#052e16' }, // green
+      { fill: '#ecfccb', stroke: '#4d7c0f', text: '#1a2e05' }, // lime
+      { fill: '#d1fae5', stroke: '#047857', text: '#022c22' } //  emerald
     ],
     monochrome: [
-      { fill: '#f9fafb', stroke: '#9ca3af', text: '#111827' },
-      { fill: '#e5e7eb', stroke: '#6b7280', text: '#111827' },
-      { fill: '#d1d5db', stroke: '#4b5563', text: '#111827' },
-      { fill: '#f3f4f6', stroke: '#6b7280', text: '#1f2937' },
-      { fill: '#e2e8f0', stroke: '#64748b', text: '#0f172a' },
-      { fill: '#fafafa', stroke: '#a1a1aa', text: '#18181b' }
+      { fill: '#f8fafc', stroke: '#475569', text: '#0f172a' }, // slate 50
+      { fill: '#f1f5f9', stroke: '#334155', text: '#0f172a' }, // slate 100
+      { fill: '#e2e8f0', stroke: '#475569', text: '#1e293b' }, // slate 200
+      { fill: '#fafafa', stroke: '#52525b', text: '#18181b' }, // zinc 50
+      { fill: '#f5f5f5', stroke: '#525252', text: '#171717' }, // neutral 100
+      { fill: '#ffffff', stroke: '#64748b', text: '#0f172a' } //  white
     ],
     ocean: [
-      { fill: '#e0f2fe', stroke: '#0284c7', text: '#075985' },
-      { fill: '#cffafe', stroke: '#0891b2', text: '#164e63' },
-      { fill: '#ccfbf1', stroke: '#0d9488', text: '#134e4a' },
-      { fill: '#dbeafe', stroke: '#2563eb', text: '#1e3a8a' },
-      { fill: '#e0e7ff', stroke: '#6366f1', text: '#312e81' },
-      { fill: '#ecfeff', stroke: '#06b6d4', text: '#155e75' }
+      { fill: '#ccfbf1', stroke: '#0f766e', text: '#022c22' }, // teal
+      { fill: '#cffafe', stroke: '#0e7490', text: '#083344' }, // cyan
+      { fill: '#e0f2fe', stroke: '#0369a1', text: '#082f49' }, // sky
+      { fill: '#dbeafe', stroke: '#1d4ed8', text: '#172554' }, // blue
+      { fill: '#e0e7ff', stroke: '#4338ca', text: '#1e1b4b' }, // indigo
+      { fill: '#f0fdfa', stroke: '#0d9488', text: '#134e4a' } //  teal soft
     ],
     pastel: [
-      { fill: '#e0e7ff', stroke: '#818cf8', text: '#312e81' },
-      { fill: '#ccfbf1', stroke: '#2dd4bf', text: '#134e4a' },
-      { fill: '#fef3c7', stroke: '#fbbf24', text: '#78350f' },
-      { fill: '#fee2e2', stroke: '#f87171', text: '#7f1d1d' },
-      { fill: '#ede9fe', stroke: '#a78bfa', text: '#4c1d95' },
-      { fill: '#dcfce7', stroke: '#4ade80', text: '#14532d' }
+      { fill: '#e0e7ff', stroke: '#4338ca', text: '#1e1b4b' }, // indigo
+      { fill: '#ccfbf1', stroke: '#0f766e', text: '#022c22' }, // teal
+      { fill: '#fef3c7', stroke: '#b45309', text: '#451a03' }, // amber
+      { fill: '#fee2e2', stroke: '#b91c1c', text: '#450a0a' }, // red
+      { fill: '#ede9fe', stroke: '#6d28d9', text: '#2e1065' }, // violet
+      { fill: '#dcfce7', stroke: '#15803d', text: '#052e16' } //  green
     ],
     sunset: [
-      { fill: '#fee2e2', stroke: '#ef4444', text: '#7f1d1d' },
-      { fill: '#ffedd5', stroke: '#f97316', text: '#7c2d12' },
-      { fill: '#fef3c7', stroke: '#f59e0b', text: '#713f12' },
-      { fill: '#f3e8ff', stroke: '#a855f7', text: '#581c87' },
-      { fill: '#ffe4e6', stroke: '#e11d48', text: '#881337' },
-      { fill: '#e0e7ff', stroke: '#6366f1', text: '#3730a3' }
+      { fill: '#fee2e2', stroke: '#b91c1c', text: '#450a0a' }, // red
+      { fill: '#ffedd5', stroke: '#c2410c', text: '#431407' }, // orange
+      { fill: '#fef3c7', stroke: '#b45309', text: '#451a03' }, // amber
+      { fill: '#fce7f3', stroke: '#be185d', text: '#500724' }, // pink
+      { fill: '#fae8ff', stroke: '#a21caf', text: '#4a044e' }, // fuchsia
+      { fill: '#ede9fe', stroke: '#6d28d9', text: '#2e1065' } //  violet
     ],
     vibrant: [
-      { fill: '#e0e7ff', stroke: '#6366f1', text: '#312e81' },
-      { fill: '#ccfbf1', stroke: '#14b8a6', text: '#134e4a' },
-      { fill: '#fef3c7', stroke: '#f59e0b', text: '#78350f' },
-      { fill: '#ede9fe', stroke: '#8b5cf6', text: '#4c1d95' },
-      { fill: '#cffafe', stroke: '#06b6d4', text: '#164e63' },
-      { fill: '#fee2e2', stroke: '#ef4444', text: '#7f1d1d' }
+      { fill: '#dbeafe', stroke: '#1d4ed8', text: '#172554' }, // blue
+      { fill: '#ccfbf1', stroke: '#0f766e', text: '#022c22' }, // teal
+      { fill: '#fef3c7', stroke: '#b45309', text: '#451a03' }, // amber
+      { fill: '#ede9fe', stroke: '#6d28d9', text: '#2e1065' }, // violet
+      { fill: '#fae8ff', stroke: '#a21caf', text: '#4a044e' }, // fuchsia
+      { fill: '#fee2e2', stroke: '#b91c1c', text: '#450a0a' } //  red
     ]
   }
 };
@@ -136,9 +149,7 @@ function hexToRgb(hex: string): { b: number; g: number; r: number } | undefined 
 
 function channelToLinear(value: number): number {
   const normalized = value / 255;
-  return normalized <= 0.03928
-    ? normalized / 12.92
-    : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  return normalized <= 0.03928 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
 }
 
 export function contrastRatio(foreground: string, background: string): number {

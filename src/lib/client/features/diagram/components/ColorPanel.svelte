@@ -22,80 +22,108 @@
   let selectedBgColor = $state('#e0e7ff');
   let selectedBorderColor = $state('#6366f1');
 
-  // Colors that work well in both light and dark mode
-  const strokeColors = [
-    '#ef4444',
-    '#f97316',
-    '#f59e0b',
-    '#84cc16',
-    '#22c55e',
-    '#10b981',
-    '#06b6d4',
-    '#0ea5e9',
-    '#3b82f6',
-    '#6366f1',
-    '#8b5cf6',
-    '#a855f7',
-    '#d946ef',
-    '#f43f5e',
-    '#78716c',
-    '#475569',
-    '#1e293b',
-    '#0f172a',
-    '#ffffff'
+  // Stroke / border / text swatches. Two mode-tuned sets so the same hue
+  // stays legible in both themes — *-700 on white, *-300 on near-black, both
+  // landing ≥ 4.5:1 contrast against their respective surface.
+  //
+  // Light: deep, muted tones that read as ink on paper.
+  const lightStrokeColors = [
+    '#b91c1c', // red 700
+    '#c2410c', // orange 700
+    '#b45309', // amber 700
+    '#4d7c0f', // lime 700
+    '#15803d', // green 700
+    '#047857', // emerald 700
+    '#0e7490', // cyan 700
+    '#0369a1', // sky 700
+    '#1d4ed8', // blue 700
+    '#4338ca', // indigo 700
+    '#6d28d9', // violet 700
+    '#7e22ce', // purple 700
+    '#a21caf', // fuchsia 700
+    '#be185d', // pink 700
+    '#57534e', // stone 600
+    '#475569', // slate 600
+    '#1f2937', // gray 800
+    '#0f172a' // slate 900 (near-black, safe on white)
   ];
 
-  // Light mode fills — soft pastels
+  // Dark: brighter siblings of the same hue ladder — readable on a near-black
+  // canvas (#0a0a0a-ish) while still feeling restrained rather than neon.
+  const darkStrokeColors = [
+    '#fca5a5', // red 300
+    '#fdba74', // orange 300
+    '#fcd34d', // amber 300
+    '#bef264', // lime 300
+    '#86efac', // green 300
+    '#6ee7b7', // emerald 300
+    '#67e8f9', // cyan 300
+    '#7dd3fc', // sky 300
+    '#93c5fd', // blue 300
+    '#a5b4fc', // indigo 300
+    '#c4b5fd', // violet 300
+    '#d8b4fe', // purple 300
+    '#f0abfc', // fuchsia 300
+    '#f9a8d4', // pink 300
+    '#d6d3d1', // stone 300
+    '#cbd5e1', // slate 300
+    '#e5e7eb', // gray 200
+    '#f8fafc' // slate 50 (near-white, safe on dark)
+  ];
+
+  // Light fills — soft, low-chroma tints (~*-100/*-50). Dark ink on these
+  // surfaces holds well above 4.5:1; nothing here screams candy.
   const lightFillColors = [
-    '#fecaca',
-    '#fed7aa',
-    '#fde68a',
-    '#d9f99d',
-    '#bbf7d0',
-    '#a7f3d0',
-    '#a5f3fc',
-    '#bae6fd',
-    '#bfdbfe',
-    '#c7d2fe',
-    '#ddd6fe',
-    '#e9d5ff',
-    '#f5d0fe',
-    '#e0e7ff',
-    '#fecdd3',
-    '#f1f5f9',
-    '#e2e8f0',
-    '#ffffff',
-    '#f8fafc',
-    '#f0f9ff'
+    '#fee2e2', // red 100
+    '#ffedd5', // orange 100
+    '#fef3c7', // amber 100
+    '#ecfccb', // lime 100
+    '#dcfce7', // green 100
+    '#d1fae5', // emerald 100
+    '#cffafe', // cyan 100
+    '#e0f2fe', // sky 100
+    '#dbeafe', // blue 100
+    '#e0e7ff', // indigo 100
+    '#ede9fe', // violet 100
+    '#f3e8ff', // purple 100
+    '#fae8ff', // fuchsia 100
+    '#fce7f3', // pink 100
+    '#f5f5f4', // stone 100
+    '#f1f5f9', // slate 100
+    '#e5e7eb', // gray 200 — visible neutral border
+    '#ffffff' // pure white
   ];
 
-  // Dark mode fills — deep rich tones
+  // Dark fills — *-900/*-950 tonal floor. These read as "tinted black" rather
+  // than muddy mid-tones; light text on them clears 4.5:1 by a comfortable
+  // margin and the hue is still recognisable.
   const darkFillColors = [
-    '#7f1d1d',
-    '#7c2d12',
-    '#713f12',
-    '#365314',
-    '#14532d',
-    '#064e3b',
-    '#164e63',
-    '#0c4a6e',
-    '#1e3a5f',
-    '#312e81',
-    '#4c1d95',
-    '#581c87',
-    '#701a75',
-    '#831843',
-    '#881337',
-    '#1e293b',
-    '#0f172a',
-    '#334155',
-    '#1a1a2e',
-    '#0d1117'
+    '#450a0a', // red 950
+    '#431407', // orange 950
+    '#451a03', // amber 950
+    '#1a2e05', // lime 950
+    '#052e16', // green 950
+    '#022c22', // emerald 950
+    '#083344', // cyan 950
+    '#082f49', // sky 950
+    '#172554', // blue 950
+    '#1e1b4b', // indigo 950
+    '#2e1065', // violet 950
+    '#3b0764', // purple 950
+    '#4a044e', // fuchsia 950
+    '#500724', // pink 950
+    '#1c1917', // stone 900
+    '#0f172a', // slate 900
+    '#1f2937', // gray 800 — visible neutral surface
+    '#000000' // pure black
   ];
 
-  // Reactive fill colors based on current mode
+  // Reactive fill + stroke palettes based on current mode.
   const fillColors = derived([mode], ([$mode]) =>
     $mode === 'dark' ? darkFillColors : lightFillColors
+  );
+  const strokeColors = derived([mode], ([$mode]) =>
+    $mode === 'dark' ? darkStrokeColors : lightStrokeColors
   );
 
   function switchToIconPanel() {
@@ -248,7 +276,7 @@
           <span class="text-[13px] font-medium tracking-wider text-muted-foreground uppercase"
             >Border</span>
           <div class="flex flex-wrap gap-1">
-            {#each strokeColors as color (color)}
+            {#each $strokeColors as color (color)}
               <button
                 type="button"
                 class="size-[18px] rounded border transition-all hover:scale-125 {selectedBorderColor ===
@@ -272,7 +300,7 @@
           <span class="text-[13px] font-medium tracking-wider text-muted-foreground uppercase"
             >Text</span>
           <div class="flex flex-wrap gap-1">
-            {#each strokeColors as color (color)}
+            {#each $strokeColors as color (color)}
               <button
                 type="button"
                 class="size-[18px] rounded border transition-all hover:scale-125 {selectedColor ===
@@ -296,7 +324,7 @@
           <span class="text-[13px] font-medium tracking-wider text-muted-foreground uppercase"
             >Stroke</span>
           <div class="flex flex-wrap gap-1">
-            {#each strokeColors as color (color)}
+            {#each $strokeColors as color (color)}
               <button
                 type="button"
                 class="size-[18px] rounded border transition-all hover:scale-125 {selectedColor ===
