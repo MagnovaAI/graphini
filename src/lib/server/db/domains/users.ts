@@ -2,7 +2,7 @@
  * Domain helper — Users & Auth (sessions included)
  */
 
-import { and, desc, eq, gt, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, or, sql, type SQL } from 'drizzle-orm';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import type { PaginationOptions, Session, User } from '../types';
 import * as schema from '../schema';
@@ -23,6 +23,7 @@ export function mapUser(row: typeof schema.users.$inferSelect): User {
     last_login_at: row.last_login_at?.toISOString() ?? null,
     last_seen_at: row.last_seen_at.toISOString(),
     metadata: (row.metadata as Record<string, unknown>) ?? {},
+    password_hash: row.password_hash ?? null,
     role: row.role as User['role'],
     updated_at: row.updated_at.toISOString()
   };
@@ -293,7 +294,9 @@ export async function mergeUsers(
   `);
 
   // Credit balance: add the guest's balance into the target's, then drop the
-  // guest balance row. Single row per user_id (unique constraint).
+  // guest balance row. Single row per user_id (unique constraint). Neon HTTP
+  // does not support multi-statement transactions, so the merge and delete
+  // are issued as separate calls.
   await db.execute(sql`
     INSERT INTO credit_balances (user_id, balance, lifetime_earned, lifetime_spent)
     SELECT ${toUserId}, balance, lifetime_earned, lifetime_spent
@@ -302,8 +305,10 @@ export async function mergeUsers(
       balance = credit_balances.balance + EXCLUDED.balance,
       lifetime_earned = credit_balances.lifetime_earned + EXCLUDED.lifetime_earned,
       lifetime_spent = credit_balances.lifetime_spent + EXCLUDED.lifetime_spent,
-      updated_at = NOW();
-    DELETE FROM credit_balances WHERE user_id = ${fromUserId};
+      updated_at = NOW()
+  `);
+  await db.execute(sql`
+    DELETE FROM credit_balances WHERE user_id = ${fromUserId}
   `);
 
   // Sessions and analytics: cascade or set-null per their FK definitions when
@@ -318,7 +323,7 @@ export async function listUsers(
   const limit = options?.limit || 50;
   const offset = options?.offset || 0;
 
-  let where = undefined;
+  let where: SQL | undefined = undefined;
   if (options?.search) {
     const pattern = `%${options.search}%`;
     where = or(ilike(schema.users.email, pattern), ilike(schema.users.display_name, pattern));
