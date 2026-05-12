@@ -8,8 +8,10 @@
  */
 
 import { DATABASE_URL } from '$env/static/private';
+import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import type { DatabaseAdapter } from './adapter';
 import { NeonAdapter } from './neon-adapter';
+import type * as schema from './schema';
 
 export type { DatabaseAdapter } from './adapter';
 export * from './types';
@@ -28,6 +30,18 @@ export function getDb(): DatabaseAdapter {
     dbInstance = new NeonAdapter(DATABASE_URL);
   }
   return dbInstance;
+}
+
+/**
+ * Return the raw Drizzle handle when the active adapter exposes one.
+ * Domain code that needs `drizzle-orm` query builders should go through
+ * this helper rather than casting to NeonAdapter, so a non-Neon adapter
+ * (e.g. a test mock) falls through cleanly instead of throwing.
+ */
+export function getDrizzle(): NeonHttpDatabase<typeof schema> | null {
+  const adapter = getDb();
+  if (adapter instanceof NeonAdapter) return adapter.db;
+  return null;
 }
 
 /**

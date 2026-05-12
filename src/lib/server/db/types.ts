@@ -17,6 +17,12 @@ export interface User {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /**
+   * Local scrypt hash for password logins. Surfaced only on server-side User
+   * objects pulled via getUserByEmail; never sent to clients (login/register
+   * handlers strip it before responding).
+   */
+  password_hash?: string | null;
   /** True when the session is anonymous (cookie-only). Not persisted in DB. */
   is_guest?: boolean;
 }
