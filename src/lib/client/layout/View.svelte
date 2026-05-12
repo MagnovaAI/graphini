@@ -669,7 +669,13 @@
           }
         }
       }
-      renderError = error_.message || 'Failed to render diagram';
+      // Empty editor: render errors are noise — the user hasn't started typing.
+      // Matches the early-return at line 553 and the empty-state guard at 508.
+      if (code && code.trim().length > 0) {
+        renderError = error_.message || 'Failed to render diagram';
+      } else {
+        renderError = '';
+      }
     }
     const renderTime = Date.now() - startTime;
     saveStatistics({ code, diagramType, isRough: state.rough, renderTime });

@@ -2998,7 +2998,10 @@
                       const checkerWarnings: { line?: number; message?: string }[] =
                         output.warnings || [];
                       let checkerValid = output.valid !== false;
-                      if (toolName === 'errorChecker' && output.content) {
+                      // Empty editor: keep the server's valid:true verdict —
+                      // re-parsing the empty string would throw and surface
+                      // a false-positive "Invalid Mermaid" to the user.
+                      if (toolName === 'errorChecker' && output.content?.trim()) {
                         try {
                           await mermaidParse(output.content);
                           checkerValid = true;

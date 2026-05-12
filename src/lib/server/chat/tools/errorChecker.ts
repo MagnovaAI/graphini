@@ -109,7 +109,7 @@ function parseSubgraphDeclaration(
   line: string
 ): { id: string; label: string; lineText: string } | null {
   const trimmed = line.trim();
-  const match = trimmed.match(/^subgraph\s+([^\s\[]+)(?:\s*\[(.+?)\])?/i);
+  const match = trimmed.match(/^subgraph\s+([^\s[]+)(?:\s*\[(.+?)\])?/i);
   if (!match) return null;
   const id = match[1].replace(/^["']|["']$/g, '');
   const label = (match[2] || id).replace(/^["']|["']$/g, '');
@@ -186,14 +186,14 @@ function contrastWarningsForDarkMode(
 function subgraphColorWarnings(
   lines: string[]
 ): { line: number; message: string; contrastRatio?: number }[] {
-  type SubgraphInfo = {
+  interface SubgraphInfo {
     color?: [number, number, number];
     colorValue?: string;
     id: string;
     label: string;
     line: number;
     parentId?: string;
-  };
+  }
 
   const { classAssignments, classDefs, styles } = collectStyleData(lines);
   const subgraphs: SubgraphInfo[] = [];
@@ -268,7 +268,7 @@ function subgraphColorWarnings(
 export function createErrorCheckerTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Validate Mermaid diagram syntax and dark-mode color contrast. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use this when the user reports rendering issues or after making complex edits.',
+      'Validate Mermaid diagram syntax and dark-mode color contrast. Pass `path` to target a specific .mermaid file; defaults to the active workspace file when omitted. Use this when the user reports rendering issues or after making complex edits. Skip when the editor is empty — there is nothing to check.',
     inputSchema: z.object({
       path: z
         .string()
@@ -447,8 +447,6 @@ export function createErrorCheckerTool({ target, userId }: ToolContext) {
         content: diagram,
         error: errors.length === 0 ? undefined : `Found ${errors.length} Mermaid syntax issue(s)`,
         errors,
-        warning: warnings.length === 0 ? undefined : `Found ${warnings.length} visual warning(s)`,
-        warnings,
         message:
           errors.length === 0
             ? warnings.length === 0
@@ -458,7 +456,9 @@ export function createErrorCheckerTool({ target, userId }: ToolContext) {
         path: resolved.path,
         success: errors.length === 0,
         themeMode,
-        valid: errors.length === 0
+        valid: errors.length === 0,
+        warning: warnings.length === 0 ? undefined : `Found ${warnings.length} visual warning(s)`,
+        warnings
       };
     }
   });
