@@ -149,6 +149,7 @@ async function verifySignedValue(signedValue: string): Promise<string | null> {
 /** Promote configured emails to admin when the DB role is still `user` (matches session validation). */
 export function applyAdminEmailRoleOverrides(user: User): User {
   if (ADMIN_EMAIL_OVERRIDES.length === 0) return user;
+  if (!user.email) return user;
   if (ADMIN_EMAIL_OVERRIDES.includes(user.email.toLowerCase()) && user.role === 'user') {
     return { ...user, role: 'admin' };
   }
