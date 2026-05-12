@@ -496,11 +496,21 @@
     };
   };
 
+  // Above this size Mermaid parse/render becomes a UI-blocking operation,
+  // and the user almost certainly pasted something that isn't a diagram
+  // (e.g. a file tree, a log dump, prose). Bail with a friendly message
+  // instead of freezing the tab.
+  const MAX_RENDERABLE_CODE_LENGTH = 200_000;
+
   const handleStateChange = async (state: ValidatedState) => {
     const startTime = Date.now();
     // Don't show errors for empty diagrams
     if (state.error !== undefined && state.code && state.code.trim().length > 0) {
       renderError = typeof state.error === 'string' ? state.error : 'Diagram has syntax errors';
+      return;
+    }
+    if (state.code && state.code.length > MAX_RENDERABLE_CODE_LENGTH) {
+      renderError = `Diagram source is too large to render (${Math.round(state.code.length / 1000)}KB). Trim or split it to preview.`;
       return;
     }
     renderError = '';

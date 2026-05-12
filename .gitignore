@@ -58,3 +58,11 @@ logs/
 # Local AI tooling
 .claude/
 .vercel
+.agents/
+.playwright-mcp/
+
+# Local docs / specs / plans (kept uncommitted)
+docs/superpowers/
+
+# Ad-hoc screenshot artifacts from MCP / debugging sessions
+/*.png

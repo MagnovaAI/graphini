@@ -205,7 +205,6 @@
   });
 
   let lastLoadedChatId: string | null = null;
-  let isInitialChatLoad = true;
   let pendingChatLoadId: string | null = null;
 
   // Metadata cache: each conversation has an immutable workspace_id + user_id,
@@ -333,10 +332,6 @@
       if ((err as Error)?.name === 'AbortError') return;
       if (isStale()) return;
       wsError = 'Failed to load chat';
-    } finally {
-      if (!isStale()) {
-        isInitialChatLoad = false;
-      }
     }
   }
 
@@ -749,6 +744,27 @@
     if (chatComponent) return await chatComponent.sendMessageExternal(message, options);
     return false;
   };
+
+  // Debounce the editor's onUpdate so a paste / rapid typing batches into one
+  // store update. AI streaming uses its own throttled path (Chat.simple),
+  // so this only affects manual user input.
+  let editorDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let editorPendingCode: string | null = null;
+  const EDITOR_DEBOUNCE_MS = 250;
+
+  function handleEditorUpdate(code: string) {
+    editorPendingCode = code;
+    if (editorDebounceTimer) clearTimeout(editorDebounceTimer);
+    editorDebounceTimer = setTimeout(() => {
+      editorDebounceTimer = null;
+      const next = editorPendingCode;
+      editorPendingCode = null;
+      if (next === null) return;
+      updateCodeStore({ code: next });
+      ensureFileExists();
+      workspaceStore.markDirty();
+    }, EDITOR_DEBOUNCE_MS);
+  }
 
   // Workspace-based: file creation handled by workspace store
   async function ensureFileExists() {
@@ -1283,11 +1299,7 @@
                   </div>
                   <div class="flex-1 overflow-hidden text-[13px]">
                     <Editor
-                      onUpdate={(code) => {
-                        updateCodeStore({ code });
-                        ensureFileExists();
-                        workspaceStore.markDirty();
-                      }}
+                      onUpdate={handleEditorUpdate}
                       language={activeDiagramEngine}
                       showMermaidError={isMermaidDiagram}
                       isMobile={width < 768}
