@@ -44,11 +44,11 @@
     FileText,
     GitBranch,
     Grid2x2,
+    Focus,
     Loader2 as Loader2Spin,
     Maximize2,
     Network,
     RefreshCw,
-    Scan,
     Workflow,
     ZoomIn,
     ZoomOut
@@ -1107,7 +1107,7 @@
                           <span class="text-[13px] text-muted-foreground">{engineShort}</span>
                         {/if}
                       </div>
-                      <div class="canvas-toolbar-actions flex min-w-0 items-center gap-2">
+                      <div class="canvas-toolbar-actions flex min-w-0 items-center gap-1">
                         {#if isJsonTree}
                           <input
                             type="search"
@@ -1149,7 +1149,7 @@
                             <Button
                               variant="ghost"
                               size="icon"
-                              class="toolbar-btn active size-7"
+                              class="toolbar-btn size-7 {showLayoutDropdown ? 'active' : ''}"
                               title="Layout Options"
                               onclick={() => (showLayoutDropdown = !showLayoutDropdown)}>
                               <Workflow class="size-4" />
@@ -1206,13 +1206,13 @@
                             size="icon"
                             class="toolbar-btn size-7"
                             title="Reset View"
-                            onclick={resetView}><Scan class="size-4" /></Button>
+                            onclick={resetView}><Focus class="size-4" /></Button>
                         {/if}
                         <div class="toolbar-separator"></div>
                         <Button
                           variant="ghost"
                           size="icon"
-                          class="toolbar-btn size-7 text-muted-foreground hover:text-destructive"
+                          class="toolbar-btn toolbar-btn-danger size-7"
                           title="Clear diagram"
                           onclick={clearDiagram}><Eraser class="size-4" /></Button>
                       </div>
@@ -1514,27 +1514,78 @@
 <style>
   @reference "../../../../app.css";
 
+  /* Canvas toolbar icon button — DESIGN.md icon-button token.
+     28px square, transparent ground, --muted-foreground glyph. Hover is
+     deliberately quiet: just a color lift on the glyph, no surface tint
+     unless you really push (focus ring still draws the chrome). Active
+     toggled-on state uses a 1px inset hairline + minimal bg tint so the
+     "on" reads as a setting, not a hover. */
   :global(.toolbar-btn) {
-    @apply text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground;
+    position: relative;
+    border-radius: var(--ds-radius-md);
+    color: var(--muted-foreground);
+    background-color: transparent;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease;
   }
-
+  :global(.toolbar-btn:hover) {
+    background-color: color-mix(in oklab, var(--foreground), transparent 96%);
+    color: var(--foreground);
+  }
   :global(.toolbar-btn.active) {
-    @apply bg-muted text-foreground;
+    background-color: color-mix(in oklab, var(--foreground), transparent 94%);
+    color: var(--foreground);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  :global(.toolbar-btn:focus-visible) {
+    outline: 2px solid color-mix(in oklab, var(--primary), transparent 60%);
+    outline-offset: 2px;
+  }
+  /* Destructive variant (Clear diagram) — quiet ground, hover lifts to
+     the semantic --destructive token. Bg tint stays light for parity
+     with the neutral hover above. */
+  :global(.toolbar-btn.toolbar-btn-danger:hover) {
+    background-color: color-mix(in oklab, var(--destructive), transparent 92%);
+    color: var(--destructive);
+  }
+  /* Toolbar icons read thinner — Lucide's default stroke-width 2 looks
+     heavy at 16px in a dense control strip. Drop to 1.75 across all
+     icons inside .toolbar-btn. */
+  :global(.toolbar-btn svg) {
+    stroke-width: 1.75;
   }
 
   .toolbar-separator {
-    @apply mx-1 h-5 w-px bg-border;
+    @apply mx-1 shrink-0;
+    width: 1px;
+    height: 16px;
+    background-color: var(--border);
   }
 
   /* JSON tree search lives in the canvas toolbar. Matches toolbar-btn
      height (h-7) and uses the same hairline border language. Width is
      capped so it doesn't crowd out the right-side status indicators. */
   .canvas-toolbar-search {
-    @apply h-7 w-64 min-w-0 shrink rounded-md border border-border/70 bg-transparent px-2.5 text-[13px] text-foreground transition-colors outline-none placeholder:text-muted-foreground focus:border-foreground/40;
+    @apply h-7 w-64 min-w-0 shrink rounded-md border border-border bg-transparent px-2 text-[13px] text-foreground transition-colors outline-none placeholder:text-muted-foreground;
+  }
+  .canvas-toolbar-search:focus {
+    border-color: color-mix(in oklab, var(--foreground), transparent 70%);
   }
 
   .toolbar-zoom-label {
-    @apply flex h-7 min-w-10 items-center justify-center rounded-[5px] px-2 text-[13px] font-medium text-muted-foreground tabular-nums;
+    display: flex;
+    height: 28px;
+    min-width: 40px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--ds-space-xs);
+    font-size: var(--fs-body);
+    font-weight: 500;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+    border-radius: var(--ds-radius-md);
   }
 
   .layout-menu {
@@ -1596,11 +1647,16 @@
     }
 
     .toolbar-separator {
-      @apply mx-0.5 shrink-0;
+      margin-left: var(--ds-space-xxs);
+      margin-right: var(--ds-space-xxs);
+      flex-shrink: 0;
     }
 
     .toolbar-zoom-label {
-      @apply min-w-9 shrink-0 px-1.5 text-[12px];
+      min-width: 36px;
+      flex-shrink: 0;
+      padding: 0 var(--ds-space-xxs);
+      font-size: var(--fs-body);
     }
 
     .layout-menu {
