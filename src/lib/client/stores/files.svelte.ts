@@ -63,13 +63,22 @@ const state = $state<FilesState>(
 hmrPreserve('filesState', () => ({ ...state }));
 
 let fetchAllInFlight: Promise<void> | null = null;
+let lastFetchAttempt = 0;
+const FETCH_THROTTLE_MS = 2000;
 
 async function fetchAll(options: { silent?: boolean } = {}): Promise<void> {
   if (fetchAllInFlight) return fetchAllInFlight;
+  // Throttle: don't refetch within 2s of the previous attempt. Prevents
+  // tight loops when an empty/failed response re-triggers the AppSidebar
+  // $effect that called us.
+  const now = Date.now();
+  if (now - lastFetchAttempt < FETCH_THROTTLE_MS) return;
+  lastFetchAttempt = now;
+
   const showLoading = options.silent !== true && state.list.length === 0;
+  if (showLoading) state.loading = true;
   fetchAllInFlight = (async () => {
     try {
-      if (showLoading) state.loading = true;
       const res = await fetch('/api/workspace-files', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
@@ -79,7 +88,9 @@ async function fetchAll(options: { silent?: boolean } = {}): Promise<void> {
     } catch {
       /* ignore */
     } finally {
-      if (showLoading) state.loading = false;
+      // Always clear loading, even if the original call didn't set it — a
+      // previous in-flight call may have, and we don't want it to stick.
+      state.loading = false;
       fetchAllInFlight = null;
     }
   })();
@@ -285,8 +296,8 @@ export const filesStore = {
   get quota() {
     return state.quota;
   },
-  remove,
   refreshAll,
+  remove,
   setActive,
   update
 };

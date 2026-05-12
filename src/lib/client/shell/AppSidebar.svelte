@@ -96,9 +96,17 @@
     // Lazy-load files when the user first switches to Files mode.
   });
 
+  // Lazy-load files when the user first switches to Files mode. Track which
+  // mode we last fetched for so we don't re-fire on every store-state change.
+  // (Reading filesStore.list / .loading inside this effect would create a
+  // dependency that re-runs on empty responses → 429 loop.)
+  let lastFetchedMode = $state<string | null>(null);
   $effect(() => {
-    if (mode === 'files' && filesStore.list.length === 0 && !filesStore.loading) {
+    if (mode === 'files' && lastFetchedMode !== 'files') {
+      lastFetchedMode = 'files';
       filesStore.fetchAllVisible();
+    } else if (mode !== 'files' && lastFetchedMode === 'files') {
+      lastFetchedMode = null;
     }
   });
 
