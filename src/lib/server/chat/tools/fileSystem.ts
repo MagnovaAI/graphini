@@ -33,6 +33,14 @@ import { MERMAID_DIAGRAM_DECLARATION, findMermaidDeclarations } from '$lib/serve
 import { validateContentForKind } from '$lib/server/workspace-content-validation';
 import type { FileSystemTurnGuard, ToolContext } from './context';
 import { runGrep } from './fileSystem-grep';
+import {
+  bridgeGrep,
+  bridgeList,
+  bridgeNotConfiguredError,
+  bridgeRead,
+  bridgeWriteRefused,
+  loadBridgeConfig
+} from './fileSystem-bridge';
 
 const drizzleDb = () => {
   const db = getDrizzle();
@@ -239,6 +247,38 @@ Per-kind validation: .mermaid rejects markdown; .md rejects content starting wit
         listed: false,
         readPaths: new Set()
       };
+
+      // Local-bridge routing. When the user has switched the workspace
+      // source to "local", read operations go through the bridge and
+      // writes are refused — the bridge is read-only by design.
+      const bridge = await loadBridgeConfig(userId);
+      if (bridge.source === 'local') {
+        if (!bridge.url) return bridgeNotConfiguredError();
+
+        if (operation === 'list') {
+          guard.listed = true;
+          return bridgeList(bridge.url);
+        }
+        if (operation === 'read') {
+          return bridgeRead(bridge.url, path ?? '', startLine, endLine, guard);
+        }
+        if (operation === 'grep') {
+          return bridgeGrep(
+            bridge.url,
+            path,
+            {
+              caseSensitive: caseSensitive ?? false,
+              contextLines: contextLines ?? 1,
+              maxMatches: maxMatches ?? 50,
+              mode: mode ?? 'text',
+              query: query ?? ''
+            },
+            guard
+          );
+        }
+        // Everything else is a write or destructive operation.
+        return bridgeWriteRefused(operation);
+      }
 
       if (operation === 'list') {
         const rows = await db
