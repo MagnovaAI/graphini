@@ -16,6 +16,7 @@ import {
   MessageCircleQuestion,
   Paintbrush,
   Palette,
+  Replace,
   ScrollText,
   Search,
   ShieldCheck,
@@ -54,6 +55,7 @@ const ICON_BY_FILE_OPERATION: Record<string, IconComponent> = {
   deleteFolder: i(FolderX),
   edit: i(FilePenLine),
   grep: i(Search),
+  grep_replace: i(Replace),
   list: i(List),
   moveFolder: i(FolderInput),
   read: i(FileSearch)

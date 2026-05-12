@@ -115,11 +115,16 @@ export function deriveToolInputDisplay(toolName: string, inputJson: string): Too
     const content = matchJsonString(inputJson, 'content');
     const query = matchJsonString(inputJson, 'query');
     const mode = matchJsonString(inputJson, 'mode');
+    const replacement = matchJsonString(inputJson, 'replacement');
     const details: string[] = [];
     if (query !== null) {
       const shown = query.length > 60 ? query.slice(0, 57) + '…' : query;
       details.push(`Query: "${shown}"`);
       if (mode === 'regex') details.push('Mode: regex');
+      if (replacement !== null) {
+        const shownRepl = replacement.length > 40 ? replacement.slice(0, 37) + '…' : replacement;
+        details.push(`Replacement: "${shownRepl}"`);
+      }
       if (path) {
         details.push(path.endsWith('/') ? `Scope: folder ${path}` : `Scope: file ${path}`);
       } else {

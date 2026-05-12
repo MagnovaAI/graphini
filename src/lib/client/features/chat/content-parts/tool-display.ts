@@ -22,6 +22,7 @@ const FILE_SYSTEM_VERBS: Record<string, { pending: string; done: string }> = {
   deleteFolder: { pending: 'Deleting folder', done: 'Deleted folder' },
   edit: { pending: 'Editing file', done: 'Edited file' },
   grep: { pending: 'Searching files', done: 'Searched files' },
+  grep_replace: { pending: 'Replacing in file', done: 'Replaced in file' },
   list: { pending: 'Listing workspace', done: 'Listed workspace' },
   moveFolder: { pending: 'Moving folder', done: 'Moved folder' },
   read: { pending: 'Reading file', done: 'Read file' }

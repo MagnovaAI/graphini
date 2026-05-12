@@ -58,6 +58,14 @@ export function deriveToolSubtitle(toolName: string, output: ToolOutput): string
         ? `${total} match${total !== 1 ? 'es' : ''} for ${query}`
         : `${total} match${total !== 1 ? 'es' : ''}`;
     }
+    if (output.mode === 'grep_replace') {
+      const n = typeof output.replacementCount === 'number' ? output.replacementCount : 0;
+      const file = output.file as { path?: string } | undefined;
+      const path = file?.path;
+      return path
+        ? `${n} replacement${n !== 1 ? 's' : ''} · ${path}`
+        : `${n} replacement${n !== 1 ? 's' : ''}`;
+    }
     const file = output.file as { path?: string } | undefined;
     const mode =
       output.mode === 'update' || output.mode === 'patch'
@@ -126,6 +134,17 @@ export function deriveToolDetails(toolName: string, output: ToolOutput): string[
       if (typeof output.slowLines === 'number' && output.slowLines > 0) {
         out.push(`Skipped slow lines: ${output.slowLines}`);
       }
+      if (output.error) out.push(String(output.error));
+      return out;
+    }
+    if (output.mode === 'grep_replace') {
+      const n = typeof output.replacementCount === 'number' ? output.replacementCount : 0;
+      const lines = typeof output.replacedLineCount === 'number' ? output.replacedLineCount : 0;
+      if (file?.path) out.push(`Path: ${file.path}`);
+      out.push(
+        `Replaced ${n} occurrence${n !== 1 ? 's' : ''} across ${lines} line${lines !== 1 ? 's' : ''}`
+      );
+      if (output.warning) out.push(`Warning: ${output.warning}`);
       if (output.error) out.push(String(output.error));
       return out;
     }

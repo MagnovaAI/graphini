@@ -51,17 +51,21 @@ type FileSystemOperation =
   | 'delete'
   | 'moveFolder'
   | 'deleteFolder'
-  | 'grep';
+  | 'grep'
+  | 'grep_replace';
 
 function inferOperation(input: {
   content?: string;
   from?: string;
   path?: string;
   query?: string;
+  replacement?: string;
   startLine?: number;
   to?: string;
 }): FileSystemOperation | undefined {
   if (input.from && input.to) return 'moveFolder';
+  // grep_replace must be checked before grep (both have `query`).
+  if (input.query && input.replacement !== undefined && input.path) return 'grep_replace';
   if (input.query && !input.to && !input.from) return 'grep';
   if (input.content !== undefined && input.path && input.startLine !== undefined) return 'edit';
   if (input.content !== undefined && input.path) return 'create';
@@ -160,11 +164,12 @@ READ (narrow when possible):
 - read:         content of one file by path. Large files return a bounded preview unless \`startLine\`/\`endLine\` selects a smaller range. PREFER a line range over a full read once you know where to look. MUST be called before any line-range \`edit\`.
 
 WRITE:
-- create:       create a new file. Requires \`path\` ending in .md/.json/.yaml/.yml/.mermaid/.mmd, plus \`content\`. Duplicate/quota checks happen internally. Quota: 15 (guest) / 30 (signed-in).
-- edit:         edit an existing file. With \`startLine\`/\`endLine\`, replaces that 1-based inclusive range; without line numbers, replaces the full file.
-- delete:       remove one file by path.
-- moveFolder:   rename every file under a folder prefix in one shot. Requires \`from\` and \`to\`.
-- deleteFolder: delete every file under a folder prefix. Requires \`path\`.
+- create:        create a new file. Requires \`path\` ending in .md/.json/.yaml/.yml/.mermaid/.mmd, plus \`content\`. Duplicate/quota checks happen internally. Quota: 15 (guest) / 30 (signed-in).
+- edit:          edit an existing file. With \`startLine\`/\`endLine\`, replaces that 1-based inclusive range; without line numbers, replaces the full file. Per-kind validation enforced.
+- grep_replace:  find-and-replace inside a single file. Requires \`path\`, \`query\`, \`replacement\`. \`mode: 'regex'\` supports $1..$9 and $& backreferences. Skips per-kind validation — fast and powerful, but can produce invalid content if you're careless. Optional: \`caseSensitive\` (default false), \`maxReplacements\` (1..1000, default 100; refuses if exceeded).
+- delete:        remove one file by path.
+- moveFolder:    rename every file under a folder prefix in one shot. Requires \`from\` and \`to\`.
+- deleteFolder:  delete every file under a folder prefix. Requires \`path\`.
 
 Per-kind validation: .mermaid rejects markdown; .md rejects content starting with a Mermaid declaration; .json must parse; .yaml is stored as-is.`,
     inputSchema: z.object({
@@ -174,12 +179,24 @@ Per-kind validation: .mermaid rejects markdown; .md rejects content starting wit
       endLine: z.number().int().min(1).optional(),
       from: z.string().optional(),
       maxMatches: z.number().int().min(1).max(200).optional(),
+      maxReplacements: z.number().int().min(1).max(1000).optional(),
       mode: z.enum(['text', 'regex']).optional(),
       operation: z
-        .enum(['list', 'read', 'create', 'edit', 'delete', 'moveFolder', 'deleteFolder', 'grep'])
+        .enum([
+          'list',
+          'read',
+          'create',
+          'edit',
+          'delete',
+          'moveFolder',
+          'deleteFolder',
+          'grep',
+          'grep_replace'
+        ])
         .optional(),
       path: z.string().optional(),
       query: z.string().optional(),
+      replacement: z.string().optional(),
       startLine: z.number().int().min(1).optional(),
       to: z.string().optional()
     }),
@@ -192,12 +209,15 @@ Per-kind validation: .mermaid rejects markdown; .md rejects content starting wit
       startLine,
       endLine,
       query,
+      replacement,
       mode,
       caseSensitive,
       contextLines,
-      maxMatches
+      maxMatches,
+      maxReplacements
     }) => {
-      operation = operation ?? inferOperation({ content, from, path, query, startLine, to });
+      operation =
+        operation ?? inferOperation({ content, from, path, query, replacement, startLine, to });
       if (!operation) {
         return {
           success: false,
@@ -608,7 +628,144 @@ Per-kind validation: .mermaid rejects markdown; .md rejects content starting wit
         };
       }
 
+      if (operation === 'grep_replace') {
+        if (!path) return { success: false, error: 'grep_replace requires `path`.' };
+        if (path.endsWith('/') || !PATH_RE.test(path)) {
+          return { success: false, error: '`path` must be a single file path (not a folder).' };
+        }
+        if (!query) return { success: false, error: '`query` is required.' };
+        if (replacement === undefined) {
+          return { success: false, error: '`replacement` is required.' };
+        }
+        const grMode = mode ?? 'text';
+        const grCase = caseSensitive ?? false;
+        const grMax = maxReplacements ?? 100;
+        if (grMax < 1 || grMax > 1000) {
+          return { success: false, error: 'maxReplacements must be 1..1000.' };
+        }
+
+        const db = drizzleDb();
+        const [row] = await db
+          .select()
+          .from(workspaceFiles)
+          .where(and(eq(workspaceFiles.user_id, userId), eq(workspaceFiles.path, path)));
+        if (!row) return { success: false, error: `File not found: ${path}` };
+
+        const oldContent = row.content ?? '';
+
+        // Compile matcher + count matches non-destructively.
+        let newContent: string;
+        let count: number;
+        try {
+          if (grMode === 'text') {
+            const re = new RegExp(escapeRegex(query), grCase ? 'g' : 'gi');
+            count = (oldContent.match(re) ?? []).length;
+            if (count > grMax) {
+              return {
+                success: false,
+                error: `Too many matches (${count}); narrow the pattern or raise maxReplacements (max 1000).`
+              };
+            }
+            // Literal replacement (no $ interpretation): use a function arg.
+            newContent = oldContent.replace(re, () => replacement);
+          } else {
+            if (query.length > 1000) {
+              return { success: false, error: 'Regex too long (max 1000 chars).' };
+            }
+            if (/[*+?]\s*[)\]]\s*[*+?]|\([^)]*[*+]\)\s*[*+?]/.test(query)) {
+              return {
+                success: false,
+                error:
+                  'Regex has a nested unbounded quantifier; rewrite to avoid catastrophic backtracking.'
+              };
+            }
+            const re = new RegExp(query, grCase ? 'g' : 'gi');
+            count = (oldContent.match(re) ?? []).length;
+            if (count > grMax) {
+              return {
+                success: false,
+                error: `Too many matches (${count}); narrow the pattern or raise maxReplacements (max 1000).`
+              };
+            }
+            // Regex mode: native semantics — $1..$9, $& honored.
+            newContent = oldContent.replace(re, replacement);
+          }
+        } catch (err) {
+          return { success: false, error: `Invalid regex: ${(err as Error).message}` };
+        }
+
+        if (newContent === oldContent) {
+          return {
+            file: {
+              id: row.id,
+              kind: row.kind,
+              length: oldContent.length,
+              lineCount: oldContent.split('\n').length,
+              path: row.path
+            },
+            matchMode: grMode,
+            mode: 'grep_replace',
+            replacedLineCount: 0,
+            replacementCount: 0,
+            success: true
+          };
+        }
+
+        try {
+          await db
+            .update(workspaceFiles)
+            .set({ content: newContent, updated_at: new Date() })
+            .where(and(eq(workspaceFiles.id, row.id), eq(workspaceFiles.user_id, userId)));
+        } catch (err) {
+          return {
+            success: false,
+            error: `Failed to apply grep_replace: ${(err as Error).message}`
+          };
+        }
+
+        guard.readPaths.add(path);
+
+        // Passive per-kind validation — write stands either way, but we
+        // surface a warning so the model can decide whether to fix it.
+        let warning: string | undefined;
+        const validation = validateContentForKind(row.kind, newContent);
+        if (!validation.ok) {
+          warning = `Result is no longer valid .${row.kind} (validation skipped on grep_replace): ${validation.error}`;
+        }
+
+        return {
+          file: {
+            id: row.id,
+            kind: row.kind,
+            length: newContent.length,
+            lineCount: newContent.split('\n').length,
+            path: row.path
+          },
+          matchMode: grMode,
+          mode: 'grep_replace',
+          replacedLineCount: countChangedLines(oldContent, newContent),
+          replacementCount: count,
+          success: true,
+          ...(warning ? { warning } : {})
+        };
+      }
+
       return { success: false, error: `Unknown operation: ${operation}` };
     }
   });
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function countChangedLines(a: string, b: string): number {
+  const aLines = a.split('\n');
+  const bLines = b.split('\n');
+  const max = Math.max(aLines.length, bLines.length);
+  let changed = 0;
+  for (let i = 0; i < max; i++) {
+    if (aLines[i] !== bLines[i]) changed++;
+  }
+  return changed;
 }
