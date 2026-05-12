@@ -280,42 +280,51 @@
       );
   }
 
+  /* Cards. Important: --card === --background in this theme, so we can't
+     rely on bg-card for separation. Light mode: white card on subtle
+     dotted bg, lean on shadow + border. Dark mode: lift the card with
+     zinc-800 — distinct from the #181818 canvas without going pure black. */
   .object-card {
-    @apply relative z-10 h-full overflow-visible rounded-lg border border-border/80 bg-card text-[13px] shadow-sm ring-1 ring-black/[0.02] dark:ring-white/[0.04];
+    @apply relative z-10 h-full overflow-visible rounded-lg border border-zinc-200/80 bg-white text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_-4px_rgba(0,0,0,0.08)] dark:border-zinc-700/70 dark:bg-zinc-900 dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(0,0,0,0.6)];
   }
 
   .card-header {
-    @apply flex h-9 items-center justify-between gap-2 rounded-t-lg border-b border-border/70 px-3 font-mono text-[12px] font-semibold tracking-tight;
+    @apply flex h-9 items-center justify-between gap-2 rounded-t-lg border-b border-zinc-200/70 px-3 font-mono text-[12px] font-semibold tracking-tight dark:border-zinc-700/60;
   }
 
+  /* Header palettes — light uses 100/900 (good 9:1+ contrast); dark uses
+     a richer 500/40 tint over the zinc-900 card with near-white text for
+     legibility against the dotted background and tinted fill. */
   .card-header-purple {
-    @apply bg-purple-100 text-purple-900 dark:bg-purple-500/25 dark:text-purple-50;
+    @apply bg-purple-100 text-purple-900 dark:bg-purple-500/30 dark:text-purple-100;
   }
 
   .card-header-teal {
-    @apply bg-cyan-100 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-50;
+    @apply bg-cyan-100 text-cyan-900 dark:bg-cyan-500/30 dark:text-cyan-100;
   }
 
   .card-header-green {
-    @apply bg-emerald-100 text-emerald-900 dark:bg-emerald-500/25 dark:text-emerald-50;
+    @apply bg-emerald-100 text-emerald-900 dark:bg-emerald-500/30 dark:text-emerald-100;
   }
 
   .card-header-beige {
-    @apply bg-stone-100 text-stone-800 dark:bg-stone-500/25 dark:text-stone-50;
+    @apply bg-amber-50 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100;
   }
 
+  /* Floating chrome — needs an explicit elevated bg in dark mode since
+     bg-background blends into the canvas. */
   .collapse-button {
-    @apply flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-background/80 font-mono text-[12px] leading-none text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground;
+    @apply flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-zinc-300 bg-white font-mono text-[12px] leading-none text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-400 dark:hover:text-zinc-50;
   }
 
-  /* Edges: stronger in light mode (slate-400 was too faint), softer in
-     dark mode to avoid overwhelming the cards. */
+  /* Edges. Light: slate-500 reads cleanly over white cards and dotted bg.
+     Dark: slate-400/50 keeps it present without out-glowing the cards. */
   .graph-edge {
-    @apply fill-none stroke-slate-400 transition-[stroke,stroke-dasharray] duration-150 dark:stroke-slate-400/60;
+    @apply fill-none stroke-slate-500 transition-[stroke,stroke-dasharray] duration-150 dark:stroke-slate-400/55;
   }
 
   .graph-edge:hover {
-    @apply stroke-foreground;
+    @apply stroke-zinc-900 dark:stroke-zinc-100;
     stroke-dasharray: 8 7;
     animation: structured-flow 0.75s linear infinite;
   }
@@ -325,21 +334,22 @@
   }
 
   .property-row {
-    @apply relative flex h-8 items-center gap-2 border-b border-border/50 px-3 last:rounded-b-lg last:border-b-0;
+    @apply relative flex h-8 items-center gap-2 border-b border-zinc-200/60 px-3 last:rounded-b-lg last:border-b-0 dark:border-zinc-700/50;
   }
 
+  /* Keys: blue-700 hits 7:1 on white; blue-300 hits 7:1 on zinc-900. */
   .property-key {
     @apply shrink-0 font-semibold text-blue-700 dark:text-blue-300;
   }
 
-  /* Bumped from text-muted-foreground for readability — old value was
-     ~50% opacity and disappeared on the patterned background. */
+  /* Values: lean toward the text color rather than the muted token so
+     they stay readable against the patterned background. */
   .property-value {
-    @apply min-w-0 truncate text-foreground/80 dark:text-foreground/75;
+    @apply min-w-0 truncate text-zinc-700 dark:text-zinc-300;
   }
 
   .property-port {
-    @apply absolute top-1/2 right-[-10px] z-50 flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-border bg-background font-mono text-[12px] leading-none text-muted-foreground shadow-md transition-colors hover:border-foreground/50 hover:text-foreground dark:border-border/80;
+    @apply absolute top-1/2 right-[-10px] z-50 flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-zinc-300 bg-white font-mono text-[12px] leading-none text-zinc-600 shadow-md transition-colors hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-400 dark:hover:text-zinc-50;
   }
 
   @keyframes structured-flow {
