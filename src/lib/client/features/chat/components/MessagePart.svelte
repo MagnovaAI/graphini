@@ -41,8 +41,9 @@
   }
   :global(.message-part[data-variant='compact']) {
     display: flex;
+    flex-direction: column;
     min-height: 24px;
-    align-items: center;
+    align-items: stretch;
   }
   :global(.message-part + .message-part) {
     margin-top: 10px;
