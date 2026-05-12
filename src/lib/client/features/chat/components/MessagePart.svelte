@@ -18,21 +18,36 @@
 </div>
 
 <style>
-  .message-part {
+  /* :global so the runtime class string from cn() actually matches —
+     Svelte's default scoping would suffix `.svelte-xxx` and miss. */
+  :global(.message-part) {
     min-width: 0;
+    animation: message-part-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .message-part[data-variant='compact'] {
+  @keyframes message-part-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.message-part) {
+      animation: none;
+    }
+  }
+  :global(.message-part[data-variant='compact']) {
     display: flex;
     min-height: 24px;
     align-items: center;
   }
-  .message-part + .message-part {
+  :global(.message-part + .message-part) {
     margin-top: 10px;
   }
-  /* Compact-to-compact: needs breathing room so consecutive tool chips
-     don't read as one stacked block. 4px was too tight against the 13px
-     title text — 8px lands them as related-but-distinct. */
-  .message-part[data-variant='compact'] + .message-part[data-variant='compact'] {
+  :global(.message-part[data-variant='compact'] + .message-part[data-variant='compact']) {
     margin-top: 8px;
   }
 </style>

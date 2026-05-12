@@ -72,7 +72,49 @@
     wasStreaming = isStreaming;
   });
 
-  let lines = $derived(code.split('\n'));
+  // Throttle the displayed code during streaming to ~10 fps. Tokens arrive
+  // 30-60/sec from the model; re-deriving `lines`, the LCS, and the row
+  // template per token is wasted work and the visible cause of streaming
+  // flicker after the key-stability fix. `displayCode` lags the live `code`
+  // prop by at most 100ms during streaming, then snaps to the final value
+  // the moment streaming ends so the user never sees stale content.
+  let displayCode = $state(code);
+  let lastDisplayUpdate = 0;
+  let displayTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const live = code;
+    const streaming = isStreaming;
+    if (!streaming) {
+      // Final flush — clear any pending throttle and settle immediately so
+      // the post-stream highlight + diff run against the complete file.
+      if (displayTimer) {
+        clearTimeout(displayTimer);
+        displayTimer = null;
+      }
+      displayCode = live;
+      return;
+    }
+    const now = Date.now();
+    const since = now - lastDisplayUpdate;
+    if (since >= 100) {
+      lastDisplayUpdate = now;
+      displayCode = live;
+    } else if (!displayTimer) {
+      displayTimer = setTimeout(() => {
+        lastDisplayUpdate = Date.now();
+        displayTimer = null;
+        displayCode = code;
+      }, 100 - since);
+    }
+    return () => {
+      if (displayTimer) {
+        clearTimeout(displayTimer);
+        displayTimer = null;
+      }
+    };
+  });
+
+  let lines = $derived(displayCode.split('\n'));
   let lineCount = $derived(lines.length);
   let isRead = $derived(operation === 'read');
   let isError = $derived(isRead && hasErrors);
@@ -102,13 +144,25 @@
     lineNum?: number;
   }
   let diffLines = $derived.by((): DiffLine[] => {
-    if (!hasDiff || isStreaming) return [];
+    // During streaming with no prior content (create, or edit where we
+    // couldn't capture previousCode) every line is "added" — short-circuit
+    // since the LCS would return the same thing.
+    if (isStreaming && !hasPrev) {
+      return lines.map((l, idx) => ({ text: l, type: 'added' as const, lineNum: idx + 1 }));
+    }
+    if (!hasDiff) return [];
 
-    // Simple LCS-based unified diff
+    // Simple LCS-based unified diff. During streaming with a very large
+    // prior file we degrade to "all added" so the LCS doesn't stall the
+    // main thread on every token batch — the real diff appears once the
+    // stream completes.
     const a = prevLines;
     const b = lines;
     const n = a.length,
       m = b.length;
+    if (isStreaming && n * m > 200_000) {
+      return b.map((l, idx) => ({ text: l, type: 'added' as const, lineNum: idx + 1 }));
+    }
 
     // Build LCS table
     const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
@@ -165,13 +219,11 @@
     }
     return result;
   });
-  // Show the git-style diff view for any non-streaming write. Edits with
-  // prior content get a real diff; edits/creates without prior content fall
-  // back to "all added" via hasDiff/addedCount above, so the green-rail
-  // treatment still applies.
-  let showDiffView = $derived(
-    !isStreaming && (operation === 'edit' || operation === 'create') && lineCount > 0
-  );
+  // Show the git-style diff view for any write — including while streaming.
+  // Streaming pre-fills diffLines with "all added" so the body renders the
+  // same green-rail + green-bg treatment from the first token, matching
+  // 1code's behavior where streaming text never has a separate look.
+  let showDiffView = $derived((operation === 'edit' || operation === 'create') && lineCount > 0);
 
   // Auto-scroll to bottom during streaming
   $effect(() => {
@@ -235,9 +287,21 @@
   $effect(() => {
     const lang = (language || 'mermaid').toLowerCase();
     const themeName = activeThemeName;
-    const text = code;
+    // Use the throttled displayCode for tokenization so we don't re-tokenize
+    // on every streamed token; even with throttling we skip shiki entirely
+    // while isStreaming and only re-highlight once when the stream ends.
+    const text = displayCode;
     const prev = previousCode;
+    const streaming = isStreaming;
     let cancelled = false;
+    // Streaming: render plain text. Shiki re-tokenizes the entire file every
+    // call, which dominates CPU during a stream and visibly stutters lines
+    // as new tokens land. The diff rail/bg tint already conveys "live".
+    if (streaming) {
+      codeTokenLines = null;
+      prevCodeTokenLines = null;
+      return;
+    }
     void (async () => {
       try {
         const hl = await getSharedHighlighter();
@@ -411,7 +475,9 @@
     </div>
   {/if}
 
-  <!-- Code body -->
+  <!-- Code body. Streaming and final rendering use the same diff layout
+       (green rails + bg on every line). No special streaming variant
+       needed; the per-line treatment is the streaming cue. -->
   {#if !isCollapsed}
     <div
       bind:this={codeContainer}
@@ -421,7 +487,14 @@
         <!-- Diff-only view: show only changed regions -->
         <table class="w-full border-collapse font-mono text-[12px] leading-[1.65]">
           <tbody>
-            {#each diffLines as dl, i (`${dl.type}:${dl.lineNum ?? 'gap'}:${dl.text}:${i}`)}
+            <!-- Key intentionally excludes `dl.text`. The streaming last
+                 line mutates character-by-character; if text was in the
+                 key, every token would change the key, destroy + recreate
+                 the <tr>, and re-run the row entrance animation — that
+                 produced the flicker. Position (type + lineNum + i) is
+                 stable across token updates, so Svelte updates the row's
+                 text in place. -->
+            {#each diffLines as dl, i (`${dl.type}:${dl.lineNum ?? 'gap'}:${i}`)}
               {@const lineTokens = tokensForLine(
                 dl.text,
                 dl.lineNum,
@@ -489,13 +562,17 @@
         <!-- Full code view -->
         <table class="w-full border-collapse font-mono text-[12px] leading-[1.65]">
           <tbody>
-            {#each lines as line, i (`${i}:${line}`)}
+            <!-- Key by index only. Including `line` made the streaming
+                 last line re-mount on every token, retriggering the row
+                 entrance animation and flickering. -->
+            {#each lines as line, i (i)}
               {@const lineTokens = codeTokenLines ? codeTokenLines[i] : null}
-              <tr
-                class={[
-                  'artifact-line group transition-colors duration-75 hover:bg-muted/30',
-                  isStreaming && i >= lineCount - 3 && 'artifact-line-new'
-                ]}>
+              <!-- No per-line streaming bg — that "trailing 3 lines" glow
+                   flickered as new lines arrived and pulsed green even on
+                   lines that would settle as unchanged. Streaming tint
+                   comes from the text-color override on .artifact-code
+                   instead, applied to the whole body while streaming. -->
+              <tr class="artifact-line group transition-colors duration-75 hover:bg-muted/30">
                 <td
                   class="artifact-ln border-r border-border/30 px-3 text-right align-top text-muted-foreground/40 select-none"
                   style="width: {lineCount > 99 ? '3.5rem' : '2.75rem'}; min-width: {lineCount > 99
@@ -560,12 +637,14 @@
     }
   }
 
-  /* Cursor blink animation */
+  /* Streaming caret. Color matches the streaming-line tint family
+     (emerald) instead of the brand purple — keeps the whole streaming
+     viewport reading as "incoming additions". */
   .artifact-cursor {
     display: inline-block;
     width: 2px;
     height: 1.1em;
-    background: var(--ring);
+    background: rgb(16 185 129); /* emerald-500 */
     margin-left: 1px;
     vertical-align: text-bottom;
     animation: artifact-blink 0.8s step-end infinite;
@@ -581,6 +660,30 @@
     }
   }
 
+  /* Every diff/streaming row fades in on mount. With the stable Svelte
+     key (type:lineNum:text:i), rows whose identity hasn't changed don't
+     re-animate — only freshly-arrived rows do. That gives the "lines
+     materializing into the diff" feel during streaming, and a calm
+     reveal of changed regions when the final diff lands. */
+  .artifact-line {
+    animation: artifact-row-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes artifact-row-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .artifact-line {
+      animation: none;
+    }
+  }
+
   @keyframes artifact-bounce {
     0%,
     80%,
@@ -590,11 +693,6 @@
     40% {
       transform: translateY(-3px);
     }
-  }
-
-  /* New line highlight during streaming */
-  .artifact-line-new {
-    background: var(--accent);
   }
 
   /* Diff highlights are now handled inline via Tailwind classes */

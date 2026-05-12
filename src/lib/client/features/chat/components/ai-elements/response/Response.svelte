@@ -17,7 +17,7 @@
 
 <Streamdown
   class={cn(
-    'prose size-full',
+    'prose streamdown-fade size-full',
     // Kill the prose plugin's heavy paragraph spacing inside chat messages.
     // The chat's outer space-y-1.5 is the single source of vertical rhythm;
     // prose's own 1.25em <p> margins were doubling that gap and producing
@@ -36,3 +36,30 @@
     'dark-plus': darkPlus
   }}
   {...restProps} />
+
+<style>
+  /* Per-block fade-in for streamed prose. Each block child (p, ul, ol, li,
+     h1-h6, blockquote, pre, table) gets a one-shot 180ms reveal when it
+     first mounts. Streamdown's incremental DOM keeps existing nodes
+     stable, so only freshly-arrived blocks animate. */
+  :global(.streamdown-fade > *),
+  :global(.streamdown-fade li) {
+    animation: streamdown-fade-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes streamdown-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.streamdown-fade > *),
+    :global(.streamdown-fade li) {
+      animation: none;
+    }
+  }
+</style>

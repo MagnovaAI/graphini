@@ -992,9 +992,12 @@
   function contentPartKey(part: DisplayContentPart, index: number) {
     if (part.type === 'artifact') return part.artifactId;
     if ('id' in part) return part.id;
-    if (part.type === 'text') return `text:${part.text.slice(0, 40)}:${index}`;
-    if (part.type === 'error') return `error:${part.error}:${index}`;
-    return `part:${index}`;
+    // Position-only keys for parts without a stable id. Earlier versions
+    // hashed the first 40 chars of the text into the key — every keystroke
+    // that landed within that window mutated the key, re-mounted the
+    // <MessagePart>, and replayed its entrance + Streamdown's per-block
+    // fade-ins. That was the streaming-flicker on assistant prose.
+    return `${part.type}:${index}`;
   }
 
   function chainDisplayParts(parts: ContentPart[]): DisplayContentPart[] {
