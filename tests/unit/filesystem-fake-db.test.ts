@@ -32,7 +32,9 @@ describe('buildFakeDb', () => {
     const found = (await db
       .select()
       .from(workspaceFiles)
-      .where(and(eq(workspaceFiles.user_id, 'u1'), eq(workspaceFiles.path, 'a.md')))) as {
+      .where(
+        and(eq(workspaceFiles.user_id, 'u1'), eq(workspaceFiles.path, 'a.md')) as never
+      )) as {
       content: string;
     }[];
     expect(found).toHaveLength(1);
