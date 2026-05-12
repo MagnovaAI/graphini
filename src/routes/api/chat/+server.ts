@@ -3,10 +3,7 @@ import { getDb } from '$lib/server/db';
 import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { stateManager } from '$lib/server/state-manager';
 import { error, json } from '@sveltejs/kit';
-import dotenv from 'dotenv';
 import type { RequestHandler } from './$types';
-dotenv.config({ path: '.env.local' });
-dotenv.config();
 
 export const GET: RequestHandler = async ({ request }) => {
   const rl = chatLimiter.check(getClientKey(request));
