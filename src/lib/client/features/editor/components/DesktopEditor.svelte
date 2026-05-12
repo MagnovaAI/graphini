@@ -120,46 +120,38 @@
       kv.set('editor', 'editorValidationError', errMsg);
     }
   }
-  let editorOptions = {
+  // Threshold above which we skip the heavy semantic layer (IntelliSense,
+  // word-based suggestions, JSON schema validation). VSCode uses a similar
+  // cutoff at editor.largeFileOptimizations.
+  const LARGE_FILE_BYTES = 2 * 1024 * 1024;
+
+  // Phase 0: bare-minimum options used to open the editor instantly.
+  // Just text rendering, scrolling, line numbers, syntax highlighting.
+  // Everything else is layered in progressively via requestIdleCallback —
+  // see scheduleProgressiveEnhancement() below.
+  const initialEditorOptions = {
     acceptSuggestionOnEnter: 'on' as const,
-    bracketPairColorization: {
-      enabled: true
-    },
+    bracketPairColorization: { enabled: false },
     codeLens: false,
-    // Modern appearance
-    cursorBlinking: 'smooth' as const,
-    cursorSmoothCaretAnimation: 'on' as const,
-    folding: true,
+    cursorBlinking: 'solid' as const,
+    cursorSmoothCaretAnimation: 'off' as const,
+    folding: false,
     fontFamily:
       'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
     fontSize: 12,
     glyphMargin: false,
-    guides: {
-      indentation: true,
-      bracketPairs: true
-    },
-    // Enhanced error display
-    hover: {
-      enabled: true,
-      delay: 200
-    },
+    guides: { indentation: false, bracketPairs: false },
+    hover: { enabled: false, delay: 200 },
     lineDecorationsWidth: 0,
     lineHeight: 16,
     lineNumbers: 'on' as const,
     lineNumbersMinChars: 3,
-    minimap: {
-      enabled: false
-    },
-    occurrencesHighlight: 'singleFile' as const,
+    minimap: { enabled: false },
+    occurrencesHighlight: 'off' as const,
     overviewRulerLanes: 0,
     padding: { top: 16, bottom: 16 },
-    // Enhanced validation indicators
-    quickSuggestions: {
-      other: true,
-      comments: false,
-      strings: false
-    },
-    renderLineHighlight: 'gutter' as const,
+    quickSuggestions: false,
+    renderLineHighlight: 'none' as const,
     scrollBeyondLastLine: false,
     scrollbar: {
       horizontal: 'auto' as const,
@@ -172,14 +164,113 @@
       verticalScrollbarSize: 4,
       verticalSliderSize: 4
     },
-    // Better selection and highlighting
-    selectionHighlight: true,
-    smoothScrolling: true,
-    suggestOnTriggerCharacters: true,
+    selectionHighlight: false,
+    smoothScrolling: false,
+    suggestOnTriggerCharacters: false,
     tabCompletion: 'on' as const,
-    wordBasedSuggestions: 'allDocuments' as const
+    wordBasedSuggestions: 'off' as const
   };
   let currentText = '';
+  let enhancementHandles: number[] = [];
+  let updateTimeout: number | undefined;
+  let lastLineNumberWidth = 0;
+
+  /**
+   * Resize the gutter to fit the largest visible line number. Monaco only
+   * sets `lineNumbersMinChars` once at construction, so the gutter crops
+   * "100000" when a multi-MB file lands. Cap at 7 (10M lines is plenty).
+   * Only updates when the digit count actually changes, to avoid layout
+   * thrash on every keystroke.
+   */
+  function syncLineNumberWidth(text: string) {
+    if (!editor) return;
+    let lines = 1;
+    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) lines++;
+    const digits = Math.max(3, Math.min(7, String(lines).length));
+    if (digits === lastLineNumberWidth) return;
+    lastLineNumberWidth = digits;
+    editor.updateOptions({ lineNumbersMinChars: digits });
+  }
+
+  // requestIdleCallback fallback for Safari (still missing as of writing).
+  const idle = (cb: () => void, timeout = 2000): number => {
+    if (typeof self.requestIdleCallback === 'function') {
+      return self.requestIdleCallback(cb, { timeout });
+    }
+    return self.setTimeout(cb, 16) as unknown as number;
+  };
+
+  const cancelIdle = (handle: number) => {
+    if (typeof self.cancelIdleCallback === 'function') {
+      self.cancelIdleCallback(handle);
+    } else {
+      self.clearTimeout(handle);
+    }
+  };
+
+  /**
+   * Schedule feature layers in waves: light → medium → heavy. Each layer
+   * waits for the previous to complete (and the browser to idle) before
+   * upgrading editor options. Files larger than LARGE_FILE_BYTES skip the
+   * heavy layer entirely.
+   */
+  function scheduleProgressiveEnhancement() {
+    if (!editor) return;
+
+    // Phase 1 — light visual polish (~50ms idle). Re-checks file size at
+    // fire time, not schedule time, so a file that grows past the cutoff
+    // between scheduling and firing still gets the right gating.
+    enhancementHandles.push(
+      idle(() => {
+        editor?.updateOptions({
+          bracketPairColorization: { enabled: true },
+          cursorBlinking: 'smooth',
+          cursorSmoothCaretAnimation: 'on',
+          guides: { indentation: true, bracketPairs: true },
+          renderLineHighlight: 'gutter',
+          smoothScrolling: true
+        });
+
+        // Phase 2 — folding + selection highlights (~500ms idle).
+        enhancementHandles.push(
+          idle(() => {
+            const isLargeNow = currentText.length > LARGE_FILE_BYTES;
+            editor?.updateOptions({
+              folding: !isLargeNow,
+              selectionHighlight: !isLargeNow,
+              occurrencesHighlight: isLargeNow ? 'off' : 'singleFile',
+              hover: { enabled: !isLargeNow, delay: 200 }
+            });
+
+            // Phase 3 — IntelliSense + schema validation. Skip when the
+            // current file is large; the JSON worker stalls on multi-MB
+            // validation and the hover error widget overflows the screen.
+            if (isLargeNow) return;
+            enhancementHandles.push(
+              idle(() => {
+                if (currentText.length > LARGE_FILE_BYTES) return;
+                editor?.updateOptions({
+                  quickSuggestions: { other: true, comments: false, strings: false },
+                  suggestOnTriggerCharacters: true,
+                  wordBasedSuggestions: 'allDocuments'
+                });
+                monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+                  validate: true,
+                  enableSchemaRequest: true,
+                  schemas: [
+                    {
+                      fileMatch: ['config.json'],
+                      uri: 'https://mermaid.js.org/schemas/config.schema.json'
+                    }
+                  ]
+                });
+              }, 2500)
+            );
+          }, 1000)
+        );
+      }, 500)
+    );
+  }
 
   self.MonacoEnvironment = {
     getWorker(_, label) {
@@ -219,19 +310,12 @@
       throw new Error('divEl is undefined');
     }
 
-    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-      validate: true,
-      enableSchemaRequest: true,
-      schemas: [
-        {
-          fileMatch: ['config.json'],
-          uri: 'https://mermaid.js.org/schemas/config.schema.json'
-        }
-      ]
-    });
+    // Start with JSON validation OFF; the progressive-enhancement pass
+    // re-enables it once the editor has settled (and only for small files).
+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ validate: false, schemas: [] });
 
     initEditor(monaco);
-    editor = monaco.editor.create(divElement, editorOptions);
+    editor = monaco.editor.create(divElement, initialEditorOptions);
 
     // Boot shiki + VS Code Dark+/Light+ themes for real mermaid highlighting.
     // Async — kicks off in the background; theme is applied here once ready.
@@ -262,19 +346,65 @@
       currentState.editorMode === 'code' ? currentState.code : currentState.mermaid;
     editor.setValue(initialText);
     currentText = initialText;
+    syncLineNumberWidth(initialText);
+
+    // Kick off progressive enhancement once the bare editor is on-screen.
+    // Bare options open instantly even on a 5MB file; phases 1-3 layer in
+    // bracket colors, folding, IntelliSense over the next ~2.5s of idle.
+    scheduleProgressiveEnhancement();
 
     editor.onDidChangeModelContent(({ isFlush }) => {
       const newText = editor?.getValue();
       if (!newText || currentText === newText || isFlush) {
         return;
       }
+      const wasLarge = currentText.length > LARGE_FILE_BYTES;
+      const isLarge = newText.length > LARGE_FILE_BYTES;
       currentText = newText;
-      onUpdate(newText);
+      syncLineNumberWidth(newText);
 
-      // Immediate validation for potential errors (check for common error patterns)
+      // Crossing into large: rip out validation + heavy options immediately
+      // so the JSON worker doesn't choke and the hover error widget can't
+      // render over the editor surface. Also clear any markers the worker
+      // already stamped — disabling validation doesn't sweep stale ones.
+      if (!wasLarge && isLarge) {
+        monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+          validate: false,
+          schemas: []
+        });
+        const m = editor?.getModel();
+        if (m) {
+          monaco.editor.setModelMarkers(m, 'json', []);
+          monaco.editor.setModelMarkers(m, 'mermaid', []);
+        }
+        editor?.updateOptions({
+          folding: false,
+          hover: { enabled: false, delay: 200 },
+          occurrencesHighlight: 'off',
+          quickSuggestions: false,
+          selectionHighlight: false,
+          suggestOnTriggerCharacters: false,
+          wordBasedSuggestions: 'off'
+        });
+      }
+
+      // For large files, debounce the downstream sync — every keystroke or
+      // big paste otherwise pushes 5MB through the store, the tree view's
+      // JSON parse, and the chat panel re-render.
+      if (isLarge) {
+        if (updateTimeout) clearTimeout(updateTimeout);
+        updateTimeout = self.setTimeout(() => onUpdate(newText), 400) as unknown as number;
+      } else {
+        onUpdate(newText);
+      }
+
+      // Skip the potential-error regex on huge documents — it's a
+      // catastrophic-backtracking risk and the validator only runs for
+      // mermaid files anyway, which are never multi-MB.
+      if (language !== 'mermaid' || isLarge) {
+        return;
+      }
       const hasPotentialError = /[^\]]*\[[^\]]*$|[^)]*\([^)]*$|[^}]*\{[^}]*$|"[^"]*$/.test(newText);
-
-      // Trigger immediate validation if potential error detected, otherwise use debounce
       triggerValidation(newText, hasPotentialError);
     });
 
@@ -304,7 +434,32 @@
         } catch {
           // Guard against "Illegal value for lineNumber" when editor is in transitional state
         }
+        const wasLarge = currentText.length > LARGE_FILE_BYTES;
         currentText = newText;
+        const isLarge = newText.length > LARGE_FILE_BYTES;
+        syncLineNumberWidth(newText);
+
+        // File swap crossed the large-file threshold — re-run progressive
+        // enhancement from Phase 0 so the heavy semantic layer is gated
+        // on the new size. (Small→large drops IntelliSense; large→small
+        // restores it.)
+        if (wasLarge !== isLarge) {
+          for (const handle of enhancementHandles) cancelIdle(handle);
+          enhancementHandles = [];
+          editor.updateOptions(initialEditorOptions);
+          // Clear any pre-existing diagnostic markers — the previous file's
+          // validator state can leak across the swap, producing phantom
+          // squiggles on a perfectly valid new document.
+          monaco.editor.setModelMarkers(model, 'json', []);
+          monaco.editor.setModelMarkers(model, 'mermaid', []);
+          if (isLarge) {
+            monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+              validate: false,
+              schemas: []
+            });
+          }
+          scheduleProgressiveEnhancement();
+        }
 
         // Trigger validation when switching to code mode
         if (editorMode === 'code' && language === 'mermaid') {
@@ -317,8 +472,15 @@
         currentText = newText;
       }
 
-      // Display/clear errors
-      monaco.editor.setModelMarkers(model, 'mermaid', errorMarkers);
+      // Mermaid validation markers only belong on the mermaid model. Stamping
+      // them on the JSON/YAML/MD model causes phantom squiggles when the user
+      // switches files (the mermaid validator leaves stale errors behind, and
+      // owner='mermaid' on a JSON model never gets cleared otherwise).
+      if (model === mermaidModel) {
+        monaco.editor.setModelMarkers(model, 'mermaid', errorMarkers);
+      } else {
+        monaco.editor.setModelMarkers(model, 'mermaid', []);
+      }
     });
 
     const unsubscribeMode = mode.subscribe((mode) => {
@@ -351,6 +513,11 @@
 
     return () => {
       if (validationTimeout) clearTimeout(validationTimeout);
+      if (updateTimeout) clearTimeout(updateTimeout);
+      // Cancel any pending feature-upgrade callbacks so we don't call
+      // updateOptions() on a disposed editor.
+      for (const handle of enhancementHandles) cancelIdle(handle);
+      enhancementHandles = [];
       unsubscribeState();
       unsubscribeMode();
       resizeObserver.disconnect();
