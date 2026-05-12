@@ -150,17 +150,16 @@ function preprocessYaml(source: string): YamlLine[] {
 
 function parseYamlBlock(lines: YamlLine[], index: number, indent: number): [unknown, number] {
   const isArray = lines[index]?.text.startsWith('- ');
-  const container: unknown[] | Record<string, unknown> = isArray ? [] : {};
 
-  while (index < lines.length) {
-    const line = lines[index];
-    if (line.indent < indent) break;
-    if (line.indent > indent) {
-      index++;
-      continue;
-    }
-
-    if (isArray) {
+  if (isArray) {
+    const container: unknown[] = [];
+    while (index < lines.length) {
+      const line = lines[index];
+      if (line.indent < indent) break;
+      if (line.indent > indent) {
+        index++;
+        continue;
+      }
       if (!line.text.startsWith('- ')) break;
       const content = line.text.slice(2).trim();
       if (!content) {
@@ -197,6 +196,16 @@ function parseYamlBlock(lines: YamlLine[], index: number, indent: number): [unkn
         container.push(parseYamlScalar(content));
         index++;
       }
+    }
+    return [container, index];
+  }
+
+  const container: Record<string, unknown> = {};
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.indent < indent) break;
+    if (line.indent > indent) {
+      index++;
       continue;
     }
 
