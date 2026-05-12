@@ -7,6 +7,7 @@
   } from '$lib/client/features/diagram/structured-graph';
   import type { PanZoomState } from '$lib/client/features/diagram/panZoom';
   import dagre from 'dagre';
+  import { mode } from 'mode-watcher';
 
   type PositionedCard = ObjectGraph['cards'][number] & {
     height: number;
@@ -34,7 +35,6 @@
   let svgElement = $state<SVGSVGElement>();
   let collapsedBranchIds = $state(new Set<string>());
   let collapsedCardIds = $state(new Set<string>());
-  const gridPatternId = $derived(gridStyle === 'dots' ? 'structured-dots' : 'structured-squares');
 
   const parsed = $derived.by<ObjectGraph>(() => {
     try {
@@ -163,20 +163,8 @@
   }
 </script>
 
-<div class="structured-canvas">
+<div class="structured-canvas {shouldShowGrid ? `grid-${gridStyle}-${$mode}` : ''}">
   <svg bind:this={svgElement} class="structured-svg" viewBox="0 0 {layout.width} {layout.height}">
-    <defs>
-      <pattern id="structured-dots" width="12" height="12" patternUnits="userSpaceOnUse">
-        <circle cx="1" cy="1" r="1" class="structured-grid-dot" />
-      </pattern>
-      <pattern id="structured-squares" width="20" height="20" patternUnits="userSpaceOnUse">
-        <path d="M 20 0 H 0 V 20" class="structured-grid-line" />
-      </pattern>
-    </defs>
-    {#if shouldShowGrid}
-      <rect width={layout.width} height={layout.height} fill="url(#{gridPatternId})" />
-    {/if}
-
     {#each layout.edges as edge (edge.id)}
       <path
         d={edge.path}
@@ -247,76 +235,111 @@
     @apply h-full w-full;
   }
 
+  /* Grid lives on the wrapper (viewport-fixed) instead of inside the SVG
+     so it doesn't pan with the cards and stays visible at any zoom. */
+  .grid-dots-light {
+    background-size: 16px 16px;
+    background-image: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--foreground) 5%, transparent) 1px,
+      transparent 1px
+    );
+  }
+  .grid-dots-dark {
+    background-size: 16px 16px;
+    background-image: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--foreground) 7%, transparent) 1px,
+      transparent 1px
+    );
+  }
+  .grid-squares-light {
+    background-size: 20px 20px;
+    background-image: linear-gradient(
+        to right,
+        color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
+        transparent 1px
+      );
+  }
+  .grid-squares-dark {
+    background-size: 20px 20px;
+    background-image: linear-gradient(
+        to right,
+        color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
+        transparent 1px
+      );
+  }
+
   .object-card {
-    @apply relative z-10 h-full overflow-visible rounded-md border border-border bg-card text-[13px] shadow-sm;
+    @apply relative z-10 h-full overflow-visible rounded-lg border border-border/80 bg-card text-[13px] shadow-sm ring-1 ring-black/[0.02] dark:ring-white/[0.04];
   }
 
   .card-header {
-    @apply flex h-9 items-center justify-between gap-2 border-b border-border px-3 font-mono text-[12px] font-semibold;
+    @apply flex h-9 items-center justify-between gap-2 rounded-t-lg border-b border-border/70 px-3 font-mono text-[12px] font-semibold tracking-tight;
   }
 
   .card-header-purple {
-    @apply bg-purple-100 text-purple-900 dark:bg-purple-500/20 dark:text-purple-100;
-  }
-
-  .card-header-rose {
-    @apply bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-rose-100;
+    @apply bg-purple-100 text-purple-900 dark:bg-purple-500/25 dark:text-purple-50;
   }
 
   .card-header-teal {
-    @apply bg-cyan-100 text-cyan-900 dark:bg-cyan-500/20 dark:text-cyan-100;
+    @apply bg-cyan-100 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-50;
   }
 
   .card-header-green {
-    @apply bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-100;
+    @apply bg-emerald-100 text-emerald-900 dark:bg-emerald-500/25 dark:text-emerald-50;
   }
 
   .card-header-beige {
-    @apply bg-stone-100 text-stone-700 dark:bg-stone-500/20 dark:text-stone-100;
+    @apply bg-stone-100 text-stone-800 dark:bg-stone-500/25 dark:text-stone-50;
   }
 
   .collapse-button {
-    @apply flex size-5 shrink-0 items-center justify-center rounded-full border border-border bg-background/70 font-mono text-[12px] leading-none text-muted-foreground hover:text-foreground;
+    @apply flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-background/80 font-mono text-[12px] leading-none text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground;
   }
 
+  /* Edges: stronger in light mode (slate-400 was too faint), softer in
+     dark mode to avoid overwhelming the cards. */
   .graph-edge {
-    @apply fill-none stroke-slate-500/70 transition-[stroke,stroke-dasharray] duration-150 dark:stroke-slate-300/70;
-  }
-
-  .structured-grid-line {
-    @apply fill-none;
-    stroke: color-mix(in oklab, var(--foreground) 5%, transparent);
-    stroke-width: 1;
-  }
-
-  .structured-grid-dot {
-    fill: color-mix(in oklab, var(--foreground) 6%, transparent);
+    @apply fill-none stroke-slate-400 transition-[stroke,stroke-dasharray] duration-150 dark:stroke-slate-400/60;
   }
 
   .graph-edge:hover {
-    @apply stroke-slate-700 dark:stroke-slate-100;
+    @apply stroke-foreground;
     stroke-dasharray: 8 7;
     animation: structured-flow 0.75s linear infinite;
   }
 
   .card-body {
-    @apply overflow-visible font-mono;
+    @apply overflow-visible rounded-b-lg font-mono;
   }
 
   .property-row {
-    @apply relative flex h-8 items-center gap-2 border-b border-border/70 px-3 last:border-b-0;
+    @apply relative flex h-8 items-center gap-2 border-b border-border/50 px-3 last:rounded-b-lg last:border-b-0;
   }
 
   .property-key {
-    @apply shrink-0 font-semibold text-blue-600 dark:text-blue-300;
+    @apply shrink-0 font-semibold text-blue-700 dark:text-blue-300;
   }
 
+  /* Bumped from text-muted-foreground for readability — old value was
+     ~50% opacity and disappeared on the patterned background. */
   .property-value {
-    @apply min-w-0 truncate text-muted-foreground;
+    @apply min-w-0 truncate text-foreground/80 dark:text-foreground/75;
   }
 
   .property-port {
-    @apply absolute top-1/2 right-[-10px] z-50 flex size-5 -translate-y-1/2 items-center justify-center rounded-full border border-purple-200 bg-background font-mono text-[12px] leading-none text-muted-foreground shadow-md transition-colors hover:border-purple-300 hover:text-foreground dark:border-purple-400/40;
+    @apply absolute top-1/2 right-[-10px] z-50 flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-border bg-background font-mono text-[12px] leading-none text-muted-foreground shadow-md transition-colors hover:border-foreground/50 hover:text-foreground dark:border-border/80;
   }
 
   @keyframes structured-flow {
