@@ -166,7 +166,7 @@ READ (narrow when possible):
 WRITE:
 - create:        create a new file. Requires \`path\` ending in .md/.json/.yaml/.yml/.mermaid/.mmd, plus \`content\`. Duplicate/quota checks happen internally. Quota: 15 (guest) / 30 (signed-in).
 - edit:          edit an existing file. With \`startLine\`/\`endLine\`, replaces that 1-based inclusive range; without line numbers, replaces the full file. Per-kind validation enforced.
-- grep_replace:  find-and-replace inside a single file. Requires \`path\`, \`query\`, \`replacement\`. \`mode: 'regex'\` supports $1..$9 and $& backreferences. Skips per-kind validation — fast and powerful, but can produce invalid content if you're careless. Optional: \`caseSensitive\` (default false), \`maxReplacements\` (1..1000, default 100; refuses if exceeded).
+- grep_replace:  find-and-replace inside a single file. Requires \`path\`, \`query\`, \`replacement\`. ALWAYS \`grep\` or \`read\` the file first to confirm what you're about to replace — blind replaces produce surprises. \`mode: 'regex'\` supports $1..$9 and $& backreferences. Skips per-kind validation — fast and powerful, but can produce invalid content if you're careless. Optional: \`caseSensitive\` (default false), \`maxReplacements\` (1..1000, default 100; refuses if exceeded).
 - delete:        remove one file by path.
 - moveFolder:    rename every file under a folder prefix in one shot. Requires \`from\` and \`to\`.
 - deleteFolder:  delete every file under a folder prefix. Requires \`path\`.
