@@ -4380,31 +4380,75 @@
 
   :global(.composer-accent-control) {
     color: var(--primary-foreground);
-    background: var(--primary-gradient);
-    border: 1px solid transparent;
-    box-shadow: none;
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, #2000a7 78%, transparent) 0%,
+      color-mix(in srgb, #6300ee 78%, transparent) 100%
+    );
+    border: 1px solid rgb(255 255 255 / 0.18);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.22),
+      inset 0 -1px 0 rgb(0 0 0 / 0.18);
+    transition:
+      background 150ms ease,
+      box-shadow 150ms ease,
+      transform 150ms ease;
   }
 
   :global(.composer-accent-control:hover:not(:disabled)) {
-    background: var(--primary-gradient-hover);
-    box-shadow: none;
+    background: linear-gradient(135deg, #3a14d4 0%, #8030ff 100%);
+    border-color: rgb(255 255 255 / 0.28);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.36),
+      inset 0 -1px 0 rgb(0 0 0 / 0.22);
+  }
+
+  :global(.composer-accent-control:active:not(:disabled)) {
+    transform: scale(0.96);
+    background: linear-gradient(135deg, #1a0095 0%, #5500cc 100%);
+    box-shadow:
+      inset 0 1px 2px rgb(0 0 0 / 0.3),
+      inset 0 -1px 0 rgb(255 255 255 / 0.1);
+  }
+
+  :global(.composer-accent-control:focus-visible) {
+    outline: none;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.28),
+      inset 0 -1px 0 rgb(0 0 0 / 0.2),
+      0 0 0 2px color-mix(in srgb, #7320ff 55%, transparent);
   }
 
   :global(.composer-secondary-control) {
     border: 1px solid transparent;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease,
+      transform 120ms ease;
   }
 
+  /* Light mode — darken on hover (ink on paper), darken+press on active. */
   :global(.composer-secondary-control:hover:not(:disabled)),
   :global(.composer-secondary-control:focus-visible) {
     color: var(--foreground);
-    border-color: transparent;
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    box-shadow: none;
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 
+  :global(.composer-secondary-control:active:not(:disabled)) {
+    transform: scale(0.96);
+    background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  }
+
+  /* Dark mode — lighten on hover (foreground over near-black), brighter press. */
   :global(.dark .composer-secondary-control:hover:not(:disabled)),
   :global(.dark .composer-secondary-control:focus-visible) {
-    background: rgb(255 255 255 / 0.06);
+    background: rgb(255 255 255 / 0.1);
+  }
+
+  :global(.dark .composer-secondary-control:active:not(:disabled)) {
+    background: rgb(255 255 255 / 0.16);
   }
 
   :global(.composer-model-trigger) {
