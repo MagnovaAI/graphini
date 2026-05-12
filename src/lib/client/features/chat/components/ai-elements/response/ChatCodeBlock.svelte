@@ -1,11 +1,16 @@
 <script lang="ts">
-  import { Check, Copy } from 'lucide-svelte';
+  import { Check, ChevronDown, ChevronUp, Copy } from 'lucide-svelte';
   import { mode } from 'mode-watcher';
   import type { Tokens } from 'marked';
   import { type Highlighter, type ThemedToken } from 'shiki';
   import { ensureShikiLanguage, getSharedHighlighter } from '$lib/client/util/editor/shikiSetup';
 
   const { token }: { token: Tokens.Code; id?: string } = $props();
+
+  const COLLAPSED_MAX_LINES = 12;
+  let expanded = $state(false);
+  const lineCount = $derived((token.text.match(/\n/g)?.length ?? 0) + 1);
+  const canCollapse = $derived(lineCount > COLLAPSED_MAX_LINES);
 
   let copied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -27,9 +32,7 @@
   // mode-watcher's `mode.current` can be undefined / 'system' on first render.
   // Resolve via the .dark class on <html> for reliability.
   let isDark = $state(
-    typeof document !== 'undefined'
-      ? document.documentElement.classList.contains('dark')
-      : false
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   );
   $effect(() => {
     void mode.current; // re-check when mode-watcher changes
@@ -78,8 +81,9 @@
               result.tokens[0]?.slice(0, 6).map((t) => ({
                 content: t.content,
                 color: t.color,
-                scopes: (t as unknown as { explanation?: { scopes: { scopeName: string }[] }[] })
-                  .explanation?.[0]?.scopes?.map((s) => s.scopeName)
+                scopes: (
+                  t as unknown as { explanation?: { scopes: { scopeName: string }[] }[] }
+                ).explanation?.[0]?.scopes?.map((s) => s.scopeName)
               }))
             );
           }
@@ -96,7 +100,7 @@
 </script>
 
 <div
-  class="relative my-3 overflow-hidden rounded-[10px]"
+  class="relative my-3 max-w-full min-w-0 overflow-hidden rounded-[10px]"
   style="background-color: var(--code-bg);">
   <button
     type="button"
@@ -111,9 +115,41 @@
       <Copy class="size-3" />
     {/if}
   </button>
-  <pre
-    class="m-0 overflow-x-auto bg-transparent px-4 py-3 font-mono text-[12px] leading-[1.5] whitespace-pre text-foreground [&_*]:bg-transparent [&_*]:whitespace-pre"
-    style="tab-size: 2;"><code
-      >{#if tokenLines}{#each tokenLines as line}<span class="block">{#each line as t}<span style:color={t.color} style:background-color={t.bgColor}>{t.content}</span>{/each}</span>{/each}{:else}{token.text}{/if}</code
-    ></pre>
+  <div class="relative">
+    <pre
+      class="m-0 max-w-full min-w-0 overflow-x-auto bg-transparent px-4 py-3 font-mono text-[12px] leading-[1.5] whitespace-pre text-foreground [&_*]:bg-transparent [&_*]:whitespace-pre"
+      style="tab-size: 2; {canCollapse
+        ? expanded
+          ? 'max-height: min(60vh, 480px); overflow-y: auto;'
+          : `max-height: ${COLLAPSED_MAX_LINES * 18}px; overflow-y: hidden;`
+        : ''}"><code
+        >{#if tokenLines}{#each tokenLines as line, lineIdx (lineIdx)}<span class="block"
+              >{#each line as t, tokenIdx (tokenIdx)}<span
+                  style:color={t.color}
+                  style:background-color={t.bgColor}>{t.content}</span
+                >{/each}</span
+            >{/each}{:else}{token.text}{/if}</code></pre>
+    {#if canCollapse && !expanded}
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-x-0 bottom-0 h-12"
+        style="background: linear-gradient(to bottom, transparent, var(--code-bg));">
+      </div>
+    {/if}
+  </div>
+  {#if canCollapse}
+    <button
+      type="button"
+      onclick={() => (expanded = !expanded)}
+      class="relative z-10 flex w-full items-center justify-center gap-1 border-t border-border/40 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-background/40 hover:text-foreground"
+      aria-expanded={expanded}>
+      {#if expanded}
+        <ChevronUp class="size-3" />
+        Show less
+      {:else}
+        <ChevronDown class="size-3" />
+        Show {lineCount} lines
+      {/if}
+    </button>
+  {/if}
 </div>
