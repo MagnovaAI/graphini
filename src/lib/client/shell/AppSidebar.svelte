@@ -10,7 +10,6 @@
   import { panels, type PanelId } from '$lib/client/stores/panels.svelte';
   import {
     Code2,
-    FileCode,
     FileText,
     FolderTree,
     Layers,
@@ -457,7 +456,7 @@
         <Sidebar.GroupContent class="px-1">
           {#if creatingRoot !== null}
             <div class="flex h-7 items-center gap-2 rounded-md px-1" style="padding-left: 18px;">
-              <FileCode class="size-3.5 shrink-0 text-muted-foreground/70" />
+              <img src="/icons/file-mermaid.svg" alt="" class="size-3.5 shrink-0" />
               <input
                 type="text"
                 value={creatingRoot}

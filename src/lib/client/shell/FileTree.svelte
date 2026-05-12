@@ -9,7 +9,7 @@
    * anywhere — input is an inline `<input>` with Enter/Esc keyboard.
    */
   import * as DropdownMenu from '$lib/client/ui/dropdown-menu';
-  import { ChevronRight, FileCode, FileJson, FileText, MoreHorizontal, Plus } from 'lucide-svelte';
+  import { ChevronRight, MoreHorizontal, Plus } from 'lucide-svelte';
   import type { FileTreeNode, WorkspaceFile } from '$lib/client/stores/files.svelte';
   import FileTree from './FileTree.svelte';
   import type { EditingToken } from './fileTreeEditing';
@@ -52,10 +52,14 @@
     onDeleteFolder
   }: Props = $props();
 
-  function fileIcon(kind: WorkspaceFile['kind']) {
-    if (kind === 'json' || kind === 'yaml') return FileJson;
-    if (kind === 'mermaid') return FileCode;
-    return FileText;
+  // Returns the path to a colored brand-style SVG for the given file kind.
+  // Same assets the Canvas/Code panel chrome uses — keeps "this is a .md/.mermaid"
+  // visually consistent across the sidebar and the editor headers.
+  function fileIconSrc(kind: WorkspaceFile['kind']): string {
+    if (kind === 'json') return '/icons/file-json.svg';
+    if (kind === 'yaml') return '/icons/file-yaml.svg';
+    if (kind === 'mermaid') return '/icons/file-mermaid.svg';
+    return '/icons/file-md.svg';
   }
 
   function focusAndSelect(node: HTMLInputElement) {
@@ -176,7 +180,7 @@
             <div
               class="flex h-7 items-center gap-2 rounded-md px-1"
               style="padding-left: {(depth + 1) * 12 + 18}px;">
-              <FileCode class="size-3.5 shrink-0 text-muted-foreground/70" />
+              <img src="/icons/file-mermaid.svg" alt="" class="size-3.5 shrink-0" />
               <input
                 type="text"
                 value="Untitled.mermaid"
@@ -208,7 +212,7 @@
         {/if}
       </li>
     {:else}
-      {@const Icon = fileIcon(node.file.kind)}
+      {@const iconSrc = fileIconSrc(node.file.kind)}
       {@const isActive = node.file.id === activeId}
       {@const isRenaming = editing?.kind === 'file' && editing.id === node.file.id}
       {@const fileName = node.file.path.split('/').pop() ?? node.file.path}
@@ -217,7 +221,7 @@
           <div
             class="flex h-7 items-center gap-2 rounded-md px-1"
             style="padding-left: {depth * 12 + 18}px;">
-            <Icon class="size-3.5 shrink-0 text-muted-foreground/70" />
+            <img src={iconSrc} alt="" class="size-3.5 shrink-0" />
             <input
               type="text"
               value={fileName}
@@ -240,7 +244,7 @@
                 ? 'font-medium text-sidebar-accent-foreground'
                 : 'text-sidebar-foreground/85'}"
               onclick={() => onSelectFile(node.file)}>
-              <Icon class="size-3.5 shrink-0 text-muted-foreground/70" />
+              <img src={iconSrc} alt="" class="size-3.5 shrink-0" />
               <span class="truncate">{fileName}</span>
             </button>
             <DropdownMenu.Root>
