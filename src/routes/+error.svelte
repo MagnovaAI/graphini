@@ -1,20 +1,16 @@
 <script>
-  import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { onMount } from 'svelte';
-
-  // Only redirect if it's a 404 error
-  onMount(() => {
-    if ($page.status === 404) {
-      goto('/');
-    }
-  });
 </script>
 
-{#if $page.status !== 404}
-  <div class="container mx-auto p-8">
+<div class="container mx-auto p-8">
+  {#if $page.status === 404}
+    <h1 class="mb-4 text-[22px] font-bold">Page not found</h1>
+    <p class="mb-4">
+      We couldn't find <code>{$page.url.pathname}</code>. The link may be broken or the page may have moved.
+    </p>
+  {:else}
     <h1 class="mb-4 text-[22px] font-bold">Error {$page.status}</h1>
     <p class="mb-4">{$page.error?.message || 'An unexpected error occurred'}</p>
-    <a href="/" class="text-primary hover:underline">Return to Home</a>
-  </div>
-{/if}
+  {/if}
+  <a href="/" class="text-primary hover:underline">Return to Home</a>
+</div>
