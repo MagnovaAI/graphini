@@ -22,6 +22,7 @@
   } from 'lucide-svelte';
   import FileTree from './FileTree.svelte';
   import type { EditingToken } from './fileTreeEditing';
+  import { revealFileChannel } from './revealFile.svelte';
   import { onMount } from 'svelte';
 
   const sidebar = useSidebar();
@@ -121,6 +122,25 @@
     }
     expandedFolders = next;
   }
+
+  // Reveal-in-tree pulse: chat artifact filename clicks publish a
+  // `{ path, token }` to revealFileChannel. We switch the sidebar to Files
+  // mode, expand all ancestor folders so the file is visible, and select
+  // it. The token guards against the effect re-firing on unrelated state
+  // changes — only acts when a fresh pulse comes in.
+  let lastRevealToken = $state(0);
+  $effect(() => {
+    const pulse = revealFileChannel.current;
+    if (!pulse || pulse.token === lastRevealToken) return;
+    lastRevealToken = pulse.token;
+    mode = 'files';
+    expandAllAncestors(pulse.path);
+    const f = filesStore.list.find((x) => x.path === pulse.path);
+    if (f) {
+      filesStore.setActive(f.id);
+      onSelectFile?.(f.id);
+    }
+  });
 
   function startNewFileAtRoot() {
     if (filesStore.quota.used >= filesStore.quota.total) {
