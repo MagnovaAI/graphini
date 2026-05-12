@@ -138,6 +138,17 @@ export function createAutoStylerTool({ target, userId }: ToolContext) {
         );
       }
 
+      // Tint default edges so the diagram reads as one styled artifact, not
+      // colored nodes connected by anonymous grey arrows. Only emitted for
+      // flowcharts/graphs that survived the noStyleTypes guard above; we use
+      // the first palette stroke as the edge color (it's the most "branded"
+      // shade in the set) and let mermaid's default 2px stroke width stand.
+      const isFlowchart = firstLine.startsWith('flowchart') || firstLine.startsWith('graph');
+      if (isFlowchart && colors.length > 0) {
+        const edgeColor = colors[0].stroke;
+        styleLines.push(`    linkStyle default stroke:${edgeColor},stroke-width:1.5px`);
+      }
+
       const newDiagram = cleanedLines.join('\n') + '\n' + styleLines.join('\n');
       if (userId) await persistFileContentById(resolved.id, userId, newDiagram);
 
