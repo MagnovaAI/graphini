@@ -18,24 +18,18 @@
   const context = getChainOfThoughtContext();
 </script>
 
-<CollapsibleTrigger
-  class={cn(
-    'flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground',
-    className
-  )}>
+<CollapsibleTrigger class={cn('ct-row ct-row-button', className)}>
   {#if Icon}
-    <Icon class="size-4" />
+    <span class="ct-icon">
+      <Icon class="size-3.5" />
+    </span>
   {/if}
-  <span class="flex-1 text-left">
+  <span class="ct-title flex-1">
     {#if children}
       {@render children()}
     {:else}
       Chain of Thought
     {/if}
   </span>
-  <ChevronDownIcon
-    class={cn(
-      'size-4 text-muted-foreground/60 transition-transform',
-      context.isOpen ? 'rotate-180' : 'rotate-0'
-    )} />
+  <ChevronDownIcon class={cn('ct-chevron', context.isOpen ? 'rotate-180' : 'rotate-0')} />
 </CollapsibleTrigger>

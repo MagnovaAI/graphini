@@ -94,7 +94,7 @@
   bind:this={element}
   data-chain-step
   class={cn(
-    'text-sm transition-all duration-500 ease-out',
+    'transition-all duration-500 ease-out',
     statusStyles[status],
     isVisible ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
     isActive && 'tool-active-shimmer',
@@ -110,27 +110,26 @@
         '-mx-1 flex w-full cursor-pointer gap-2 rounded px-1 text-left transition-colors hover:bg-muted/30',
         statusStyles[status]
       )}>
-      <div class="relative mt-0.5">
-        <span
-          class={cn(
-            'flex size-3.5 items-center justify-center',
-            isActive && 'tool-active-icon-shimmer'
-          )}>
+      <!-- Icon column. Uses the design system's ct-icon slot (16px) for
+           consistent alignment with chips; connector extends into the
+           parent's space-y-2 gap to the next step. -->
+      <div class="relative">
+        <span class={cn('ct-icon', isActive && 'tool-active-icon-shimmer')}>
           <Icon class="size-3.5" />
         </span>
-        <div class="connector absolute top-5 -bottom-2 left-1/2 -mx-px w-px bg-muted-foreground/50">
+        <div
+          class="connector absolute top-[18px] -bottom-[10px] left-1/2 -mx-px w-px bg-muted-foreground/50">
         </div>
       </div>
       <div class="min-w-0 flex-1">
-        <div class="flex w-full items-baseline gap-2">
-          <span
-            class={cn('font-medium text-foreground/75', status === 'active' && 'thinking-shimmer')}>
+        <!-- ct-title + ct-subtitle match the chip system; baseline align
+             keeps both on the same horizontal axis as the icon. -->
+        <div class="flex w-full items-center gap-2">
+          <span class={cn('ct-title', status === 'active' && 'thinking-shimmer')}>
             {label}
           </span>
           {#if description}
-            <span class="min-w-0 flex-1 truncate text-[12px] text-muted-foreground/60">
-              {description}
-            </span>
+            <span class="ct-subtitle">{description}</span>
           {/if}
         </div>
       </div>
@@ -142,7 +141,9 @@
     {/if}
   {:else}
     <div class="flex gap-2">
-      <div class="relative mt-0.5">
+      <!-- Icon column. Matches the interactive branch — h-5 row, connector
+           bridges into the parent's space-y-2 gap to the next step. -->
+      <div class="relative flex h-5 w-3.5 shrink-0 items-center justify-center">
         <span
           class={cn(
             'flex size-3.5 items-center justify-center',
@@ -150,21 +151,19 @@
           )}>
           <Icon class="size-3.5" />
         </span>
-        <!-- Vertical connector to the next step. Hidden on the last step via the
-          :last-of-type rule below so the line doesn't dangle past the chain. -->
-        <div class="connector absolute top-5 -bottom-2 left-1/2 -mx-px w-px bg-muted-foreground/50">
+        <div
+          class="connector absolute top-[18px] -bottom-[10px] left-1/2 -mx-px w-px bg-muted-foreground/50">
         </div>
       </div>
       <div class="min-w-0 flex-1 space-y-2">
-        <div class="flex w-full items-baseline gap-2">
-          <span
-            class={cn('font-medium text-foreground/75', status === 'active' && 'thinking-shimmer')}>
+        <!-- ct-title + ct-subtitle match the chip system; baseline align
+             keeps both on the same horizontal axis as the icon. -->
+        <div class="flex w-full items-center gap-2">
+          <span class={cn('ct-title', status === 'active' && 'thinking-shimmer')}>
             {label}
           </span>
           {#if description}
-            <span class="min-w-0 flex-1 truncate text-[12px] text-muted-foreground/60">
-              {description}
-            </span>
+            <span class="ct-subtitle">{description}</span>
           {/if}
         </div>
         {#if children}

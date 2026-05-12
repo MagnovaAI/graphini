@@ -67,28 +67,34 @@
   bind:this={element}
   data-chain-step
   class={cn(
-    'flex gap-2 text-sm transition-all duration-500 ease-out',
+    'flex gap-2 transition-all duration-500 ease-out',
     statusStyles[status],
     isVisible ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
     className
   )}
   {...restProps}>
-  <div class="relative mt-0.5">
-    <Icon class="size-3.5" />
-    <!-- Vertical connector to the next step. Hidden on the last step via the
-		:last-of-type rule below so the line doesn't dangle past the chain. -->
-    <div class="connector absolute top-5 -bottom-2 left-1/2 -mx-px w-px bg-muted-foreground/50">
+  <div class="relative">
+    <span class="ct-icon">
+      <Icon class="size-3.5" />
+    </span>
+    <!-- Connector to next step, aligned to the ct-icon slot. -->
+    <div
+      class="connector absolute top-[18px] -bottom-[10px] left-1/2 -mx-px w-px bg-muted-foreground/50">
     </div>
   </div>
-  <div class="min-w-0 flex-1 space-y-2">
-    <div class={cn('font-medium text-foreground/75', status === 'active' && 'thinking-shimmer')}>
-      {label}
+  <div class="min-w-0 flex-1">
+    <div class="flex items-center gap-2">
+      <span class={cn('ct-title', status === 'active' && 'thinking-shimmer')}>
+        {label}
+      </span>
+      {#if description}
+        <span class="ct-subtitle">{description}</span>
+      {/if}
     </div>
-    {#if description}
-      <div class="text-[12px] text-muted-foreground/60">{description}</div>
-    {/if}
     {#if children}
-      {@render children()}
+      <div class="mt-1">
+        {@render children()}
+      </div>
     {/if}
   </div>
 </div>

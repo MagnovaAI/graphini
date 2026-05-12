@@ -71,6 +71,7 @@
   import { providerKeyHeaders } from '$lib/client/util/provider-keys';
   import ProviderIcon from '$lib/client/features/chat/components/ProviderIcon.svelte';
   import ToolSimpleChip from '$lib/client/features/chat/components/ToolSimpleChip.svelte';
+  import MessagePart from '$lib/client/features/chat/components/MessagePart.svelte';
   import {
     ChainOfTools,
     ChainOfToolsContent,
@@ -2689,7 +2690,13 @@
                         if (dirty) messageParts[assistantIndex] = [...parts];
 
                         if (!artifactMap[artifactId]) {
-                          const prevCode = $stateStore.code || '';
+                          // Pull previousCode from the actual file being edited
+                          // (looked up by path), not from $stateStore which only
+                          // tracks the active editor. Without this, edits to
+                          // files other than the open one diff against the
+                          // wrong content and the diff view degenerates.
+                          const targetFile = filesStore.list.find((f) => f.path === path);
+                          const prevCode = targetFile?.content ?? $stateStore.code ?? '';
                           artifactMap[artifactId] = {
                             code: '',
                             errors: undefined,
@@ -2698,6 +2705,7 @@
                             isStreaming: true,
                             language,
                             operation: artifactOperationForFileSystem(op),
+                            path,
                             previousCode: prevCode,
                             title: artifactTitleForWorkspaceWrite(op, path)
                           };
@@ -2928,16 +2936,23 @@
 
                       const aid = getArtifactIdForToolCall(`fileSystem-${op}`, data.toolCallId);
                       const language = languageForWorkspacePath(touched.path);
+                      // The artifact's previousCode is captured up-front in
+                      // the streaming-create path (looked up by path against
+                      // filesStore, before the file is saved). Don't try to
+                      // re-derive it here — filesStore was already refreshed
+                      // above to the new content, so any lookup now would
+                      // return the post-edit state and produce a zero diff.
                       artifactMap[aid] = {
                         ...(artifactMap[aid] ?? {
                           id: aid,
-                          previousCode: $stateStore.code || '',
+                          previousCode: '',
                           language
                         }),
                         code: touched.content,
                         isStreaming: false,
                         language,
                         operation: op,
+                        path: touched.path,
                         title: artifactTitleForWorkspaceWrite(op, touched.path)
                       };
                       artifactMap = { ...artifactMap };
@@ -3525,19 +3540,25 @@
               </div>
             </div>
           {:else if message.role === 'assistant'}
-            <!-- Assistant Response (left-aligned) -->
+            <!-- Assistant Response (left-aligned). Vertical rhythm between
+                 parts comes from MessagePart's own sibling-margin rules —
+                 don't reintroduce space-y-* here. -->
             <div class="cv-auto min-w-0">
-              <div class="max-w-[95%] min-w-0 space-y-1.5">
+              <div class="max-w-[95%] min-w-0">
                 {#if messageParts[i] && messageParts[i].length > 0}
                   {#each chainDisplayParts(messageParts[i]) as part, pi (contentPartKey(part, pi))}
                     {#if part.type === 'text' && part.text}
-                      <div class="min-w-0 px-2 text-[13px] leading-relaxed text-foreground/90">
-                        <Response class="min-w-0" content={part.text} />
-                      </div>
+                      <MessagePart variant="block">
+                        <div class="min-w-0 px-2 text-[13px] leading-relaxed text-foreground/90">
+                          <Response class="min-w-0" content={part.text} />
+                        </div>
+                      </MessagePart>
                     {:else if part.type === 'thinking'}
-                      <div class="flex items-center px-2 py-1 text-[13px]" aria-live="polite">
-                        <span class="thinking-shimmer font-medium">Thinking</span>
-                      </div>
+                      <MessagePart variant="compact">
+                        <div class="ct-row" aria-live="polite">
+                          <span class="ct-title thinking-shimmer">Thinking</span>
+                        </div>
+                      </MessagePart>
                     {:else if part.type === 'reasoning' && uiSettings.value.showReasoning && (part.status === 'running' || part.text.trim())}
                       {@const reasoningIsStreaming = part.status === 'running'}
                       {@const reasoningKey = `reasoning-expanded:${part.id}`}
@@ -3550,180 +3571,193 @@
                         0,
                         Math.floor(reasoningElapsedMs / 1000)
                       )}
-                      <button
-                        type="button"
-                        class="group flex cursor-pointer items-center gap-1.5 px-2 py-px text-left text-[12px]"
-                        aria-expanded={isReasoningExpanded}
-                        onclick={() => {
-                          reasoningExpanded = {
-                            ...reasoningExpanded,
-                            [reasoningKey]: !isReasoningExpanded
-                          };
-                        }}>
-                        <span class="flex-shrink-0 font-medium whitespace-nowrap">
-                          {#if reasoningIsStreaming}
-                            <span
-                              class="thinking-shimmer inline-flex h-4 items-center text-[12px] leading-none"
-                              >Thinking{reasoningElapsedSec > 0
-                                ? ` for ${reasoningElapsedSec}s`
-                                : ''}</span>
-                          {:else}
-                            <span class="text-muted-foreground"
-                              >Thought{reasoningElapsedSec > 0
-                                ? ` for ${reasoningElapsedSec}s`
-                                : ''}</span>
-                          {/if}
-                        </span>
-                        <ChevronRight
-                          class="size-3 flex-shrink-0 text-muted-foreground/50 transition-transform duration-200 ease-out {isReasoningExpanded
-                            ? 'rotate-90'
-                            : 'opacity-0 group-hover:opacity-100'}" />
-                      </button>
-                      {#if isReasoningExpanded && part.text}
-                        <div
-                          class="mt-0.5 ml-2 max-w-prose overflow-y-auto border-l border-border/50 py-1 pl-3"
-                          style="max-height: 120px;"
-                          use:autoScroll={{
-                            isStreaming: reasoningIsStreaming,
-                            text: part.text
+                      <MessagePart variant={isReasoningExpanded ? 'block' : 'compact'}>
+                        <button
+                          type="button"
+                          class="ct-row ct-row-button group"
+                          aria-expanded={isReasoningExpanded}
+                          onclick={() => {
+                            reasoningExpanded = {
+                              ...reasoningExpanded,
+                              [reasoningKey]: !isReasoningExpanded
+                            };
                           }}>
-                          <p
-                            class="text-[12px] leading-5 whitespace-pre-wrap text-muted-foreground/80">
-                            {part.text}
-                          </p>
-                        </div>
-                      {/if}
-                    {:else if part.type === 'tool-simple'}
-                      <ToolSimpleChip
-                        toolName={part.toolName}
-                        titlePending={part.titlePending}
-                        titleDone={part.titleDone}
-                        subtitle={part.subtitle}
-                        status={part.status}
-                        details={part.details}
-                        searchResults={part.searchResults}
-                        toolInput={part.toolInput} />
-                    {:else if part.type === 'chain-of-thought'}
-                      <ChainOfThought defaultOpen={part.status === 'running'}>
-                        <ChainOfThoughtHeader
-                          class="text-[13px] font-medium text-foreground/80 hover:text-foreground">
-                          <span class={part.status === 'running' ? 'thinking-shimmer' : ''}
-                            >Chain of Thought</span>
-                          {#if part.thoughts.length > 0}
-                            <span class="ml-1 text-[13px] font-normal text-muted-foreground">
-                              · {part.thoughts.length} thought{part.thoughts.length === 1
-                                ? ''
-                                : 's'}
-                            </span>
-                          {/if}
-                        </ChainOfThoughtHeader>
-                        <ChainOfThoughtContent>
-                          {#each part.thoughts as thought, tIdx (`${thought.label}:${tIdx}`)}
-                            <ChainOfThoughtStep
-                              class="text-[12px]"
-                              label={thought.label}
-                              description={thought.detail}
-                              status={part.status === 'running' && tIdx === part.thoughts.length - 1
-                                ? 'active'
-                                : 'complete'} />
-                          {/each}
-                        </ChainOfThoughtContent>
-                      </ChainOfThought>
-                      {#if part.conclusion}
-                        <p class="mt-2 text-[12px] leading-relaxed font-medium text-foreground/80">
-                          {part.conclusion}
-                        </p>
-                      {/if}
-                    {:else if part.type === 'thought-chain'}
-                      <ChainOfTools defaultOpen={part.status === 'running'}>
-                        <ChainOfToolsHeader
-                          class="text-[13px] font-medium text-foreground/80 hover:text-foreground">
-                          <span class={part.status === 'running' ? 'thinking-shimmer' : ''}
-                            >Chain of Tools</span>
-                          <span class="ml-1 text-[13px] font-normal text-muted-foreground">
-                            · {part.parts.length} step{part.parts.length === 1 ? '' : 's'}
+                          <span class="ct-title">
+                            {#if reasoningIsStreaming}
+                              <span class="thinking-shimmer"
+                                >Thinking{reasoningElapsedSec > 0
+                                  ? ` for ${reasoningElapsedSec}s`
+                                  : ''}</span>
+                            {:else}
+                              Thought{reasoningElapsedSec > 0 ? ` for ${reasoningElapsedSec}s` : ''}
+                            {/if}
                           </span>
-                        </ChainOfToolsHeader>
-                        <ChainOfToolsContent>
-                          {#each part.parts as step (step.id)}
-                            {@const hasOutput =
-                              (step.searchResults && step.searchResults.length > 0) ||
-                              (step.details && step.details.length > 0)}
-                            <ChainOfToolsStep
-                              class="text-[12px]"
-                              icon={toolIcon(step.toolName, step.toolInput)}
-                              label={step.status === 'running' ? step.titlePending : step.titleDone}
-                              description={step.subtitle}
-                              status={step.status === 'running' ? 'active' : 'complete'}
-                              toggleable={hasOutput}>
-                              {#if step.searchResults && step.searchResults.length > 0}
-                                <div
-                                  class="mt-1 overflow-hidden rounded-md border border-border/40 px-3 py-2"
-                                  style="background-color: var(--tool-box-bg);">
-                                  <ul class="space-y-2">
-                                    {#each step.searchResults as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
-                                      <li class="flex flex-col gap-0.5">
-                                        {#if result.url}
-                                          <a
-                                            href={result.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            class="text-[12px] font-medium text-foreground/90 hover:text-foreground hover:underline">
-                                            {result.title}
-                                          </a>
-                                        {:else}
-                                          <span class="text-[12px] font-medium text-foreground/90"
-                                            >{result.title}</span>
-                                        {/if}
-                                        {#if result.source || result.url}
-                                          <span class="text-[11px] text-muted-foreground/60">
-                                            {result.source ??
-                                              new URL(result.url ?? 'http://x').hostname.replace(
-                                                /^www\./,
-                                                ''
-                                              )}
-                                          </span>
-                                        {/if}
-                                        {#if result.snippet}
-                                          <span
-                                            class="text-[11px] leading-relaxed text-muted-foreground/75">
-                                            {result.snippet}
-                                          </span>
-                                        {/if}
-                                      </li>
-                                    {/each}
-                                  </ul>
-                                </div>
-                              {:else if step.details && step.details.length > 0}
-                                <div
-                                  class="mt-1 overflow-hidden rounded-md border border-border/40 px-3 py-2"
-                                  style="background-color: var(--tool-box-bg);">
+                          <span class="flex-1"></span>
+                          <ChevronRight
+                            class="ct-chevron {isReasoningExpanded
+                              ? 'rotate-90'
+                              : 'opacity-0 group-hover:opacity-100'}" />
+                        </button>
+                        {#if isReasoningExpanded && part.text}
+                          <div
+                            class="ct-panel"
+                            style="max-height: 120px;"
+                            use:autoScroll={{
+                              isStreaming: reasoningIsStreaming,
+                              text: part.text
+                            }}>
+                            <pre class="ct-panel-text whitespace-pre-wrap">{part.text}</pre>
+                          </div>
+                        {/if}
+                      </MessagePart>
+                    {:else if part.type === 'tool-simple'}
+                      <MessagePart variant="compact">
+                        <ToolSimpleChip
+                          toolName={part.toolName}
+                          titlePending={part.titlePending}
+                          titleDone={part.titleDone}
+                          subtitle={part.subtitle}
+                          status={part.status}
+                          details={part.details}
+                          searchResults={part.searchResults}
+                          toolInput={part.toolInput} />
+                      </MessagePart>
+                    {:else if part.type === 'chain-of-thought'}
+                      <MessagePart variant="block">
+                        <ChainOfThought defaultOpen={part.status === 'running'}>
+                          <ChainOfThoughtHeader
+                            class="text-[13px] font-medium text-foreground/80 hover:text-foreground">
+                            <span class={part.status === 'running' ? 'thinking-shimmer' : ''}
+                              >Chain of Thought</span>
+                            {#if part.thoughts.length > 0}
+                              <span class="ml-1 text-[13px] font-normal text-muted-foreground">
+                                · {part.thoughts.length} thought{part.thoughts.length === 1
+                                  ? ''
+                                  : 's'}
+                              </span>
+                            {/if}
+                          </ChainOfThoughtHeader>
+                          <ChainOfThoughtContent>
+                            {#each part.thoughts as thought, tIdx (`${thought.label}:${tIdx}`)}
+                              <ChainOfThoughtStep
+                                class="text-[12px]"
+                                label={thought.label}
+                                description={thought.detail}
+                                status={part.status === 'running' &&
+                                tIdx === part.thoughts.length - 1
+                                  ? 'active'
+                                  : 'complete'} />
+                            {/each}
+                          </ChainOfThoughtContent>
+                        </ChainOfThought>
+                        {#if part.conclusion}
+                          <p
+                            class="mt-2 text-[12px] leading-relaxed font-medium text-foreground/80">
+                            {part.conclusion}
+                          </p>
+                        {/if}
+                      </MessagePart>
+                    {:else if part.type === 'thought-chain'}
+                      <MessagePart variant="block">
+                        <ChainOfTools defaultOpen={part.status === 'running'}>
+                          <ChainOfToolsHeader
+                            class="text-[13px] font-medium text-foreground/80 hover:text-foreground">
+                            <span class={part.status === 'running' ? 'thinking-shimmer' : ''}
+                              >Chain of Tools</span>
+                            <span class="ml-1 text-[13px] font-normal text-muted-foreground">
+                              · {part.parts.length} step{part.parts.length === 1 ? '' : 's'}
+                            </span>
+                          </ChainOfToolsHeader>
+                          <ChainOfToolsContent>
+                            {#each part.parts as step (step.id)}
+                              {@const hasOutput =
+                                (step.searchResults && step.searchResults.length > 0) ||
+                                (step.details && step.details.length > 0)}
+                              <ChainOfToolsStep
+                                class="text-[12px]"
+                                icon={toolIcon(step.toolName, step.toolInput)}
+                                label={step.status === 'running'
+                                  ? step.titlePending
+                                  : step.titleDone}
+                                description={step.subtitle}
+                                status={step.status === 'running' ? 'active' : 'complete'}
+                                toggleable={hasOutput}>
+                                {#if step.searchResults && step.searchResults.length > 0}
                                   <div
-                                    class="space-y-1 text-[12px] leading-relaxed text-muted-foreground/75">
-                                    {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
-                                      <div class="truncate">{detail}</div>
-                                    {/each}
+                                    class="mt-1 overflow-hidden rounded-md border border-border/40 px-3 py-2"
+                                    style="background-color: var(--tool-box-bg);">
+                                    <ul class="space-y-2">
+                                      {#each step.searchResults as result, rIdx (`${result.url ?? result.title}:${rIdx}`)}
+                                        <li class="flex flex-col gap-0.5">
+                                          {#if result.url}
+                                            <a
+                                              href={result.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              class="text-[12px] font-medium text-foreground/90 hover:text-foreground hover:underline">
+                                              {result.title}
+                                            </a>
+                                          {:else}
+                                            <span class="text-[12px] font-medium text-foreground/90"
+                                              >{result.title}</span>
+                                          {/if}
+                                          {#if result.source || result.url}
+                                            <span class="text-[11px] text-muted-foreground/60">
+                                              {result.source ??
+                                                new URL(result.url ?? 'http://x').hostname.replace(
+                                                  /^www\./,
+                                                  ''
+                                                )}
+                                            </span>
+                                          {/if}
+                                          {#if result.snippet}
+                                            <span
+                                              class="text-[11px] leading-relaxed text-muted-foreground/75">
+                                              {result.snippet}
+                                            </span>
+                                          {/if}
+                                        </li>
+                                      {/each}
+                                    </ul>
                                   </div>
-                                </div>
-                              {/if}
-                            </ChainOfToolsStep>
-                          {/each}
-                        </ChainOfToolsContent>
-                      </ChainOfTools>
+                                {:else if step.details && step.details.length > 0}
+                                  <div
+                                    class="mt-1 overflow-hidden rounded-md border border-border/40 px-3 py-2"
+                                    style="background-color: var(--tool-box-bg);">
+                                    <div
+                                      class="space-y-1 text-[12px] leading-relaxed text-muted-foreground/75">
+                                      {#each step.details as detail, dIdx (`${detail}:${dIdx}`)}
+                                        <div class="truncate">{detail}</div>
+                                      {/each}
+                                    </div>
+                                  </div>
+                                {/if}
+                              </ChainOfToolsStep>
+                            {/each}
+                          </ChainOfToolsContent>
+                        </ChainOfTools>
+                      </MessagePart>
                     {:else if part.type === 'artifact' && artifactMap[part.artifactId]}
                       {@const artifact = artifactMap[part.artifactId]}
-                      <CodeArtifact
-                        code={artifact.code}
-                        previousCode={artifact.previousCode}
-                        language={artifact.language || 'mermaid'}
-                        title={artifact.title}
-                        isStreaming={artifact.isStreaming}
-                        operation={artifact.operation}
-                        hasErrors={artifact.hasErrors}
-                        errors={artifact.errors}
-                        readFrom={artifact.readFrom}
-                        readTo={artifact.readTo}
-                        totalLines={artifact.totalLines} />
+                      <MessagePart variant="block">
+                        <CodeArtifact
+                          code={artifact.code}
+                          previousCode={artifact.previousCode}
+                          language={artifact.language || 'mermaid'}
+                          title={artifact.title}
+                          path={artifact.path}
+                          onOpenFile={(p) => {
+                            const f = filesStore.list.find((x) => x.path === p);
+                            if (f) filesStore.setActive(f.id);
+                          }}
+                          isStreaming={artifact.isStreaming}
+                          operation={artifact.operation}
+                          hasErrors={artifact.hasErrors}
+                          errors={artifact.errors}
+                          readFrom={artifact.readFrom}
+                          readTo={artifact.readTo}
+                          totalLines={artifact.totalLines} />
+                      </MessagePart>
                     {:else if part.type === 'error'}
                       <!--
                         Error block. The server's onError handler encodes the
@@ -3740,55 +3774,59 @@
                         : rawError || 'Something went wrong.'}
                       {@const isMissingKey = isMissingProviderKeyError(errMsg)}
                       {@const providerLabel = missingProviderLabel(errMsg)}
-                      <div
-                        class="flex min-h-11 items-center gap-2 rounded-md border border-destructive/25 bg-destructive/5 px-2.5 py-2">
+                      <MessagePart variant="block">
                         <div
-                          class="flex size-7 shrink-0 items-center justify-center rounded-md text-destructive ring-1 ring-destructive/20">
-                          <AlertCircle class="size-4" />
+                          class="flex min-h-11 items-center gap-2 rounded-md border border-destructive/25 bg-destructive/5 px-2.5 py-2">
+                          <div
+                            class="flex size-7 shrink-0 items-center justify-center rounded-md text-destructive ring-1 ring-destructive/20">
+                            <AlertCircle class="size-4" />
+                          </div>
+                          <div class="flex min-w-0 flex-1 flex-col gap-1">
+                            {#if isMissingKey}
+                              <div class="text-[13px] font-medium text-foreground">
+                                {providerLabel} key required
+                              </div>
+                              <div
+                                class="max-w-prose text-[13px] leading-relaxed text-muted-foreground">
+                                Add your key in Settings, then retry this message.
+                              </div>
+                              <div class="mt-1 flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  class="inline-flex h-7 items-center rounded-md bg-foreground px-2.5 text-[12px] font-medium text-background transition-opacity hover:opacity-90"
+                                  onclick={openSettingsModal}>
+                                  Open Settings
+                                </button>
+                                <span class="text-[12px] text-muted-foreground">
+                                  Models & Keys
+                                </span>
+                              </div>
+                            {:else}
+                              <div
+                                class="min-w-0 truncate text-[13px] leading-5 text-destructive"
+                                title={errMsg}>
+                                {#if errCode}<span class="font-mono">[{errCode}]</span>
+                                {/if}{errMsg}
+                              </div>
+                            {/if}
+                          </div>
+                          <button
+                            type="button"
+                            aria-label="Retry"
+                            title="Retry"
+                            class="ml-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            onclick={() =>
+                              retryMessage(
+                                part.userMessage ||
+                                  (messages
+                                    .filter((m: Record<string, unknown>) => m.role === 'user')
+                                    .pop()?.content as string) ||
+                                  ''
+                              )}>
+                            <RotateCcw class="size-3.5" />
+                          </button>
                         </div>
-                        <div class="flex min-w-0 flex-1 flex-col gap-1">
-                          {#if isMissingKey}
-                            <div class="text-[13px] font-medium text-foreground">
-                              {providerLabel} key required
-                            </div>
-                            <div
-                              class="max-w-prose text-[13px] leading-relaxed text-muted-foreground">
-                              Add your key in Settings, then retry this message.
-                            </div>
-                            <div class="mt-1 flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                class="inline-flex h-7 items-center rounded-md bg-foreground px-2.5 text-[12px] font-medium text-background transition-opacity hover:opacity-90"
-                                onclick={openSettingsModal}>
-                                Open Settings
-                              </button>
-                              <span class="text-[12px] text-muted-foreground"> Models & Keys </span>
-                            </div>
-                          {:else}
-                            <div
-                              class="min-w-0 truncate text-[13px] leading-5 text-destructive"
-                              title={errMsg}>
-                              {#if errCode}<span class="font-mono">[{errCode}]</span>
-                              {/if}{errMsg}
-                            </div>
-                          {/if}
-                        </div>
-                        <button
-                          type="button"
-                          aria-label="Retry"
-                          title="Retry"
-                          class="ml-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                          onclick={() =>
-                            retryMessage(
-                              part.userMessage ||
-                                (messages
-                                  .filter((m: Record<string, unknown>) => m.role === 'user')
-                                  .pop()?.content as string) ||
-                                ''
-                            )}>
-                          <RotateCcw class="size-3.5" />
-                        </button>
-                      </div>
+                      </MessagePart>
                     {:else if part.type === 'markdown'}
                       {@const mdExpandKey = `md-expanded:${part.id}`}
                       {@const isMdExpanded =
@@ -3801,80 +3839,76 @@
                           : part.operation === 'append'
                             ? 'Appended'
                             : 'Wrote'}
-                      <button
-                        type="button"
-                        class="group flex w-full items-start gap-2 px-2 py-1 text-left {part.isStreaming
-                          ? 'tool-active-shimmer'
-                          : ''} {mdHasContent ? 'cursor-pointer' : ''}"
-                        disabled={!mdHasContent}
-                        aria-expanded={mdHasContent ? isMdExpanded : undefined}
-                        onclick={() => {
-                          if (!mdHasContent) return;
-                          toolSimpleExpanded = {
-                            ...toolSimpleExpanded,
-                            [mdExpandKey]: !isMdExpanded
-                          };
-                        }}>
-                        <span
-                          class="flex size-4 flex-shrink-0 items-center justify-center {part.isStreaming
-                            ? 'tool-active-icon-shimmer'
-                            : 'text-muted-foreground/70'}">
-                          <FileText class="size-4 flex-shrink-0" />
-                        </span>
-                        <div
-                          class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
-                          <span class="flex-shrink-0 font-medium whitespace-nowrap">
-                            {#if part.isStreaming}
-                              <span
-                                class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
-                                >{mdPendingTitle}</span>
-                            {:else}
-                              {mdDoneTitle}
-                            {/if}
-                          </span>
-                          <span
-                            class="min-w-0 truncate text-[12px] font-normal text-muted-foreground/60">
-                            {part.lines} line{part.lines !== 1 ? 's' : ''}
-                          </span>
-                          {#if mdHasContent}
+                      <MessagePart variant={isMdExpanded && mdHasContent ? 'block' : 'compact'}>
+                        {#if mdHasContent}
+                          <button
+                            type="button"
+                            class="ct-row ct-row-button group {part.isStreaming
+                              ? 'tool-active-shimmer'
+                              : ''}"
+                            aria-expanded={isMdExpanded}
+                            onclick={() => {
+                              toolSimpleExpanded = {
+                                ...toolSimpleExpanded,
+                                [mdExpandKey]: !isMdExpanded
+                              };
+                            }}>
+                            <span
+                              class="ct-icon {part.isStreaming ? 'tool-active-icon-shimmer' : ''}">
+                              <FileText class="size-3.5" />
+                            </span>
+                            <span class="ct-title">
+                              {#if part.isStreaming}
+                                <span class="thinking-shimmer">{mdPendingTitle}</span>
+                              {:else}
+                                {mdDoneTitle}
+                              {/if}
+                            </span>
+                            <span class="ct-subtitle"
+                              >{part.lines} line{part.lines !== 1 ? 's' : ''}</span>
                             <ChevronRight
-                              class="size-3.5 flex-shrink-0 text-muted-foreground/60 transition-transform duration-200 ease-out {isMdExpanded
+                              class="ct-chevron {isMdExpanded
                                 ? 'rotate-90'
                                 : 'opacity-0 group-hover:opacity-100'}" />
-                          {/if}
-                        </div>
-                      </button>
-                      {#if isMdExpanded && mdHasContent}
-                        <div
-                          class="mt-1 overflow-y-auto rounded-md border border-border/40 px-3 py-2"
-                          style="max-height: 300px; background-color: var(--tool-box-bg);">
-                          <pre
-                            class="text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground/85">{part.content}</pre>
-                        </div>
-                      {/if}
+                          </button>
+                        {:else}
+                          <div class="ct-row group {part.isStreaming ? 'tool-active-shimmer' : ''}">
+                            <span
+                              class="ct-icon {part.isStreaming ? 'tool-active-icon-shimmer' : ''}">
+                              <FileText class="size-3.5" />
+                            </span>
+                            <span class="ct-title">
+                              {#if part.isStreaming}
+                                <span class="thinking-shimmer">{mdPendingTitle}</span>
+                              {:else}
+                                {mdDoneTitle}
+                              {/if}
+                            </span>
+                            <span class="ct-subtitle"
+                              >{part.lines} line{part.lines !== 1 ? 's' : ''}</span>
+                          </div>
+                        {/if}
+                        {#if isMdExpanded && mdHasContent}
+                          <div class="ct-panel" style="max-height: 300px;">
+                            <pre class="ct-panel-text whitespace-pre-wrap">{part.content}</pre>
+                          </div>
+                        {/if}
+                      </MessagePart>
                     {:else if part.type === 'questionnaire'}
                       <!-- Compact summary; the actual answer UI is rendered in the input area below -->
                       {@const answeredCount = questionnaireAnsweredCount(
                         part.questions,
                         questionnaireResponses[part.id] || {}
                       )}
-                      <div
-                        class="flex items-center gap-2 px-2 py-1 {part.isStreaming
-                          ? 'tool-active-shimmer'
-                          : ''}">
-                        <span
-                          class="flex size-4 flex-shrink-0 items-center justify-center {part.isStreaming
-                            ? 'tool-active-icon-shimmer'
-                            : 'text-muted-foreground/70'}">
-                          <MessageCircleQuestion class="size-4 flex-shrink-0" />
-                        </span>
-                        <div
-                          class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted-foreground">
-                          <span class="flex-shrink-0 font-medium whitespace-nowrap">
+                      <MessagePart variant="compact">
+                        <div class="ct-row {part.isStreaming ? 'tool-active-shimmer' : ''}">
+                          <span
+                            class="ct-icon {part.isStreaming ? 'tool-active-icon-shimmer' : ''}">
+                            <MessageCircleQuestion class="size-3.5" />
+                          </span>
+                          <span class="ct-title">
                             {#if part.isStreaming}
-                              <span
-                                class="thinking-shimmer inline-flex h-4 items-center text-[13px] leading-none"
-                                >Preparing questions</span>
+                              <span class="thinking-shimmer">Preparing questions</span>
                             {:else if part.submitted}
                               Answered
                             {:else}
@@ -3882,13 +3916,11 @@
                             {/if}
                           </span>
                           {#if !part.isStreaming && part.questions.length > 0}
-                            <span
-                              class="min-w-0 truncate text-[12px] font-normal text-muted-foreground/60">
-                              {answeredCount}/{part.questions.length} answered
-                            </span>
+                            <span class="ct-subtitle"
+                              >{answeredCount}/{part.questions.length} answered</span>
                           {/if}
                         </div>
-                      </div>
+                      </MessagePart>
                     {/if}
                   {/each}
                 {:else if isLoading && i === messages.length - 1}
