@@ -77,12 +77,15 @@ export const handle: Handle = async ({ event, resolve }) => {
     : await maybeMergeGuestOnAuthenticatedRequest(event.request, !dev);
 
   // Fire-and-forget the lazy expired-guest prune; it's gated to once-per-hour
-  // and never blocks request resolution.
-  void maybePruneExpiredGuests();
+  // and never blocks request resolution. Swallow rejections so they don't
+  // surface as unhandled promise warnings (or terminate the process).
+  maybePruneExpiredGuests().catch((err) => {
+    console.warn('[guests] expired-guest prune failed:', err);
+  });
 
   const response = await resolve(event, {});
 
-  if (setGuestCookie) {
+  if (setGuestCookie && guestToken) {
     response.headers.append('Set-Cookie', guestCookieHeader(guestToken, !dev));
     response.headers.append('Set-Cookie', clearLoggedOutCookieHeader(!dev));
   } else if (mergeClearCookie) {
