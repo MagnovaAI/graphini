@@ -30,20 +30,45 @@ export const GET: RequestHandler = async ({ request, params }) => {
 
     if (!conv.workspace_id) {
       // db here is the concrete NeonAdapter which exposes createDiagramWorkspace
+      // and a delete escape hatch for failed/raced links.
       const adapter = db as unknown as {
         createDiagramWorkspace: (data: {
           user_id: string;
           title: string;
           engine?: string;
         }) => Promise<{ id: string }>;
+        deleteDiagramWorkspace?: (id: string) => Promise<void>;
       };
       const workspace = await adapter.createDiagramWorkspace({
         user_id: user.id,
         title: conv.title || 'Untitled',
         engine: 'mermaid'
       });
-      const updated = await db.updateConversation(conv.id, { workspace_id: workspace.id });
-      return json({ conversation: updated });
+
+      // Re-read the conversation. If another concurrent request already
+      // linked a workspace_id in the meantime, throw ours away and use the
+      // winner — otherwise we'd leave an orphan row. (Was the source of
+      // the 300+ orphan rows seen in production.)
+      const fresh = await db.getConversation(conv.id);
+      if (fresh?.workspace_id && fresh.workspace_id !== workspace.id) {
+        await adapter.deleteDiagramWorkspace?.(workspace.id).catch(() => {
+          /* best-effort cleanup; the orphan is small (empty doc) */
+        });
+        return json({ conversation: fresh });
+      }
+
+      try {
+        const updated = await db.updateConversation(conv.id, { workspace_id: workspace.id });
+        return json({ conversation: updated });
+      } catch (linkErr) {
+        // The link write failed — delete the workspace we just created so
+        // it doesn't dangle. Best-effort: if delete also fails, log it but
+        // surface the original error.
+        await adapter.deleteDiagramWorkspace?.(workspace.id).catch(() => {
+          /* swallow */
+        });
+        throw linkErr;
+      }
     }
 
     return json({ conversation: conv });

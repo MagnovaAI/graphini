@@ -334,9 +334,26 @@
 
       const currentId = workspaceStore.workspace?.id;
       if (workspaceId !== currentId) {
+        // Snapshot the active workspace file before workspaceStore.load()
+        // resets the code store — files are user-scoped, not chat-scoped,
+        // so the user's open file should survive a chat switch.
+        const activeFileBefore = filesStore.activeFile;
         const ok = await workspaceStore.load(workspaceId);
         if (isStale()) return;
         if (!ok) wsError = workspaceStore.state.error || 'Failed to load workspace';
+        // Re-apply the file's content into the code store without touching
+        // the viewer/panel state. The user's current panel (chat-only,
+        // canvas, code, document) stays as it was — chat switching is
+        // transparent to the file view.
+        else if (activeFileBefore) {
+          updateCodeStore({
+            code: activeFileBefore.content,
+            updateDiagram: activeFileBefore.kind !== 'md'
+          });
+          if (activeFileBefore.kind === 'md') {
+            documentMarkdownStore.set(activeFileBefore.content);
+          }
+        }
       }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') return;
@@ -351,10 +368,8 @@
     if (!chatId || !ownerId) return;
     conversationsStore.setActive(chatId);
     void loadChat(chatId, ownerId);
-    // Files are user-scoped, not chat-scoped, but a chat switch is the most
-    // reliable signal that the user might be picking up where another session
-    // left off — refresh the tree so newly-created files from other tabs or
-    // recent agent runs show up immediately.
+    // Files are user-scoped, not chat-scoped — refresh the tree in the
+    // background so newly-created files from other tabs/agent runs show up.
     void filesStore.refreshAll();
   });
 
@@ -424,10 +439,21 @@
       lastSavedActiveFileContent = code;
       return;
     }
+    // Guard against transient wipes. workspaceStore.load() momentarily
+    // resets $inputStateStore.code to the new conversation's (empty)
+    // workspace document — if we PATCH during that window we destroy the
+    // user's file. Never auto-overwrite a non-empty file with an empty
+    // string; that's never a desired autosave.
+    if (code === '' && file.content !== '') {
+      return;
+    }
     if (activeFileSaveTimer) clearTimeout(activeFileSaveTimer);
     activeFileSaveTimer = setTimeout(async () => {
       // Bail if the user has switched files between debounce and fire.
       if (filesStore.activeId !== file.id) return;
+      // Re-check the wipe guard at fire time too — a workspace load that
+      // started mid-debounce could've reset the code by now.
+      if (code === '' && filesStore.activeFile?.content !== '') return;
       const result = await filesStore.update(file.id, { content: code });
       if (!('error' in result)) lastSavedActiveFileContent = code;
     }, 500);
