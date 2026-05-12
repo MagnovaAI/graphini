@@ -1231,7 +1231,8 @@
    flush left edge with the message body, no internal vertical padding. */
 .ct-row {
   display: flex;
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
   min-height: 24px;
   align-items: center;
   gap: 0.5rem;
@@ -1278,7 +1279,7 @@
    when the row gets cramped. */
 .ct-subtitle {
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
   font-size: 12px;
   font-weight: 400;
   line-height: 1.25rem;
