@@ -33,6 +33,7 @@ import { PATH_RE, FOLDER_RE, deriveKind, type FileKind } from '$lib/server/works
 import { MERMAID_DIAGRAM_DECLARATION, findMermaidDeclarations } from '$lib/server/chat/mermaid';
 import { validateContentForKind } from '$lib/server/workspace-content-validation';
 import type { FileSystemTurnGuard, ToolContext } from './context';
+import { runGrep } from './fileSystem-grep';
 
 const drizzleDb = () => (getDb() as NeonAdapter).db;
 
@@ -49,16 +50,19 @@ type FileSystemOperation =
   | 'edit'
   | 'delete'
   | 'moveFolder'
-  | 'deleteFolder';
+  | 'deleteFolder'
+  | 'grep';
 
 function inferOperation(input: {
   content?: string;
   from?: string;
   path?: string;
+  query?: string;
   startLine?: number;
   to?: string;
 }): FileSystemOperation | undefined {
   if (input.from && input.to) return 'moveFolder';
+  if (input.query && !input.to && !input.from) return 'grep';
   if (input.content !== undefined && input.path && input.startLine !== undefined) return 'edit';
   if (input.content !== undefined && input.path) return 'create';
   if (input.path) return 'read';
@@ -159,18 +163,36 @@ Operations:
 
 Per-kind validation: .mermaid rejects markdown; .md rejects content starting with a Mermaid declaration; .json must parse; .yaml is stored as-is.`,
     inputSchema: z.object({
+      caseSensitive: z.boolean().optional(),
       content: z.string().optional(),
+      contextLines: z.number().int().min(0).max(5).optional(),
       endLine: z.number().int().min(1).optional(),
       from: z.string().optional(),
+      maxMatches: z.number().int().min(1).max(200).optional(),
+      mode: z.enum(['text', 'regex']).optional(),
       operation: z
-        .enum(['list', 'read', 'create', 'edit', 'delete', 'moveFolder', 'deleteFolder'])
+        .enum(['list', 'read', 'create', 'edit', 'delete', 'moveFolder', 'deleteFolder', 'grep'])
         .optional(),
       path: z.string().optional(),
+      query: z.string().optional(),
       startLine: z.number().int().min(1).optional(),
       to: z.string().optional()
     }),
-    execute: async ({ operation, path, content, from, to, startLine, endLine }) => {
-      operation = operation ?? inferOperation({ content, from, path, startLine, to });
+    execute: async ({
+      operation,
+      path,
+      content,
+      from,
+      to,
+      startLine,
+      endLine,
+      query,
+      mode,
+      caseSensitive,
+      contextLines,
+      maxMatches
+    }) => {
+      operation = operation ?? inferOperation({ content, from, path, query, startLine, to });
       if (!operation) {
         return {
           success: false,
@@ -276,9 +298,9 @@ Per-kind validation: .mermaid rejects markdown; .md rejects content starting wit
           return {
             success: true,
             file: {
+              content: fullContent.slice(0, MAX_READ_CONTENT_CHARS),
               id: row.id,
               kind: row.kind,
-              content: fullContent.slice(0, MAX_READ_CONTENT_CHARS),
               length: fullContent.length,
               lineCount,
               path: row.path,
@@ -510,6 +532,75 @@ Per-kind validation: .mermaid rejects markdown; .md rejects content starting wit
           .where(and(eq(workspaceFiles.user_id, userId), like(workspaceFiles.path, `${prefix}%`)))
           .returning({ id: workspaceFiles.id });
         return { success: true, deleted: result.length };
+      }
+
+      if (operation === 'grep') {
+        const grepQuery = query ?? '';
+        const grepMode = mode ?? 'text';
+        const grepCaseSensitive = caseSensitive ?? false;
+        const grepContextLines = contextLines ?? 1;
+        const grepMaxMatches = maxMatches ?? 50;
+
+        if (!grepQuery) return { success: false, error: '`query` is required.' };
+
+        let scope: { kind: 'file' | 'folder' | 'workspace'; path?: string };
+        let rows: { path: string; content: string }[];
+
+        if (!path) {
+          scope = { kind: 'workspace' };
+          rows = await db
+            .select({ path: workspaceFiles.path, content: workspaceFiles.content })
+            .from(workspaceFiles)
+            .where(eq(workspaceFiles.user_id, userId))
+            .orderBy(asc(workspaceFiles.path));
+        } else if (path.endsWith('/')) {
+          scope = { kind: 'folder', path };
+          rows = await db
+            .select({ path: workspaceFiles.path, content: workspaceFiles.content })
+            .from(workspaceFiles)
+            .where(and(eq(workspaceFiles.user_id, userId), like(workspaceFiles.path, `${path}%`)))
+            .orderBy(asc(workspaceFiles.path));
+        } else {
+          if (!PATH_RE.test(path)) return { success: false, error: 'Invalid path.' };
+          scope = { kind: 'file', path };
+          const found = await db
+            .select({ path: workspaceFiles.path, content: workspaceFiles.content })
+            .from(workspaceFiles)
+            .where(and(eq(workspaceFiles.user_id, userId), eq(workspaceFiles.path, path)));
+          if (found.length === 0) return { success: false, error: `File not found: ${path}` };
+          rows = found;
+        }
+
+        let result;
+        try {
+          result = runGrep(
+            rows.map((r) => ({ path: r.path, content: r.content ?? '' })),
+            {
+              caseSensitive: grepCaseSensitive,
+              contextLines: grepContextLines,
+              maxMatches: grepMaxMatches,
+              mode: grepMode,
+              query: grepQuery
+            }
+          );
+        } catch (err) {
+          return { success: false, error: (err as Error).message };
+        }
+
+        for (const m of result.matches) guard.readPaths.add(m.path);
+
+        return {
+          filesScanned: result.filesScanned,
+          matchMode: grepMode,
+          matches: result.matches,
+          mode: 'grep',
+          query: grepQuery,
+          scope,
+          success: true,
+          totalMatches: result.matches.length,
+          truncated: result.truncated,
+          ...(grepMode === 'regex' && result.slowLines > 0 ? { slowLines: result.slowLines } : {})
+        };
       }
 
       return { success: false, error: `Unknown operation: ${operation}` };
