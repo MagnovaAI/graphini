@@ -72,6 +72,7 @@
   import ProviderIcon from '$lib/client/features/chat/components/ProviderIcon.svelte';
   import ToolSimpleChip from '$lib/client/features/chat/components/ToolSimpleChip.svelte';
   import MessagePart from '$lib/client/features/chat/components/MessagePart.svelte';
+  import { revealFile } from '$lib/client/shell/revealFile.svelte';
   import {
     ChainOfTools,
     ChainOfToolsContent,
@@ -92,6 +93,7 @@
   import {
     AlertCircle,
     ArrowDown,
+    ArrowRight,
     Brain,
     Building2,
     Check,
@@ -3399,34 +3401,73 @@
       </div>
     {:else if !hasMessages}
       <div
-        class="mx-auto flex h-full w-full max-w-3xl flex-col justify-center gap-6 px-4 py-10 sm:px-6">
-        <div class="space-y-2 text-center">
-          <h2 class="text-[30px] leading-tight font-medium tracking-normal text-foreground">
-            Where should we begin?
+        class="mx-auto flex h-full w-full max-w-2xl flex-col justify-center gap-7 px-4 py-10 sm:px-6">
+        <div class="space-y-1.5 text-center">
+          <h2 class="text-[26px] leading-tight font-semibold tracking-tight text-foreground">
+            {hasDiagram ? 'How can we improve this?' : 'Where should we begin?'}
           </h2>
-          <p class="text-[13px] leading-relaxed text-muted-foreground">
-            Choose a starting point or describe the diagram below.
+          <p class="text-[13px] leading-relaxed text-muted-foreground/80">
+            {hasDiagram
+              ? 'Pick a quick action or describe the change below.'
+              : 'Choose a starting point or describe the diagram below.'}
           </p>
         </div>
         <div class="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
-          {#each suggestions as suggestion (suggestion.label)}
+          {#each suggestions as suggestion, sIdx (suggestion.label)}
+            {@const accents = [
+              {
+                bg: 'bg-indigo-500/10 dark:bg-indigo-400/10',
+                ring: 'group-hover:ring-indigo-500/25 dark:group-hover:ring-indigo-400/25',
+                text: 'text-indigo-500 dark:text-indigo-400'
+              },
+              {
+                bg: 'bg-emerald-500/10 dark:bg-emerald-400/10',
+                ring: 'group-hover:ring-emerald-500/25 dark:group-hover:ring-emerald-400/25',
+                text: 'text-emerald-500 dark:text-emerald-400'
+              },
+              {
+                bg: 'bg-sky-500/10 dark:bg-sky-400/10',
+                ring: 'group-hover:ring-sky-500/25 dark:group-hover:ring-sky-400/25',
+                text: 'text-sky-500 dark:text-sky-400'
+              },
+              {
+                bg: 'bg-amber-500/10 dark:bg-amber-400/10',
+                ring: 'group-hover:ring-amber-500/25 dark:group-hover:ring-amber-400/25',
+                text: 'text-amber-500 dark:text-amber-400'
+              },
+              {
+                bg: 'bg-violet-500/10 dark:bg-violet-400/10',
+                ring: 'group-hover:ring-violet-500/25 dark:group-hover:ring-violet-400/25',
+                text: 'text-violet-500 dark:text-violet-400'
+              },
+              {
+                bg: 'bg-rose-500/10 dark:bg-rose-400/10',
+                ring: 'group-hover:ring-rose-500/25 dark:group-hover:ring-rose-400/25',
+                text: 'text-rose-500 dark:text-rose-400'
+              }
+            ]}
+            {@const accent = accents[sIdx % accents.length]}
             <button
               type="button"
               onclick={() => {
                 handleSubmit({ text: suggestion.prompt });
               }}
-              class="group flex min-h-16 min-w-0 items-start gap-3 rounded-lg border border-border bg-background px-3 py-3 text-left transition-colors duration-150 hover:bg-accent focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
+              class="group relative flex min-w-0 items-start gap-3 rounded-xl border border-border/60 bg-background px-3.5 py-3 text-left transition-colors duration-150 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
               aria-label={suggestion.label}>
-              <suggestion.icon
-                class="mt-0.5 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-              <span class="min-w-0">
+              <span
+                class="inline-flex size-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-transparent transition {accent.bg} {accent.ring}">
+                <suggestion.icon class="size-3.5 {accent.text}" />
+              </span>
+              <span class="min-w-0 flex-1">
                 <span class="block truncate text-[13px] font-medium text-foreground">
                   {suggestion.label}
                 </span>
-                <span class="mt-1 block text-[12px] leading-snug text-muted-foreground">
+                <span class="mt-0.5 block text-[12px] leading-snug text-muted-foreground/85">
                   {suggestion.hint}
                 </span>
               </span>
+              <ArrowRight
+                class="mt-1 size-3.5 shrink-0 -translate-x-1 text-muted-foreground/0 transition-all group-hover:translate-x-0 group-hover:text-muted-foreground" />
             </button>
           {/each}
         </div>
@@ -3750,8 +3791,7 @@
                           title={artifact.title}
                           path={artifact.path}
                           onOpenFile={(p) => {
-                            const f = filesStore.list.find((x) => x.path === p);
-                            if (f) filesStore.setActive(f.id);
+                            revealFile(p);
                           }}
                           isStreaming={artifact.isStreaming}
                           operation={artifact.operation}
