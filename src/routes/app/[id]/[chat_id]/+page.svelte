@@ -14,6 +14,7 @@
   import IconPanel from '$lib/client/features/diagram/components/IconPanel.svelte';
   import Editor from '$lib/client/features/editor/components/Editor.svelte';
   import StructuredGraphView from '$lib/client/layout/StructuredGraphView.svelte';
+  import JsonTreeView from '$lib/client/layout/JsonTreeView.svelte';
   import { View } from '$lib/client/layout';
   import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/client/panels';
   import { AppShell, AppSidebar } from '$lib/client/shell';
@@ -37,6 +38,8 @@
     AlignLeft,
     ArrowLeft,
     Braces,
+    ChevronsDownUp,
+    ChevronsUpDown,
     Eraser,
     FileText,
     GitBranch,
@@ -176,6 +179,13 @@
   });
 
   const isMermaidDiagram = $derived(activeDiagramEngine === 'mermaid');
+  // JSON renders as a tree (no pan/zoom/grid), so the canvas controls
+  // that act on a pan-zoomed SVG don't apply.
+  const isJsonTree = $derived(activeDiagramEngine === 'json');
+  // JSON tree controls hoisted into the canvas toolbar so they share the
+  // same single header bar as the file title and view actions.
+  let jsonTreeSearch = $state('');
+  let jsonTreeRef: { expandAll: () => void; collapseAll: () => void } | undefined = $state();
   // Markdown viewer is gated on the active workspace file's kind, not on
   // engine sniffing — `selectWorkspaceFile` deliberately doesn't push .md
   // content into the diagram code store, so `activeDiagramEngine` will not
@@ -1056,12 +1066,11 @@
                         class="canvas-toolbar-title flex max-w-[40%] min-w-0 shrink items-center gap-2"
                         title={activeFile ? activeFileName : 'Canvas'}>
                         {#if activeFile && activeFileIcon}
-                          <img
-                            src={activeFileIcon}
-                            alt=""
-                            class="size-4 shrink-0 {activeFile.kind === 'mermaid'
-                              ? 'invert dark:invert-0'
-                              : ''}" />
+                          <!-- No filter: the brand colors in file-*.svg are
+                               picked to read on both light and dark surfaces.
+                               The previous `invert` flipped Mermaid's pink to
+                               green in light mode, which was wrong. -->
+                          <img src={activeFileIcon} alt="" class="size-4 shrink-0" />
                           <span class="truncate text-[13px] font-semibold text-foreground">
                             {activeFileName}
                           </span>
@@ -1073,16 +1082,42 @@
                         {/if}
                       </div>
                       <div class="canvas-toolbar-actions flex min-w-0 items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          class="toolbar-btn size-7 {isGridVisible ? 'active' : ''}"
-                          title={isGridVisible
-                            ? gridStyle === 'dots'
-                              ? 'Grid: dots'
-                              : 'Grid: squares'
-                            : 'Grid: off'}
-                          onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
+                        {#if isJsonTree}
+                          <input
+                            type="search"
+                            placeholder="Search keys and values…"
+                            bind:value={jsonTreeSearch}
+                            class="canvas-toolbar-search" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            class="toolbar-btn size-7"
+                            title="Expand all"
+                            onclick={() => jsonTreeRef?.expandAll()}>
+                            <ChevronsUpDown class="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            class="toolbar-btn size-7"
+                            title="Collapse all"
+                            onclick={() => jsonTreeRef?.collapseAll()}>
+                            <ChevronsDownUp class="size-4" />
+                          </Button>
+                          <div class="toolbar-separator"></div>
+                        {/if}
+                        {#if !isJsonTree}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            class="toolbar-btn size-7 {isGridVisible ? 'active' : ''}"
+                            title={isGridVisible
+                              ? gridStyle === 'dots'
+                                ? 'Grid: dots'
+                                : 'Grid: squares'
+                              : 'Grid: off'}
+                            onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
+                        {/if}
                         {#if isMermaidDiagram}
                           <div class="relative shrink-0">
                             <Button
@@ -1125,26 +1160,28 @@
                           class="toolbar-btn size-7"
                           title="Fullscreen"
                           onclick={toggleFullscreen}><Maximize2 class="size-4" /></Button>
-                        <div class="toolbar-separator"></div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          class="toolbar-btn size-7"
-                          title="Zoom In"
-                          onclick={zoomIn}><ZoomIn class="size-4" /></Button>
-                        <div class="toolbar-zoom-label">{zoomLevel}%</div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          class="toolbar-btn size-7"
-                          title="Zoom Out"
-                          onclick={zoomOut}><ZoomOut class="size-4" /></Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          class="toolbar-btn size-7"
-                          title="Reset View"
-                          onclick={resetView}><Scan class="size-4" /></Button>
+                        {#if !isJsonTree}
+                          <div class="toolbar-separator"></div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            class="toolbar-btn size-7"
+                            title="Zoom In"
+                            onclick={zoomIn}><ZoomIn class="size-4" /></Button>
+                          <div class="toolbar-zoom-label">{zoomLevel}%</div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            class="toolbar-btn size-7"
+                            title="Zoom Out"
+                            onclick={zoomOut}><ZoomOut class="size-4" /></Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            class="toolbar-btn size-7"
+                            title="Reset View"
+                            onclick={resetView}><Scan class="size-4" /></Button>
+                        {/if}
                         <div class="toolbar-separator"></div>
                         <Button
                           variant="ghost"
@@ -1204,7 +1241,14 @@
                       {gridStyle}
                       bind:isRendering={isViewRendering}
                       bind:renderError={viewRenderError} />
-                  {:else if activeDiagramEngine === 'json' || activeDiagramEngine === 'yaml'}
+                  {:else if activeDiagramEngine === 'json'}
+                    <!-- JSON gets a hierarchical tree (handles thousands of
+                         rows); YAML keeps the card-graph for now. -->
+                    <JsonTreeView
+                      bind:this={jsonTreeRef}
+                      bind:search={jsonTreeSearch}
+                      source={$inputStateStore.code || ''} />
+                  {:else if activeDiagramEngine === 'yaml'}
                     <StructuredGraphView
                       engine={activeDiagramEngine}
                       {panZoomState}
@@ -1454,6 +1498,13 @@
 
   .toolbar-separator {
     @apply mx-1 h-5 w-px bg-border;
+  }
+
+  /* JSON tree search lives in the canvas toolbar. Matches toolbar-btn
+     height (h-7) and uses the same hairline border language. Width is
+     capped so it doesn't crowd out the right-side status indicators. */
+  .canvas-toolbar-search {
+    @apply h-7 w-64 min-w-0 shrink rounded-md border border-border/70 bg-transparent px-2.5 text-[13px] text-foreground transition-colors outline-none placeholder:text-muted-foreground focus:border-foreground/40;
   }
 
   .toolbar-zoom-label {
