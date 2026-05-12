@@ -75,14 +75,16 @@ export const STYLE_PALETTES: Record<StyleThemeMode, Record<StylePaletteName, Sty
       { fill: '#4a044e', stroke: '#f0abfc', text: '#fae8ff' }, // fuchsia
       { fill: '#2e1065', stroke: '#c4b5fd', text: '#ede9fe' } //  violet
     ],
-    // Saturated but disciplined — one chip per hue family.
+    // Rich, saturated mid-deep tones — *-800 fills with *-300 strokes give
+    // the "alive" feel without the candy-neon mess that prompted this rewrite.
+    // Each chip stays one hue family; no jarring jumps between rows.
     vibrant: [
-      { fill: '#172554', stroke: '#60a5fa', text: '#dbeafe' }, // blue
-      { fill: '#022c22', stroke: '#2dd4bf', text: '#ccfbf1' }, // teal
-      { fill: '#451a03', stroke: '#fbbf24', text: '#fef3c7' }, // amber
-      { fill: '#2e1065', stroke: '#a78bfa', text: '#ede9fe' }, // violet
-      { fill: '#4a044e', stroke: '#e879f9', text: '#fae8ff' }, // fuchsia
-      { fill: '#450a0a', stroke: '#f87171', text: '#fee2e2' } //  red
+      { fill: '#1e40af', stroke: '#93c5fd', text: '#eff6ff' }, // blue 800
+      { fill: '#115e59', stroke: '#5eead4', text: '#ccfbf1' }, // teal 800
+      { fill: '#92400e', stroke: '#fcd34d', text: '#fef3c7' }, // amber 800
+      { fill: '#5b21b6', stroke: '#c4b5fd', text: '#ede9fe' }, // violet 800
+      { fill: '#86198f', stroke: '#f0abfc', text: '#fae8ff' }, // fuchsia 800
+      { fill: '#991b1b', stroke: '#fca5a5', text: '#fee2e2' } //  red 800
     ]
   },
   light: {

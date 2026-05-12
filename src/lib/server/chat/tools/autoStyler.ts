@@ -6,7 +6,7 @@ import { getStylePalette } from './stylePalettes';
 export function createAutoStylerTool({ target, userId }: ToolContext) {
   return tool({
     description:
-      'Automatically style all nodes and subgraphs in a Mermaid diagram with harmonious grouped colors. Pass `path` to target a specific .mermaid file; defaults to the active file when none is given. Use when the user asks to "make it colorful", "style the diagram", or "add colors". Choose `themeMode` based on whether the user wants light-mode or dark-mode colors. Text colors are contrast-checked against fills; do not mix light-mode fills into dark-mode diagrams or dark-mode fills into light-mode diagrams.',
+      'Automatically style all nodes and subgraphs in a Mermaid diagram with harmonious grouped colors. Pass `path` to target a specific .mermaid file; defaults to the active file when none is given. Use this for any "make it colorful", "more vibrant", "style the diagram", "add colors", or "brighten it up" request — do NOT hand-write style directives with raw hex colors when the user asks for general colorfulness; this tool emits palette-checked, contrast-safe styles. Choose `palette: "vibrant"` for the user\'s default "make it pop / brighter / more colorful" intent. Choose `themeMode` based on whether the user wants light-mode or dark-mode colors. Text colors are contrast-checked against fills; do not mix light-mode fills into dark-mode diagrams or dark-mode fills into light-mode diagrams.',
     inputSchema: z.object({
       path: z
         .string()
