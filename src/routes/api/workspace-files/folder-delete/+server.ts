@@ -3,8 +3,7 @@
  */
 
 import { validateSessionOrGuest } from '$lib/server/auth';
-import { getDb } from '$lib/server/db';
-import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { getDrizzle } from '$lib/server/db';
 import { workspaceFiles } from '$lib/server/db/schema';
 import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { FOLDER_RE } from '$lib/server/workspace-paths';
@@ -13,7 +12,11 @@ import { and, eq, like } from 'drizzle-orm';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 
-const drizzleDb = () => (getDb() as NeonAdapter).db;
+const drizzleDb = () => {
+  const db = getDrizzle();
+  if (!db) throw new Error('Workspace files require a Drizzle-backed database adapter.');
+  return db;
+};
 
 const delSchema = z.object({ path: z.string().min(1).max(200) });
 

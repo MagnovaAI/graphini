@@ -1,6 +1,5 @@
 import { validateSessionOrGuest } from '$lib/server/auth';
-import { getDb } from '$lib/server/db';
-import type { NeonAdapter } from '$lib/server/db/neon-adapter';
+import { getDrizzle } from '$lib/server/db';
 import { workspaceFiles } from '$lib/server/db/schema';
 import { getClientKey, rateLimitResponse, uploadLimiter } from '$lib/server/rate-limit';
 import { validateContentForKind } from '$lib/server/workspace-content-validation';
@@ -25,7 +24,11 @@ const GUEST_QUOTA = 15;
 const USER_QUOTA = 30;
 const UPLOAD_FOLDER = 'uploads';
 
-const drizzleDb = () => (getDb() as NeonAdapter).db;
+const drizzleDb = () => {
+  const db = getDrizzle();
+  if (!db) throw new Error('Upload endpoint requires a Drizzle-backed database adapter.');
+  return db;
+};
 
 function quotaFor(user: { is_guest?: boolean | null }): number {
   return user.is_guest ? GUEST_QUOTA : USER_QUOTA;
