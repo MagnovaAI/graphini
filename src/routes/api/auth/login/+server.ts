@@ -1,3 +1,4 @@
+import { scrypt, timingSafeEqual } from 'node:crypto';
 import { json, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
@@ -79,7 +80,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
     const bypass = getDevBypassEmail(request);
     if (bypass) {
       const devUser = await validateSession(request);
-      if (devUser) {
+      if (devUser && devUser.email) {
         const signed = await createLocalSession(devUser.email);
         const secureCookie = url.protocol === 'https:';
         const guestClear = await maybeMergeGuestIntoUser(request, devUser.id, secureCookie);
@@ -132,7 +133,6 @@ export const POST: RequestHandler = async ({ request, url }) => {
       );
     }
 
-    const { scrypt, timingSafeEqual } = await import('node:crypto');
     const parts = (user.password_hash ?? '').split(':');
     const hash = parts[0];
     const salt = parts.slice(1).join(':'); // salt is hex; guard against extra colons

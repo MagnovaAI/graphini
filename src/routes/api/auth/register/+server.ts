@@ -1,3 +1,4 @@
+import { randomBytes, scrypt } from 'node:crypto';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
@@ -37,7 +38,6 @@ export const POST: RequestHandler = async ({ request, url }) => {
     }
 
     // Hash password
-    const { scrypt, randomBytes } = await import('node:crypto');
     const salt = randomBytes(16).toString('hex');
     const hash = await new Promise<string>((resolve, reject) => {
       scrypt(password, salt, 64, (err, derived) => {
