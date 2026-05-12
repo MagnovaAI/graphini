@@ -33,8 +33,12 @@
   } = $props();
 
   let svgElement = $state<SVGSVGElement>();
+  let containerWidth = $state(0);
+  let containerHeight = $state(0);
   let collapsedBranchIds = $state(new Set<string>());
-  let collapsedCardIds = $state(new Set<string>());
+  // Still passed to getVisibleObjectGraph for API compatibility; per-card
+  // collapse UI was dropped in favor of the per-row branch port.
+  const collapsedCardIds = new Set<string>();
 
   const parsed = $derived.by<ObjectGraph>(() => {
     try {
@@ -80,8 +84,14 @@
       ...edge,
       path: edgePath(edge, cardById)
     }));
-    const width = Math.max(900, ...cards.map((card) => card.x + card.width / 2 + 64));
-    const height = Math.max(540, ...cards.map((card) => card.y + card.height / 2 + 64));
+    // Pad the layout to at least the container size. svg-pan-zoom's
+    // fit:true scales the SVG content to fill the viewport — when the
+    // content bbox is smaller than the container (one small card), this
+    // zooms everything up. Padding to container size pins fit to 1:1.
+    const contentWidth = Math.max(...cards.map((card) => card.x + card.width / 2 + 64), 0);
+    const contentHeight = Math.max(...cards.map((card) => card.y + card.height / 2 + 64), 0);
+    const width = Math.max(containerWidth || 900, contentWidth);
+    const height = Math.max(containerHeight || 540, contentHeight);
     return { cards, edges, height, width };
   });
 
@@ -91,12 +101,6 @@
     void layout.height;
     panZoomState.updateElement(svgElement, {});
   });
-
-  function hasChildren(id: string) {
-    return parsed.cards.some(
-      (card) => card.id.startsWith(`${id}.`) || card.id.startsWith(`${id}[`)
-    );
-  }
 
   function rowHasChildren(id: string) {
     return parsed.cards.some(
@@ -112,19 +116,23 @@
     collapsedBranchIds = next;
   }
 
-  function toggleCard(id: string) {
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity
-    const next = new Set(collapsedCardIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    collapsedCardIds = next;
+  // Pastel rotation. Hash the card id so the same title keeps the same
+  // hue across re-renders, but the layout still gets a mix of colors.
+  const HEADER_PALETTES = [
+    'card-header-rose',
+    'card-header-violet',
+    'card-header-peach',
+    'card-header-mint'
+  ] as const;
+
+  function hueIndex(id: string): number {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return h % HEADER_PALETTES.length;
   }
 
-  function headerClass(kind: ObjectGraph['cards'][number]['kind'], depth: number) {
-    if (depth === 0) return 'card-header-purple';
-    if (kind === 'primitive') return 'card-header-beige';
-    if (kind === 'array') return 'card-header-teal';
-    return 'card-header-green';
+  function headerClass(id: string): string {
+    return HEADER_PALETTES[hueIndex(id)];
   }
 
   function edgePath(edge: ObjectGraph['edges'][number], cardById: Map<string, PositionedCard>) {
@@ -163,7 +171,12 @@
   }
 </script>
 
-<div class="structured-canvas {shouldShowGrid ? `grid-${gridStyle}-${$mode}` : ''}">
+<div
+  class="structured-canvas {shouldShowGrid ? `grid-${gridStyle}-${$mode}` : ''}"
+  bind:clientWidth={containerWidth}
+  bind:clientHeight={containerHeight}>
+  <!-- layout.{width,height} is padded to the container size in the derived
+       layout — keeps pan-zoom's fit:true at 1:1 when content is small. -->
   <svg bind:this={svgElement} class="structured-svg" viewBox="0 0 {layout.width} {layout.height}">
     {#each layout.edges as edge (edge.id)}
       <path
@@ -176,24 +189,16 @@
 
     {#each layout.cards as card (card.id)}
       <foreignObject
-        x={card.x - card.width / 2 - 18}
-        y={card.y - card.height / 2 - 10}
-        width={card.width + 36}
-        height={card.height + 20}>
+        x={card.x - card.width / 2 - 14}
+        y={card.y - card.height / 2}
+        width={card.width + 28}
+        height={card.height}
+        style="overflow: visible">
         <div
           class="object-card"
-          style="width: {card.width}px; height: {card.height}px; margin: 10px 18px;">
-          <div class="card-header {headerClass(card.kind, card.depth)}">
+          style="width: {card.width}px; height: {card.height}px; margin-left: 14px;">
+          <div class="card-header {headerClass(card.id)}">
             <span class="truncate">{card.title}</span>
-            {#if hasChildren(card.id)}
-              <button
-                type="button"
-                class="collapse-button"
-                onclick={() => toggleCard(card.id)}
-                aria-label={collapsedCardIds.has(card.id) ? 'Expand' : 'Collapse'}>
-                {collapsedCardIds.has(card.id) ? '+' : '-'}
-              </button>
-            {/if}
           </div>
           <div class="card-body">
             {#each card.rows as row (row.key)}
@@ -280,76 +285,69 @@
       );
   }
 
-  /* Cards. Important: --card === --background in this theme, so we can't
-     rely on bg-card for separation. Light mode: white card on subtle
-     dotted bg, lean on shadow + border. Dark mode: lift the card with
-     zinc-800 — distinct from the #181818 canvas without going pure black. */
+  /* Cards. Subtle 1px ambient shadow — matches the reference screenshot's
+     near-flat look. overflow-visible so the right-edge branch port can
+     hang outside the card. Rounded corners come from the header (top)
+     and last property-row (bottom) clipping with their own radius. */
   .object-card {
-    @apply relative z-10 h-full overflow-visible rounded-lg border border-zinc-200/80 bg-white text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_-4px_rgba(0,0,0,0.08)] dark:border-zinc-700/70 dark:bg-zinc-900 dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(0,0,0,0.6)];
+    @apply relative h-full rounded-xl border border-zinc-200 bg-white text-[13px] shadow-[0_1px_2px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-800 dark:shadow-[0_1px_2px_rgba(0,0,0,0.35)];
   }
 
   .card-header {
-    @apply flex h-9 items-center justify-between gap-2 rounded-t-lg border-b border-zinc-200/70 px-3 font-mono text-[12px] font-semibold tracking-tight dark:border-zinc-700/60;
+    @apply flex h-9 items-center justify-between gap-2 rounded-t-xl px-3 font-mono text-[12px] font-semibold tracking-tight;
   }
 
-  /* Header palettes — light uses 100/900 (good 9:1+ contrast); dark uses
-     a richer 500/40 tint over the zinc-900 card with near-white text for
-     legibility against the dotted background and tinted fill. */
-  .card-header-purple {
-    @apply bg-purple-100 text-purple-900 dark:bg-purple-500/30 dark:text-purple-100;
+  /* Headers — soft pastel tint in light, low-saturation in dark. Dark uses
+     /15 opacity over zinc-800 (the prior /25 produced muddy bricks against
+     the dark canvas). Text uses the 200 shade for legibility without glow. */
+  .card-header-rose {
+    @apply bg-rose-100 text-rose-900 dark:bg-rose-500/15 dark:text-rose-200;
+  }
+  .card-header-violet {
+    @apply bg-violet-100 text-violet-900 dark:bg-violet-500/15 dark:text-violet-200;
+  }
+  .card-header-peach {
+    @apply bg-orange-100 text-orange-900 dark:bg-orange-500/15 dark:text-orange-200;
+  }
+  .card-header-mint {
+    @apply bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200;
   }
 
-  .card-header-teal {
-    @apply bg-cyan-100 text-cyan-900 dark:bg-cyan-500/30 dark:text-cyan-100;
-  }
-
-  .card-header-green {
-    @apply bg-emerald-100 text-emerald-900 dark:bg-emerald-500/30 dark:text-emerald-100;
-  }
-
-  .card-header-beige {
-    @apply bg-amber-50 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100;
-  }
-
-  /* Floating chrome — needs an explicit elevated bg in dark mode since
-     bg-background blends into the canvas. */
-  .collapse-button {
-    @apply flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-zinc-300 bg-white font-mono text-[12px] leading-none text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-400 dark:hover:text-zinc-50;
-  }
-
-  /* Edges. Light: slate-500 reads cleanly over white cards and dotted bg.
-     Dark: slate-400/50 keeps it present without out-glowing the cards. */
+  /* Edges. Light: slate-400 (neutral grey, matches screenshot).
+     Dark: zinc-600 — present without the glow of a saturated stroke. */
   .graph-edge {
-    @apply fill-none stroke-slate-500 transition-[stroke,stroke-dasharray] duration-150 dark:stroke-slate-400/55;
+    @apply fill-none stroke-slate-400 transition-[stroke,stroke-dasharray] duration-150 dark:stroke-zinc-600;
   }
 
   .graph-edge:hover {
-    @apply stroke-zinc-900 dark:stroke-zinc-100;
+    @apply stroke-zinc-700 dark:stroke-zinc-300;
     stroke-dasharray: 8 7;
     animation: structured-flow 0.75s linear infinite;
   }
 
   .card-body {
-    @apply overflow-visible rounded-b-lg font-mono;
+    @apply font-mono;
   }
 
+  /* Row dividers: zinc-100 light, zinc-700/60 dark for visible-but-quiet lines.
+     Last row rounds its bottom corners so the card edge stays clean even
+     though .object-card itself is overflow-visible. */
   .property-row {
-    @apply relative flex h-8 items-center gap-2 border-b border-zinc-200/60 px-3 last:rounded-b-lg last:border-b-0 dark:border-zinc-700/50;
+    @apply relative flex h-8 items-center gap-2 border-t border-zinc-100 px-3 first:border-t-0 last:rounded-b-xl dark:border-zinc-700/60;
   }
 
-  /* Keys: blue-700 hits 7:1 on white; blue-300 hits 7:1 on zinc-900. */
   .property-key {
-    @apply shrink-0 font-semibold text-blue-700 dark:text-blue-300;
+    @apply shrink-0 font-semibold text-blue-600 dark:text-blue-300;
   }
 
-  /* Values: lean toward the text color rather than the muted token so
-     they stay readable against the patterned background. */
   .property-value {
-    @apply min-w-0 truncate text-zinc-700 dark:text-zinc-300;
+    @apply min-w-0 truncate text-zinc-700 dark:text-zinc-200;
   }
 
+  /* Branch port — sits just outside the card. Uses card-body bg so it
+     visually belongs to the row, not the canvas. */
   .property-port {
-    @apply absolute top-1/2 right-[-10px] z-50 flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-zinc-300 bg-white font-mono text-[12px] leading-none text-zinc-600 shadow-md transition-colors hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-400 dark:hover:text-zinc-50;
+    @apply absolute top-1/2 right-[-10px] z-50 flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-zinc-300 bg-white font-mono text-[12px] leading-none text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-200 dark:hover:border-zinc-400 dark:hover:text-white;
   }
 
   @keyframes structured-flow {
