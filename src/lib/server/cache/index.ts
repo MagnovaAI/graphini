@@ -99,11 +99,21 @@ class L1Cache {
     };
   }
 
-  private evictExpired(): void {
+  /**
+   * Evict every entry whose TTL has passed. Returns the number of rows
+   * removed so callers can report a "cleaned" count without wiping live
+   * entries.
+   */
+  evictExpired(): number {
     const now = Date.now();
+    let removed = 0;
     for (const [k, v] of this.store) {
-      if (v.expiresAt && v.expiresAt < now) this.store.delete(k);
+      if (v.expiresAt && v.expiresAt < now) {
+        this.store.delete(k);
+        removed++;
+      }
     }
+    return removed;
   }
 
   private evictLRU(): void {
@@ -258,11 +268,8 @@ export class CacheService {
 
   /** Cleanup expired entries by re-checking all keys */
   async cleanup(): Promise<{ cleared: number }> {
-    const before = this.l1.getStats().entries;
-    // Trigger expiry checks by calling has() on all — but we don't have key iteration.
-    // Instead, just clear expired via a full clear + report.
-    await this.clear();
-    return { cleared: before };
+    const cleared = this.l1.evictExpired();
+    return { cleared };
   }
 
   destroy(): void {
