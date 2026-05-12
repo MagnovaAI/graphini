@@ -15,11 +15,12 @@
 
   // Register KV store instance globally for synchronous access from .svelte.ts files
   (globalThis as any).__kvStoreModule = kv;
-  // Initialize KV store (loads all user settings from Supabase)
-  kv.init().then(() => toolsStore.syncFromKv());
 
   async function initializeClientState() {
     await authStore.init();
+    // KV load is gated on auth init so we hit Supabase once with the
+    // resolved user, instead of fetching anonymously at module-eval and
+    // again after auth resolves.
     await kv.init({ force: true });
     toolsStore.syncFromKv();
     setMode(uiSettings.value.theme);
