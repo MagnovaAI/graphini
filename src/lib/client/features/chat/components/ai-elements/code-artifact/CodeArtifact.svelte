@@ -1,3 +1,11 @@
+<script module lang="ts">
+  // Module-scoped latch: once shiki tokenization fails anywhere, log a
+  // single warning and let all subsequent artifacts render plain. Without
+  // this, every artifact + every prop change re-tries and the console fills
+  // with hundreds of identical errors.
+  let shikiWarnedThisRender = false;
+</script>
+
 <script lang="ts">
   import { ChevronRight, Eye, FilePen, FilePlus, Trash2 } from 'lucide-svelte';
   import { tick } from 'svelte';
@@ -10,6 +18,12 @@
     previousCode?: string;
     language?: string;
     title?: string;
+    /** Full workspace path. Header shows the basename + a tooltip with this
+        full string; clicking the filename opens the file. */
+    path?: string;
+    /** Called when the user clicks the header filename. If unset, the
+        filename is rendered as plain text. */
+    onOpenFile?: (path: string) => void;
     isStreaming?: boolean;
     operation?: 'create' | 'edit' | 'delete' | 'read';
     defaultCollapsed?: boolean;
@@ -26,6 +40,8 @@
     language = 'mermaid',
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     title = 'Diagram Code',
+    path,
+    onOpenFile,
     isStreaming = false,
     operation = 'create',
     defaultCollapsed,
@@ -35,6 +51,8 @@
     readTo,
     totalLines
   }: Props = $props();
+
+  const filename = $derived(path ? path.split('/').pop() || path : '');
 
   let isCollapsed = $state(false);
   let codeContainer: HTMLDivElement | undefined = $state();
@@ -59,17 +77,23 @@
   let isRead = $derived(operation === 'read');
   let isError = $derived(isRead && hasErrors);
 
-  // Diff: compute added/removed lines vs previousCode
+  // Diff: compute added/removed lines vs previousCode. For `create` (and
+  // edits where prior content wasn't captured), there's no baseline — every
+  // current line counts as added so the diff view still renders meaningfully.
   let prevLines = $derived(previousCode ? previousCode.split('\n') : []);
   let prevTrimmed = $derived(prevLines.map((l) => l.trim()));
   let curTrimmed = $derived(lines.map((l) => l.trim()));
+  let hasPrev = $derived(previousCode.length > 0);
   let addedCount = $derived(
-    previousCode ? lines.filter((l) => !prevTrimmed.includes(l.trim())).length : 0
+    hasPrev ? lines.filter((l) => !prevTrimmed.includes(l.trim())).length : lineCount
   );
   let removedCount = $derived(
-    previousCode ? prevLines.filter((l) => !curTrimmed.includes(l.trim())).length : 0
+    hasPrev ? prevLines.filter((l) => !curTrimmed.includes(l.trim())).length : 0
   );
-  let hasDiff = $derived(previousCode.length > 0 && (addedCount > 0 || removedCount > 0));
+  // Always render the unified-diff view for any non-empty write — when
+  // previousCode is missing we degrade gracefully to "all added", which is
+  // still more useful than the plain full-code view.
+  let hasDiff = $derived((operation === 'edit' || operation === 'create') && lineCount > 0);
 
   // Unified diff lines: only show changed regions with 1 line of context
   interface DiffLine {
@@ -141,7 +165,13 @@
     }
     return result;
   });
-  let showDiffView = $derived(false);
+  // Show the git-style diff view for any non-streaming write. Edits with
+  // prior content get a real diff; edits/creates without prior content fall
+  // back to "all added" via hasDiff/addedCount above, so the green-rail
+  // treatment still applies.
+  let showDiffView = $derived(
+    !isStreaming && (operation === 'edit' || operation === 'create') && lineCount > 0
+  );
 
   // Auto-scroll to bottom during streaming
   $effect(() => {
@@ -170,8 +200,10 @@
         ? `lines ${readFrom}-${readTo} of ${totalLines}`
         : `lines ${readFrom}-${readTo}`;
     }
-    if (operation === 'edit' && previousCode && (addedCount > 0 || removedCount > 0)) {
-      return ''; // diff stats rendered separately with color
+    // Edit & create both render their own colored +/− stats in the header,
+    // so the plain "N lines" subtitle would duplicate the info.
+    if ((operation === 'edit' || operation === 'create') && lineCount > 0) {
+      return '';
     }
     return `${lineCount} line${lineCount !== 1 ? 's' : ''}`;
   });
@@ -232,7 +264,16 @@
           prevCodeTokenLines = previous?.tokens ?? null;
         }
       } catch (err) {
-        console.warn('[CodeArtifact] shiki tokenize failed', err);
+        // Log once per render path. The shared highlighter's latch in
+        // shikiSetup prevents the underlying init from re-running, but a
+        // failed init still rejects here and would spam without this guard.
+        if (!shikiWarnedThisRender) {
+          shikiWarnedThisRender = true;
+          console.warn(
+            '[CodeArtifact] shiki tokenize failed (rendering as plain text):',
+            err instanceof Error ? err.message : String(err)
+          );
+        }
         if (!cancelled) {
           codeTokenLines = null;
           prevCodeTokenLines = null;
@@ -303,8 +344,30 @@
         {/if}
       </span>
 
+      <!-- Filename: clickable when onOpenFile is provided, tooltip shows the
+           full path. Stops propagation so clicking the filename opens the
+           file without also toggling the header expand. -->
+      {#if filename}
+        {#if onOpenFile && path}
+          <button
+            type="button"
+            title={path}
+            class="min-w-0 cursor-pointer truncate rounded font-mono text-[12px] text-foreground/80 hover:text-foreground hover:underline focus-visible:ring-1 focus-visible:ring-ring/40 focus-visible:outline-none"
+            onclick={(e) => {
+              e.stopPropagation();
+              onOpenFile(path);
+            }}>
+            {filename}
+          </button>
+        {:else}
+          <span class="min-w-0 truncate font-mono text-[12px] text-foreground/80" title={path}>
+            {filename}
+          </span>
+        {/if}
+      {/if}
+
       <!-- Diff stats for edits -->
-      {#if !isStreaming && operation === 'edit' && previousCode && (addedCount > 0 || removedCount > 0)}
+      {#if !isStreaming && (operation === 'edit' || operation === 'create') && (addedCount > 0 || removedCount > 0)}
         <span class="flex-shrink-0 font-mono text-[12px]">
           {#if addedCount > 0}<span class="text-emerald-600 dark:text-emerald-400"
               >+{addedCount}</span
@@ -372,30 +435,44 @@
                     >···</td>
                 </tr>
               {:else}
+                <!-- Diff row — git-style left rail + soft bg tint. The
+                     rail (2px solid colored border) carries the visual
+                     weight of "this changed"; the bg tint is light enough
+                     to keep code legible. Context rows get a transparent
+                     rail so indentation columns stay aligned. -->
                 <tr
                   class="artifact-line transition-colors duration-75
-                    {dl.type === 'added' ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.12]' : ''}
-                    {dl.type === 'removed' ? 'bg-red-500/[0.08] dark:bg-red-500/[0.12]' : ''}
+                    {dl.type === 'added' ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.14]' : ''}
+                    {dl.type === 'removed' ? 'bg-red-500/[0.08] dark:bg-red-500/[0.14]' : ''}
                     {dl.type === 'context' ? 'hover:bg-muted/30' : ''}">
                   <td
-                    class="px-1 text-center align-top font-mono text-[12px] leading-[1.65] select-none"
+                    class="px-1 text-center align-top font-mono text-[12px] leading-[1.65] font-semibold select-none
+                      {dl.type === 'added'
+                      ? 'border-l-2 border-emerald-500/60 text-emerald-700 dark:text-emerald-400'
+                      : ''}
+                      {dl.type === 'removed'
+                      ? 'border-l-2 border-red-500/60 text-red-700 dark:text-red-400'
+                      : ''}
+                      {dl.type === 'context' ? 'border-l-2 border-transparent' : ''}"
                     style="width: 1.25rem; min-width: 1.25rem;">
-                    {#if dl.type === 'added'}<span class="text-emerald-600 dark:text-emerald-400"
-                        >+</span
-                      >{/if}
-                    {#if dl.type === 'removed'}<span class="text-red-600 dark:text-red-400">−</span
-                      >{/if}
+                    {#if dl.type === 'added'}+{/if}
+                    {#if dl.type === 'removed'}−{/if}
                   </td>
                   <td
                     class="artifact-ln border-r border-border/30 px-3 text-right align-top text-muted-foreground/40 select-none"
                     style="width: 2.75rem; min-width: 2.75rem;">
                     {dl.lineNum || ''}
                   </td>
+                  <!-- Text color falls back to the type color only when
+                       shiki tokens aren't available (e.g. during streaming).
+                       Tokenized lines render with shiki's per-token colors. -->
                   <td
                     class="px-4 align-top whitespace-pre
-                    {dl.type === 'removed'
-                      ? 'text-red-700/80 line-through dark:text-red-400/80'
-                      : 'text-foreground/90'}">
+                    {!lineTokens && dl.type === 'added'
+                      ? 'text-emerald-700 dark:text-emerald-300'
+                      : ''}
+                    {!lineTokens && dl.type === 'removed' ? 'text-red-700 dark:text-red-300' : ''}
+                    {dl.type === 'context' || lineTokens ? 'text-foreground/90' : ''}">
                     {#if lineTokens}
                       {#each lineTokens as t, ti (ti)}<span style:color={t.color}>{t.content}</span
                         >{/each}

@@ -12,6 +12,9 @@ export interface Artifact {
   operation: 'create' | 'edit' | 'delete' | 'read';
   isStreaming: boolean;
   title: string;
+  /** Full workspace path of the target file, used for the header filename
+      tooltip and click-to-open. Always the unmodified tool input path. */
+  path?: string;
   language?: string;
   hasErrors?: boolean;
   errors?: string[];
