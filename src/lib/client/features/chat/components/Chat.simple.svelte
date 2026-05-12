@@ -11,7 +11,10 @@
     PromptInputTools
   } from '$lib/client/features/chat/components/ai-elements';
   import { CodeArtifact } from '$lib/client/features/chat/components/ai-elements/code-artifact';
-  import type { PromptInputMessage } from '$lib/client/features/chat/components/ai-elements/prompt-input';
+  import type {
+    AttachmentsContext,
+    PromptInputMessage
+  } from '$lib/client/features/chat/components/ai-elements/prompt-input';
   import { Response } from '$lib/client/features/chat/components/ai-elements/response';
   import type {
     Artifact,
@@ -641,6 +644,27 @@
   let inputExpanded = $state(false);
   let inputOverflow = $state(false);
   let inputEl = $state<HTMLTextAreaElement | null>(null);
+  let composerAttachments = $state<AttachmentsContext | null>(null);
+
+  const PASTE_AS_FILE_CHAR_THRESHOLD = 5000;
+  let pastedFileCount = 0;
+
+  function handleInputPaste(e: ClipboardEvent) {
+    const text = e.clipboardData?.getData('text/plain');
+    if (!text) return;
+    const combinedLen = inputText.length + text.length;
+    if (text.length < PASTE_AS_FILE_CHAR_THRESHOLD && combinedLen < PASTE_AS_FILE_CHAR_THRESHOLD) {
+      return;
+    }
+    if (!composerAttachments) return;
+    e.preventDefault();
+    pastedFileCount += 1;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+    const filename = `pasted-${stamp}${pastedFileCount > 1 ? `-${pastedFileCount}` : ''}.txt`;
+    const file = new File([text], filename, { type: 'text/plain' });
+    composerAttachments.add([file]);
+  }
+
   let fileError = $state<string | null>(null);
   let isLoading = $state(false);
   let conversationStarted = $state(false);
@@ -4041,6 +4065,7 @@
       {/if}
     {:else}
       <PromptInput
+        bind:attachments={composerAttachments}
         class="chat-composer overflow-hidden rounded-[28px] border border-border/70 text-foreground transition-colors duration-150 focus-within:border-foreground/25"
         style="background-color: var(--chat-input-bg);"
         accept={attachmentAccept}
@@ -4083,6 +4108,7 @@
               : 'Describe your diagram…'}
             bind:value={inputText}
             disabled={isLoading}
+            onpaste={handleInputPaste}
             onkeydown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault();

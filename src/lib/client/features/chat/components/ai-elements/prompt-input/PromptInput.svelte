@@ -24,6 +24,7 @@
     onError?: (err: { code: 'max_files' | 'max_file_size' | 'accept'; message: string }) => void;
     onSubmit: (message: PromptInputMessage, event: SubmitEvent) => void | Promise<void>;
     children?: import('svelte').Snippet;
+    attachments?: AttachmentsContext | null;
   }
 
   let {
@@ -38,6 +39,7 @@
     onError,
     onSubmit,
     children,
+    attachments = $bindable(null),
     ...props
   }: Props = $props();
 
@@ -49,6 +51,7 @@
     return new AttachmentsContext(accept, multiple, maxFiles, maxFileSize, onError);
   }
   const attachmentsContext = createAttachmentsContext();
+  attachments = attachmentsContext;
 
   // Find nearest form to scope drag & drop
   onMount(() => {
@@ -162,6 +165,7 @@
 
     // Convert blob URLs to data URLs asynchronously
     let filesPromises = attachmentsContext.files.map(async ({ id, ...item }) => {
+      void id;
       if (item.url && item.url.startsWith('blob:')) {
         return {
           ...item,
