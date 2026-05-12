@@ -104,11 +104,12 @@ async function renameConversation(id: string, title: string): Promise<boolean> {
 }
 
 async function deleteConversation(id: string): Promise<boolean> {
-  // Optimistic remove so the sidebar updates instantly. Capture enough state
-  // to roll back cleanly if the API ends up rejecting the delete.
-  const idx = state.list.findIndex((c) => c.id === id);
-  if (idx < 0) return false;
-  const removed = state.list[idx];
+  // Optimistic remove so the sidebar updates instantly. Snapshot what we need
+  // to roll back. Rollback re-inserts by id (not index) so concurrent deletes
+  // don't corrupt each other's positions.
+  const removedIdx = state.list.findIndex((c) => c.id === id);
+  if (removedIdx < 0) return false;
+  const removed = state.list[removedIdx];
   const prevActiveId = state.activeId;
   state.list = state.list.filter((c) => c.id !== id);
   if (prevActiveId === id) {
@@ -117,17 +118,22 @@ async function deleteConversation(id: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/conversations?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      credentials: 'include'
+      credentials: 'include',
+      keepalive: true
     });
     if (res.ok) return true;
   } catch {
     /* fall through to rollback */
   }
-  // Roll back on failure.
-  const reverted = [...state.list];
-  reverted.splice(idx, 0, removed);
-  state.list = reverted;
-  state.activeId = prevActiveId;
+  // Roll back on failure. Re-insert near the original position, but clamp to
+  // the current list length and skip if the id is somehow already present.
+  if (!state.list.some((c) => c.id === id)) {
+    const reverted = [...state.list];
+    const insertAt = Math.min(removedIdx, reverted.length);
+    reverted.splice(insertAt, 0, removed);
+    state.list = reverted;
+  }
+  if (prevActiveId === id) state.activeId = prevActiveId;
   return false;
 }
 
