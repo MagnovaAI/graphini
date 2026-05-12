@@ -34,23 +34,30 @@ const createSchema = z.object({
   content: z.string().default('')
 });
 
-const DEFAULT_NAME_RE = /^Untitled(?: (\d+))?\.mermaid$/;
+const DEFAULT_EXTS = ['mermaid', 'md', 'json', 'yaml', 'yml'] as const;
+const DEFAULT_NAME_RE_FOR_EXT = (ext: string) => new RegExp(`^Untitled(?: (\\d+))?\\.${ext}$`);
+const ANY_DEFAULT_NAME_RE = new RegExp(`^Untitled(?: \\d+)?\\.(${DEFAULT_EXTS.join('|')})$`, 'i');
 
 /**
- * Pick the next free `Untitled[N].mermaid` for this user.
+ * Pick the next free `Untitled[N].<ext>` for this user.
  * Done in the same connection so two concurrent POSTs see each other's
  * inserts via the unique-path index — the second loses to a 409 and the
  * client retries.
  */
-async function nextDefaultName(db: ReturnType<typeof drizzleDb>, userId: string): Promise<string> {
+async function nextDefaultName(
+  db: ReturnType<typeof drizzleDb>,
+  userId: string,
+  ext = 'mermaid'
+): Promise<string> {
   const rows = await db
     .select({ path: workspaceFiles.path })
     .from(workspaceFiles)
     .where(eq(workspaceFiles.user_id, userId));
+  const re = DEFAULT_NAME_RE_FOR_EXT(ext);
   let max = 0;
   let hasFirst = false;
   for (const r of rows as { path: string }[]) {
-    const m = DEFAULT_NAME_RE.exec(r.path);
+    const m = re.exec(r.path);
     if (!m) continue;
     if (m[1] === undefined) {
       hasFirst = true;
@@ -60,8 +67,8 @@ async function nextDefaultName(db: ReturnType<typeof drizzleDb>, userId: string)
       if (Number.isFinite(n) && n > max) max = n;
     }
   }
-  if (!hasFirst) return 'Untitled.mermaid';
-  return `Untitled ${max + 1}.mermaid`;
+  if (!hasFirst) return `Untitled.${ext}`;
+  return `Untitled ${max + 1}.${ext}`;
 }
 
 /** GET /api/workspace-files — flat list of files for the current user. */
@@ -133,7 +140,18 @@ export const POST: RequestHandler = async ({ request }) => {
     );
   }
 
-  const path = parsed.data.path ?? (await nextDefaultName(db, user.id));
+  // If the client supplies a bare "Untitled.<ext>" (or "Untitled N.<ext>") at
+  // the root, treat it as a default and pick the next free slot for that
+  // extension. This prevents 409s when the user spams "New file" and accepts
+  // the default name. Explicit non-default paths still collide normally.
+  let path: string;
+  const suppliedPath = parsed.data.path;
+  if (suppliedPath && ANY_DEFAULT_NAME_RE.test(suppliedPath)) {
+    const ext = suppliedPath.slice(suppliedPath.lastIndexOf('.') + 1).toLowerCase();
+    path = await nextDefaultName(db, user.id, ext);
+  } else {
+    path = suppliedPath ?? (await nextDefaultName(db, user.id));
+  }
 
   if (!PATH_RE.test(path)) {
     return json(
