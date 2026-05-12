@@ -905,7 +905,6 @@
     // file never accidentally renders as Mermaid because the engine resolver
     // is locked to `activeFile.kind`.
     updateCodeStore({ code: file.content, updateDiagram: file.kind !== 'md' });
-    workspaceStore.markDirty();
 
     // Two-window rule: open exactly one viewer. Default is the rendered
     // preview for the file's kind — Document for .md, Canvas for everything

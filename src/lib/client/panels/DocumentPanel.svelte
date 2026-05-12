@@ -58,47 +58,47 @@
     if (candidates.length === 0) return;
     const hl = await getSharedHighlighter().catch(() => null);
     if (!hl) return;
-    for (const codeEl of candidates) {
-      const pre = codeEl.parentElement as HTMLPreElement | null;
-      if (!pre) continue;
-      const langClass = [...codeEl.classList].find((c) => c.startsWith('language-'));
-      const lang = langClass ? langClass.slice('language-'.length).trim() : '';
-      const code = codeEl.textContent ?? '';
-      if (!code) continue;
-      // No language declared: leave the plain <pre> in place (our doc-prose
-      // styles render it as a 12px mono surface on --code-bg). Clear the
-      // pending flag so the text shows.
-      if (!lang) {
-        pre.removeAttribute('data-pending');
-        continue;
-      }
-      const key = `${lang}:${theme}:${code.length}:${code.slice(-32)}`;
-      if (pre.dataset.shikiKey === key) continue;
-      // Mark as pending while we wait for the language load → keeps the
-      // unstyled tokens hidden via the `[data-pending]` selector.
-      pre.setAttribute('data-pending', '1');
-      const ok = await ensureShikiLanguage(lang);
-      if (!ok) {
-        pre.removeAttribute('data-pending');
-        continue;
-      }
-      try {
-        const html = hl.codeToHtml(code, { lang, theme });
-        const wrap = document.createElement('div');
-        wrap.innerHTML = html;
-        const newPre = wrap.firstElementChild as HTMLElement | null;
-        if (!newPre) {
+
+    // Parallelize per-block work: each block's `ensureShikiLanguage` is an
+    // independent async load, so awaiting them sequentially in a `for` loop
+    // serializes file-switch latency. Promise.all lets a markdown file with
+    // N fenced blocks highlight in O(slowest-lang) instead of O(sum).
+    await Promise.all(
+      [...candidates].map(async (codeEl) => {
+        const pre = codeEl.parentElement as HTMLPreElement | null;
+        if (!pre) return;
+        const langClass = [...codeEl.classList].find((c) => c.startsWith('language-'));
+        const lang = langClass ? langClass.slice('language-'.length).trim() : '';
+        const code = codeEl.textContent ?? '';
+        if (!code) return;
+        if (!lang) {
           pre.removeAttribute('data-pending');
-          continue;
+          return;
         }
-        newPre.dataset.shikiKey = key;
-        // Still in the DOM? The user may have typed enough to remove the
-        // block while we were awaiting the highlighter.
-        if (pre.isConnected) pre.replaceWith(newPre);
-      } catch {
-        pre.removeAttribute('data-pending');
-      }
-    }
+        const key = `${lang}:${theme}:${code.length}:${code.slice(-32)}`;
+        if (pre.dataset.shikiKey === key) return;
+        pre.setAttribute('data-pending', '1');
+        const ok = await ensureShikiLanguage(lang);
+        if (!ok) {
+          pre.removeAttribute('data-pending');
+          return;
+        }
+        try {
+          const html = hl.codeToHtml(code, { lang, theme });
+          const wrap = document.createElement('div');
+          wrap.innerHTML = html;
+          const newPre = wrap.firstElementChild as HTMLElement | null;
+          if (!newPre) {
+            pre.removeAttribute('data-pending');
+            return;
+          }
+          newPre.dataset.shikiKey = key;
+          if (pre.isConnected) pre.replaceWith(newPre);
+        } catch {
+          pre.removeAttribute('data-pending');
+        }
+      })
+    );
   }
 
   // Re-run highlighting when content changes or theme flips.
@@ -147,9 +147,7 @@
   <div class="flex-1 overflow-hidden">
     <div class="scrollbar-thin h-full overflow-y-auto px-8 py-6">
       {#if markdownContent.trim()}
-        <article
-          bind:this={articleEl}
-          class="doc-prose prose dark:prose-invert mx-auto max-w-3xl">
+        <article bind:this={articleEl} class="doc-prose prose dark:prose-invert mx-auto max-w-3xl">
           <SvelteMarkdown
             source={markdownContent}
             extensions={[markedFootnote()]}
