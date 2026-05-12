@@ -367,7 +367,7 @@
                   <button
                     type="button"
                     data-active={isActive}
-                    class="sb-row-control peer/sidebar-row relative flex h-8 w-full cursor-pointer items-center rounded-md px-3 pr-9 text-left text-[13px] text-sidebar-foreground/72 before:absolute before:top-1.5 before:bottom-1.5 before:left-1 before:w-px before:rounded-full before:bg-transparent data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground data-[active=true]:before:bg-sidebar-foreground/75"
+                    class="sb-row-control peer/sidebar-row relative flex h-8 w-full cursor-pointer items-center rounded-md px-3 pr-9 text-left text-[13px] text-sidebar-foreground/72 before:absolute before:top-1.5 before:bottom-1.5 before:left-1 before:w-0.5 before:rounded-full before:bg-transparent data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground data-[active=true]:before:bg-[var(--sidebar-ring)]"
                     onclick={() => onSelectConversation(conv.id)}
                     onmouseenter={() => onPrefetchConversation?.(conv.id)}
                     onfocus={() => onPrefetchConversation?.(conv.id)}>
@@ -465,16 +465,25 @@
                 onkeydown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    const v = (e.currentTarget as HTMLInputElement).value.trim();
+                    const input = e.currentTarget as HTMLInputElement;
+                    if (input.dataset.committed === '1') return;
+                    input.dataset.committed = '1';
+                    const v = input.value.trim();
                     if (v) commitNewFile('', v);
                     else cancelEdit();
                   } else if (e.key === 'Escape') {
                     e.preventDefault();
+                    const input = e.currentTarget as HTMLInputElement;
+                    if (input.dataset.committed === '1') return;
+                    input.dataset.committed = '1';
                     cancelEdit();
                   }
                 }}
                 onblur={(e) => {
-                  const v = (e.currentTarget as HTMLInputElement).value.trim();
+                  const input = e.currentTarget as HTMLInputElement;
+                  if (input.dataset.committed === '1') return;
+                  input.dataset.committed = '1';
+                  const v = input.value.trim();
                   if (!v) cancelEdit();
                   else commitNewFile('', v);
                 }} />
@@ -732,7 +741,9 @@
      We avoid blending toward --sidebar-accent because it sits within ~5% L
      of the surface in both modes and produces no visible separation. */
 
-  /* Tabs (Chats / Files) */
+  /* Tabs (Chats / Files) — quieted to match the row-level scale (4% hover,
+     6% selected). Selected state stays signaled by font-weight + full-
+     contrast foreground color, not by a heavy bg. */
   :global(.sb-tab-control) {
     transition:
       background-color 120ms ease,
@@ -741,25 +752,25 @@
   }
   :global(.sb-tab-control:hover) {
     color: var(--sidebar-foreground);
-    background: color-mix(in srgb, var(--sidebar-foreground) 8%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 4%, transparent);
   }
   :global(.sb-tab-control:active) {
     transform: scale(0.97);
-    background: color-mix(in srgb, var(--sidebar-foreground) 14%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 8%, transparent);
   }
   :global(.sb-tab-control[aria-selected='true']) {
     color: var(--sidebar-foreground);
     font-weight: 500;
-    background: color-mix(in srgb, var(--sidebar-foreground) 12%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 6%, transparent);
   }
   :global(.dark .sb-tab-control:hover) {
-    background: rgb(255 255 255 / 0.08);
+    background: rgb(255 255 255 / 0.04);
   }
   :global(.dark .sb-tab-control:active) {
-    background: rgb(255 255 255 / 0.14);
+    background: rgb(255 255 255 / 0.08);
   }
   :global(.dark .sb-tab-control[aria-selected='true']) {
-    background: rgb(255 255 255 / 0.1);
+    background: rgb(255 255 255 / 0.06);
   }
 
   /* Conversation rows */
@@ -770,19 +781,23 @@
   }
   :global(.sb-row-control:hover) {
     color: var(--sidebar-foreground);
-    background: color-mix(in srgb, var(--sidebar-foreground) 7%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 4%, transparent);
   }
+  /* Active row: subtle tint + the left rail (set via ::before in the
+     button class) does the actual "this is selected" signaling. Previous
+     12% bg was reading as a solid grey button. */
   :global(.sb-row-control[data-active='true']) {
-    background: color-mix(in srgb, var(--sidebar-foreground) 12%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 6%, transparent);
   }
   :global(.dark .sb-row-control:hover) {
-    background: rgb(255 255 255 / 0.07);
+    background: rgb(255 255 255 / 0.04);
   }
   :global(.dark .sb-row-control[data-active='true']) {
-    background: rgb(255 255 255 / 0.1);
+    background: rgb(255 255 255 / 0.06);
   }
 
-  /* Panel toggles (Chat / Canvas / Code / Document) */
+  /* Panel toggles (Chat / Canvas / Code / Document) — same calmer scale
+     as the tab and row controls. */
   :global(.sb-panel-control) {
     transition:
       background-color 120ms ease,
@@ -791,30 +806,30 @@
   }
   :global(.sb-panel-control:hover) {
     color: var(--sidebar-foreground);
-    background: color-mix(in srgb, var(--sidebar-foreground) 8%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 4%, transparent);
   }
   :global(.sb-panel-control:active) {
     transform: scale(0.96);
-    background: color-mix(in srgb, var(--sidebar-foreground) 14%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 8%, transparent);
   }
   :global(.sb-panel-control:focus-visible) {
     color: var(--sidebar-foreground);
-    background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 5%, transparent);
   }
   :global(.sb-panel-control[aria-pressed='true']) {
     color: var(--sidebar-foreground);
-    background: color-mix(in srgb, var(--sidebar-foreground) 12%, transparent);
+    background: color-mix(in srgb, var(--sidebar-foreground) 6%, transparent);
   }
   :global(.dark .sb-panel-control:hover) {
-    background: rgb(255 255 255 / 0.08);
+    background: rgb(255 255 255 / 0.04);
   }
   :global(.dark .sb-panel-control:active) {
-    background: rgb(255 255 255 / 0.14);
+    background: rgb(255 255 255 / 0.08);
   }
   :global(.dark .sb-panel-control:focus-visible) {
-    background: rgb(255 255 255 / 0.1);
+    background: rgb(255 255 255 / 0.05);
   }
   :global(.dark .sb-panel-control[aria-pressed='true']) {
-    background: rgb(255 255 255 / 0.1);
+    background: rgb(255 255 255 / 0.06);
   }
 </style>
