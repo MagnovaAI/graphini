@@ -4,12 +4,11 @@
  * Uses the DatabaseAdapter (Neon/Drizzle) instead of direct Supabase calls.
  */
 
-import { getDb } from '$lib/server/db';
+import { getDb, getDrizzle } from '$lib/server/db';
 import { getCache } from './cache';
 import { decryptFromStorage, encryptForStorage, isSensitiveSetting } from '$lib/server/crypto';
-import { NeonAdapter } from '$lib/server/db/neon-adapter';
 import * as schema from '$lib/server/db/schema';
-import { and, asc, desc, eq, gt, gte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, sql, type SQL } from 'drizzle-orm';
 
 // Settings cache helper
 const settingsCache = {
@@ -86,18 +85,6 @@ export interface AnalyticsEvent {
 }
 
 // ============================================================================
-// HELPER: get Drizzle db instance from adapter
-// ============================================================================
-
-function getDrizzle() {
-  const adapter = getDb();
-  if (adapter instanceof NeonAdapter) {
-    return adapter.db;
-  }
-  return null;
-}
-
-// ============================================================================
 // SETTINGS MANAGER
 // ============================================================================
 
@@ -115,11 +102,10 @@ export const settingsManager = {
           return value as T;
         }
       }
-      // Try global setting
-      if (userId) {
-        return this.get(null, category, key, defaultValue);
-      }
 
+      // Fall through to the global (user_id IS NULL) row.
+      // db.kvGet doesn't accept a null user, so query Drizzle directly here
+      // instead of recursing through `this.get(null, …)`.
       const drizzle = getDrizzle();
       if (drizzle) {
         const [row] = await drizzle
@@ -199,7 +185,7 @@ export const settingsManager = {
     if (!drizzle) return [];
 
     try {
-      const conditions = [];
+      const conditions: SQL[] = [];
       if (userId) {
         conditions.push(eq(schema.appSettings.user_id, userId));
       }
