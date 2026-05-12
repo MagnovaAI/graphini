@@ -233,7 +233,7 @@ export async function setupShiki(monaco: typeof Monaco): Promise<void> {
   patchTheme(monaco, 'light-plus', overrides.light);
   patchTheme(monaco, 'dark-plus', overrides.dark);
 
-  console.log('[shiki] ready. languages:', highlighter.getLoadedLanguages());
+  console.log('[shiki] ready. languages:', hl.getLoadedLanguages());
 }
 
 function patchTheme(
@@ -245,10 +245,10 @@ function patchTheme(
   const tm = highlighter.getTheme(themeId);
   // Use shiki's own translator so token rules match the shikiToMonaco pipeline,
   // then merge in our color overrides for the canvas (background, line numbers, etc).
-  const monacoTheme = textmateThemeToMonacoTheme(tm);
+  const monacoTheme = textmateThemeToMonacoTheme(tm) as Monaco.editor.IStandaloneThemeData;
   monaco.editor.defineTheme(themeId, {
     ...monacoTheme,
-    colors: { ...monacoTheme.colors, ...colors }
+    colors: { ...(monacoTheme.colors ?? {}), ...colors }
   });
 }
 
