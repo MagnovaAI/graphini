@@ -174,51 +174,79 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: validation.error, hint: validation.hint }, { status: 400 });
   }
 
-  try {
-    const [inserted] = await db
-      .insert(workspaceFiles)
-      .values({ user_id: user.id, path, kind, content })
-      .returning();
-    return json(
-      {
-        content: inserted.content,
-        created_at: inserted.created_at.toISOString(),
-        id: inserted.id,
-        kind: inserted.kind,
-        path: inserted.path,
-        updated_at: inserted.updated_at.toISOString()
-      },
-      { status: 201 }
-    );
-  } catch (err) {
-    // Drizzle wraps the real Postgres error in `err.cause`; the outer message
-    // is just "Failed query: INSERT ...". Surface the cause so we can tell the
-    // difference between a unique-violation, FK miss, missing-table, etc.
-    const cause = err instanceof Error && err.cause instanceof Error ? err.cause : null;
-    const causeMsg = cause?.message ?? '';
-    const wrapperMsg = err instanceof Error ? err.message : 'Unknown error';
-    const combined = causeMsg || wrapperMsg;
-    console.error('[workspace-files POST] insert failed', {
-      cause: causeMsg,
-      code: (cause as { code?: string } | null)?.code,
-      detail: (cause as { detail?: string } | null)?.detail,
-      kind,
-      path,
-      userId: user.id,
-      wrapper: wrapperMsg
-    });
-    if (combined.includes('idx_workspace_files_user_path') || combined.includes('duplicate')) {
-      return json({ error: 'A file with that path already exists.' }, { status: 409 });
-    }
-    if (combined.includes('foreign key') || combined.includes('violates foreign key')) {
-      return json({ error: 'Your account session is stale. Sign in again.' }, { status: 401 });
-    }
-    if (combined.includes('relation "workspace_files" does not exist')) {
+  // Default-pattern names (Untitled.<ext>) get retry-on-conflict: two
+  // concurrent POSTs racing for the same slot is the common case (Enter +
+  // blur fires both) and the SELECT-then-INSERT auto-suffix is inherently
+  // racy without a transaction. Bound retries to keep this from looping.
+  const isDefaultName = ANY_DEFAULT_NAME_RE.test(path);
+  let attempt = 0;
+  const maxAttempts = isDefaultName ? 5 : 1;
+
+  while (attempt < maxAttempts) {
+    attempt++;
+    try {
+      const [inserted] = await db
+        .insert(workspaceFiles)
+        .values({ user_id: user.id, path, kind, content })
+        .returning();
       return json(
-        { error: 'workspace_files table is missing — run the latest DB migration.' },
-        { status: 500 }
+        {
+          content: inserted.content,
+          created_at: inserted.created_at.toISOString(),
+          id: inserted.id,
+          kind: inserted.kind,
+          path: inserted.path,
+          updated_at: inserted.updated_at.toISOString()
+        },
+        { status: 201 }
       );
+    } catch (err) {
+      const cause = err instanceof Error && err.cause instanceof Error ? err.cause : null;
+      const causeMsg = cause?.message ?? '';
+      const wrapperMsg = err instanceof Error ? err.message : 'Unknown error';
+      const combined = causeMsg || wrapperMsg;
+      const isDuplicate =
+        combined.includes('idx_workspace_files_user_path') || combined.includes('duplicate');
+
+      // Default-pattern collision under a race — recompute the next slot
+      // (which now sees the row that beat us) and try again.
+      if (isDuplicate && isDefaultName && attempt < maxAttempts) {
+        const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+        path = await nextDefaultName(db, user.id, ext);
+        continue;
+      }
+
+      console.error('[workspace-files POST] insert failed', {
+        attempt,
+        cause: causeMsg,
+        code: (cause as { code?: string } | null)?.code,
+        detail: (cause as { detail?: string } | null)?.detail,
+        kind,
+        path,
+        userId: user.id,
+        wrapper: wrapperMsg
+      });
+      if (isDuplicate) {
+        return json({ error: 'A file with that path already exists.' }, { status: 409 });
+      }
+      if (combined.includes('foreign key') || combined.includes('violates foreign key')) {
+        return json({ error: 'Your account session is stale. Sign in again.' }, { status: 401 });
+      }
+      if (combined.includes('relation "workspace_files" does not exist')) {
+        return json(
+          { error: 'workspace_files table is missing — run the latest DB migration.' },
+          { status: 500 }
+        );
+      }
+      return json({ error: combined }, { status: 500 });
     }
-    return json({ error: combined }, { status: 500 });
   }
+
+  // Exhausted retries — concurrent contention on default names.
+  return json(
+    { error: 'Could not allocate a free filename. Try renaming manually.' },
+    {
+      status: 409
+    }
+  );
 };

@@ -71,14 +71,26 @@
     else node.select();
   }
 
+  // Tracks inputs that already fired a commit/cancel so the blur handler
+  // doesn't re-fire commit when Enter or Escape unmounts the input —
+  // previously this caused two POSTs per "new file" and a 409 collision
+  // when the unique-path index caught the second one.
+  const committedInputs = new WeakSet<HTMLInputElement>();
+
   function commitOnEnterEsc(e: KeyboardEvent, commit: (v: string) => void, cancel: () => void) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const v = (e.currentTarget as HTMLInputElement).value.trim();
+      const input = e.currentTarget as HTMLInputElement;
+      if (committedInputs.has(input)) return;
+      committedInputs.add(input);
+      const v = input.value.trim();
       if (v) commit(v);
       else cancel();
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      const input = e.currentTarget as HTMLInputElement;
+      if (committedInputs.has(input)) return;
+      committedInputs.add(input);
       cancel();
     }
   }
@@ -89,7 +101,10 @@
     commit: (v: string) => void,
     cancel: () => void
   ) {
-    const v = (e.currentTarget as HTMLInputElement).value.trim();
+    const input = e.currentTarget as HTMLInputElement;
+    if (committedInputs.has(input)) return;
+    committedInputs.add(input);
+    const v = input.value.trim();
     if (!v || v === initial) cancel();
     else commit(v);
   }
@@ -233,15 +248,19 @@
                 commitOnBlur(e, fileName, (v) => onCommitRenameFile(node.file, v), onCancelEdit)} />
           </div>
         {:else}
+          <!-- Active state mirrors the conversation list: subtle tinted bg
+               + foreground text shift, no bold weight, no full-strength
+               accent. Eliminates the "bright bar" that was too loud against
+               the muted sidebar palette. -->
           <div
             class="group/row flex h-7 items-center gap-1 rounded-md px-1 {isActive
-              ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-              : 'hover:bg-sidebar-accent'}"
+              ? 'bg-sidebar-accent/45 text-sidebar-foreground'
+              : 'hover:bg-sidebar-accent/35'}"
             style="padding-left: {depth * 12 + 18}px;">
             <button
               type="button"
               class="flex flex-1 cursor-pointer items-center gap-2 truncate text-left text-[13px] {isActive
-                ? 'font-medium text-sidebar-accent-foreground'
+                ? 'text-sidebar-foreground'
                 : 'text-sidebar-foreground/85'}"
               onclick={() => onSelectFile(node.file)}>
               <img src={iconSrc} alt="" class="size-3.5 shrink-0" />
