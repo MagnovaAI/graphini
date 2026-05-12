@@ -53,6 +53,7 @@ const ICON_BY_FILE_OPERATION: Record<string, IconComponent> = {
   delete: i(FileX),
   deleteFolder: i(FolderX),
   edit: i(FilePenLine),
+  grep: i(Search),
   list: i(List),
   moveFolder: i(FolderInput),
   read: i(FileSearch)

@@ -51,6 +51,13 @@ export function deriveErrorCheckerSubtitle(result: ErrorCheckerResult): string {
 
 export function deriveToolSubtitle(toolName: string, output: ToolOutput): string {
   if (toolName === 'fileSystem') {
+    if (output.mode === 'grep') {
+      const total = typeof output.totalMatches === 'number' ? output.totalMatches : 0;
+      const query = typeof output.query === 'string' ? `"${output.query.slice(0, 40)}"` : '';
+      return query
+        ? `${total} match${total !== 1 ? 'es' : ''} for ${query}`
+        : `${total} match${total !== 1 ? 'es' : ''}`;
+    }
     const file = output.file as { path?: string } | undefined;
     const mode =
       output.mode === 'update' || output.mode === 'patch'
@@ -111,6 +118,17 @@ export function deriveToolDetails(toolName: string, output: ToolOutput): string[
       | { content?: string; kind?: string; length?: number; path?: string }
       | undefined;
     const out: string[] = [];
+    if (output.mode === 'grep') {
+      const total = typeof output.totalMatches === 'number' ? output.totalMatches : 0;
+      const filesCount = typeof output.filesScanned === 'number' ? output.filesScanned : 0;
+      const trunc = output.truncated ? ' (truncated)' : '';
+      out.push(`Matches: ${total}${filesCount > 1 ? ` across ${filesCount} files` : ''}${trunc}`);
+      if (typeof output.slowLines === 'number' && output.slowLines > 0) {
+        out.push(`Skipped slow lines: ${output.slowLines}`);
+      }
+      if (output.error) out.push(String(output.error));
+      return out;
+    }
     if (output.mode) {
       const mode = output.mode === 'update' || output.mode === 'patch' ? 'edit' : output.mode;
       out.push(`Operation: ${mode}`);

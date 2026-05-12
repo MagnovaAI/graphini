@@ -113,8 +113,20 @@ export function deriveToolInputDisplay(toolName: string, inputJson: string): Too
     const startLine = matchJsonNumber(inputJson, 'startLine');
     const endLine = matchJsonNumber(inputJson, 'endLine') ?? startLine;
     const content = matchJsonString(inputJson, 'content');
+    const query = matchJsonString(inputJson, 'query');
+    const mode = matchJsonString(inputJson, 'mode');
     const details: string[] = [];
-    if (path) details.push(`Path: ${path}`);
+    if (query !== null) {
+      const shown = query.length > 60 ? query.slice(0, 57) + '…' : query;
+      details.push(`Query: "${shown}"`);
+      if (mode === 'regex') details.push('Mode: regex');
+      if (path) {
+        details.push(path.endsWith('/') ? `Scope: folder ${path}` : `Scope: file ${path}`);
+      } else {
+        details.push('Scope: workspace');
+      }
+    }
+    if (path && query === null) details.push(`Path: ${path}`);
     if (from || to) details.push(`Move: ${from ?? '?'} -> ${to ?? '?'}`);
     if (startLine !== null && endLine !== null) {
       details.push(`Lines: ${startLine}${endLine !== startLine ? `-${endLine}` : ''}`);
@@ -125,7 +137,7 @@ export function deriveToolInputDisplay(toolName: string, inputJson: string): Too
       );
     }
     return {
-      subtitle: path ?? from ?? undefined,
+      subtitle: query !== null ? `"${query.slice(0, 60)}"` : (path ?? from ?? undefined),
       details: details.length > 0 ? details : undefined
     };
   }

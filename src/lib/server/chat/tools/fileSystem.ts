@@ -150,11 +150,16 @@ function looksLikeFullDocumentLineEdit(
 
 export function createFileSystemTool({ userId, workspaceFilesGuard }: ToolContext) {
   return tool({
-    description: `Read and edit the user's workspace files. Single tool for all file operations.
+    description: `Read, search, and edit the user's workspace files. Single tool for all file operations.
 
-Operations:
+DISCOVERY (cheap — do these first):
 - list:         enumerate every file (path, kind, updated_at).
-- read:         content of one file by path. Large files return a bounded preview unless \`startLine\`/\`endLine\` selects a smaller range. MUST be called before any line-range \`edit\`.
+- grep:         find a string or regex across files. \`path\` optional — full path = single file, trailing-slash prefix = folder, omitted = whole workspace. Returns line numbers + surrounding context. PREFER \`grep\` over \`read\` whenever you're looking for something specific. Example: to find where a node is defined, \`grep\` for its label, then \`read\` that line range — don't read the whole file. Optional: \`mode\` ('text' default | 'regex'), \`caseSensitive\` (default false), \`contextLines\` (0..5, default 1), \`maxMatches\` (1..200, default 50).
+
+READ (narrow when possible):
+- read:         content of one file by path. Large files return a bounded preview unless \`startLine\`/\`endLine\` selects a smaller range. PREFER a line range over a full read once you know where to look. MUST be called before any line-range \`edit\`.
+
+WRITE:
 - create:       create a new file. Requires \`path\` ending in .md/.json/.yaml/.yml/.mermaid/.mmd, plus \`content\`. Duplicate/quota checks happen internally. Quota: 15 (guest) / 30 (signed-in).
 - edit:         edit an existing file. With \`startLine\`/\`endLine\`, replaces that 1-based inclusive range; without line numbers, replaces the full file.
 - delete:       remove one file by path.
