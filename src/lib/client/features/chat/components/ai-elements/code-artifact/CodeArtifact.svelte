@@ -54,6 +54,17 @@
 
   const filename = $derived(path ? path.split('/').pop() || path : '');
 
+  // Map file extension to the same brand-style icon assets the sidebar
+  // FileTree uses, so an artifact filename in the chat reads the same as
+  // its row in the sidebar tree.
+  function fileIconSrc(name: string): string {
+    const ext = name.toLowerCase().split('.').pop() ?? '';
+    if (ext === 'json') return '/icons/file-json.svg';
+    if (ext === 'yaml' || ext === 'yml') return '/icons/file-yaml.svg';
+    if (ext === 'mermaid' || ext === 'mmd') return '/icons/file-mermaid.svg';
+    return '/icons/file-md.svg';
+  }
+
   let isCollapsed = $state(false);
   let codeContainer: HTMLDivElement | undefined = $state();
   let wasStreaming = $state(false);
@@ -377,22 +388,22 @@
     <!-- Icon (no chip) -->
     {#if isError || isRead}
       <Eye
-        class="size-4 flex-shrink-0 {isStreaming
+        class="size-3.5 flex-shrink-0 {isStreaming
           ? 'tool-active-icon-shimmer'
           : 'text-muted-foreground/70'}" />
     {:else if operation === 'edit'}
       <FilePen
-        class="size-4 flex-shrink-0 {isStreaming
+        class="size-3.5 flex-shrink-0 {isStreaming
           ? 'tool-active-icon-shimmer'
           : 'text-muted-foreground/70'}" />
     {:else if operation === 'delete'}
       <Trash2
-        class="size-4 flex-shrink-0 {isStreaming
+        class="size-3.5 flex-shrink-0 {isStreaming
           ? 'tool-active-icon-shimmer'
           : 'text-muted-foreground/70'}" />
     {:else}
       <FilePlus
-        class="size-4 flex-shrink-0 {isStreaming
+        class="size-3.5 flex-shrink-0 {isStreaming
           ? 'tool-active-icon-shimmer'
           : 'text-muted-foreground/70'}" />
     {/if}
@@ -412,35 +423,53 @@
            full path. Stops propagation so clicking the filename opens the
            file without also toggling the header expand. -->
       {#if filename}
-        {#if onOpenFile && path}
-          <button
-            type="button"
-            title={path}
-            class="min-w-0 cursor-pointer truncate rounded font-mono text-[12px] text-foreground/80 hover:text-foreground hover:underline focus-visible:ring-1 focus-visible:ring-ring/40 focus-visible:outline-none"
-            onclick={(e) => {
-              e.stopPropagation();
-              onOpenFile(path);
-            }}>
-            {filename}
-          </button>
-        {:else}
-          <span class="min-w-0 truncate font-mono text-[12px] text-foreground/80" title={path}>
-            {filename}
-          </span>
-        {/if}
+        {@const showDiff =
+          !isStreaming &&
+          (operation === 'edit' || operation === 'create') &&
+          (addedCount > 0 || removedCount > 0)}
+        <span class="inline-flex min-w-0 items-center gap-1.5">
+          {#if onOpenFile && path}
+            <button
+              type="button"
+              title={path}
+              class="inline-flex min-w-0 cursor-pointer items-center gap-1 truncate rounded font-mono text-[12px] text-foreground/80 hover:text-foreground hover:underline focus-visible:ring-1 focus-visible:ring-ring/40 focus-visible:outline-none"
+              onclick={(e) => {
+                e.stopPropagation();
+                onOpenFile(path);
+              }}>
+              <img
+                src={fileIconSrc(filename)}
+                alt=""
+                aria-hidden="true"
+                class="size-3.5 flex-shrink-0" />
+              <span class="truncate">{filename}</span>
+            </button>
+          {:else}
+            <span
+              class="inline-flex min-w-0 items-center gap-1 truncate font-mono text-[12px] text-foreground/80"
+              title={path}>
+              <img
+                src={fileIconSrc(filename)}
+                alt=""
+                aria-hidden="true"
+                class="size-3.5 flex-shrink-0" />
+              <span class="truncate">{filename}</span>
+            </span>
+          {/if}
+          {#if showDiff}
+            <span class="inline-flex flex-shrink-0 items-center gap-1 font-mono text-[12px]">
+              {#if addedCount > 0}
+                <span class="text-emerald-600 dark:text-emerald-400">+{addedCount}</span>
+              {/if}
+              {#if removedCount > 0}
+                <span class="text-red-600 dark:text-red-400">-{removedCount}</span>
+              {/if}
+            </span>
+          {/if}
+        </span>
       {/if}
 
-      <!-- Diff stats for edits -->
-      {#if !isStreaming && (operation === 'edit' || operation === 'create') && (addedCount > 0 || removedCount > 0)}
-        <span class="flex-shrink-0 font-mono text-[12px]">
-          {#if addedCount > 0}<span class="text-emerald-600 dark:text-emerald-400"
-              >+{addedCount}</span
-            >{/if}
-          {#if addedCount > 0 && removedCount > 0}&nbsp;{/if}
-          {#if removedCount > 0}<span class="text-red-600 dark:text-red-400">-{removedCount}</span
-            >{/if}
-        </span>
-      {:else if artifactSubtitle}
+      {#if (isStreaming || !(operation === 'edit' || operation === 'create') || (addedCount === 0 && removedCount === 0)) && artifactSubtitle}
         <span class="min-w-0 truncate font-normal text-muted-foreground/60">
           {artifactSubtitle}
         </span>
@@ -481,11 +510,13 @@
   {#if !isCollapsed}
     <div
       bind:this={codeContainer}
-      class="artifact-code-body relative mt-1 overflow-auto rounded-md border border-border/40 transition-[max-height] duration-150"
-      style="max-height: {isStreaming ? '300px' : '250px'}; background-color: var(--code-bg);">
+      class="artifact-code-body relative mt-1 overflow-auto border border-border transition-[max-height] duration-150"
+      style="max-height: {isStreaming
+        ? '320px'
+        : '240px'}; background-color: var(--code-bg); border-radius: var(--ds-radius-lg);">
       {#if showDiffView}
         <!-- Diff-only view: show only changed regions -->
-        <table class="w-full border-collapse font-mono text-[12px] leading-[1.65]">
+        <table class="artifact-code-table w-full border-collapse">
           <tbody>
             <!-- Key intentionally excludes `dl.text`. The streaming last
                  line mutates character-by-character; if text was in the
@@ -504,7 +535,8 @@
                 <tr>
                   <td
                     colspan="3"
-                    class="border-y border-border/20 bg-muted/20 px-3 py-1 text-center text-[13px] text-muted-foreground/40"
+                    class="border-y border-border px-3 py-1 text-center text-[13px] text-muted-foreground"
+                    style="background-color: color-mix(in oklab, var(--foreground), transparent 95%);"
                     >···</td>
                 </tr>
               {:else}
@@ -515,24 +547,20 @@
                      rail so indentation columns stay aligned. -->
                 <tr
                   class="artifact-line transition-colors duration-75
-                    {dl.type === 'added' ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.14]' : ''}
-                    {dl.type === 'removed' ? 'bg-red-500/[0.08] dark:bg-red-500/[0.14]' : ''}
-                    {dl.type === 'context' ? 'hover:bg-muted/30' : ''}">
+                    {dl.type === 'added' ? 'artifact-row-added' : ''}
+                    {dl.type === 'removed' ? 'artifact-row-removed' : ''}
+                    {dl.type === 'context' ? 'artifact-row-context' : ''}">
                   <td
-                    class="px-1 text-center align-top font-mono text-[12px] leading-[1.65] font-semibold select-none
-                      {dl.type === 'added'
-                      ? 'border-l-2 border-emerald-500/60 text-emerald-700 dark:text-emerald-400'
-                      : ''}
-                      {dl.type === 'removed'
-                      ? 'border-l-2 border-red-500/60 text-red-700 dark:text-red-400'
-                      : ''}
+                    class="px-1 text-center align-top font-semibold select-none
+                      {dl.type === 'added' ? 'artifact-rail-added' : ''}
+                      {dl.type === 'removed' ? 'artifact-rail-removed' : ''}
                       {dl.type === 'context' ? 'border-l-2 border-transparent' : ''}"
                     style="width: 1.25rem; min-width: 1.25rem;">
                     {#if dl.type === 'added'}+{/if}
                     {#if dl.type === 'removed'}−{/if}
                   </td>
                   <td
-                    class="artifact-ln border-r border-border/30 px-3 text-right align-top text-muted-foreground/40 select-none"
+                    class="artifact-ln border-r border-border px-3 text-right align-top text-muted-foreground select-none"
                     style="width: 2.75rem; min-width: 2.75rem;">
                     {dl.lineNum || ''}
                   </td>
@@ -541,11 +569,9 @@
                        Tokenized lines render with shiki's per-token colors. -->
                   <td
                     class="px-4 align-top whitespace-pre
-                    {!lineTokens && dl.type === 'added'
-                      ? 'text-emerald-700 dark:text-emerald-300'
-                      : ''}
-                    {!lineTokens && dl.type === 'removed' ? 'text-red-700 dark:text-red-300' : ''}
-                    {dl.type === 'context' || lineTokens ? 'text-foreground/90' : ''}">
+                    {!lineTokens && dl.type === 'added' ? 'artifact-text-added' : ''}
+                    {!lineTokens && dl.type === 'removed' ? 'artifact-text-removed' : ''}
+                    {dl.type === 'context' || lineTokens ? 'text-foreground' : ''}">
                     {#if lineTokens}
                       {#each lineTokens as t, ti (ti)}<span style:color={t.color}>{t.content}</span
                         >{/each}
@@ -560,7 +586,7 @@
         </table>
       {:else}
         <!-- Full code view -->
-        <table class="w-full border-collapse font-mono text-[12px] leading-[1.65]">
+        <table class="artifact-code-table w-full border-collapse">
           <tbody>
             <!-- Key by index only. Including `line` made the streaming
                  last line re-mount on every token, retriggering the row
@@ -572,15 +598,15 @@
                    lines that would settle as unchanged. Streaming tint
                    comes from the text-color override on .artifact-code
                    instead, applied to the whole body while streaming. -->
-              <tr class="artifact-line group transition-colors duration-75 hover:bg-muted/30">
+              <tr class="artifact-line artifact-row-context group transition-colors duration-75">
                 <td
-                  class="artifact-ln border-r border-border/30 px-3 text-right align-top text-muted-foreground/40 select-none"
+                  class="artifact-ln border-r border-border px-3 text-right align-top text-muted-foreground select-none"
                   style="width: {lineCount > 99 ? '3.5rem' : '2.75rem'}; min-width: {lineCount > 99
                     ? '3.5rem'
                     : '2.75rem'};">
                   {i + 1}
                 </td>
-                <td class="artifact-code px-4 align-top whitespace-pre text-foreground/90">
+                <td class="artifact-code px-4 align-top whitespace-pre text-foreground">
                   {#if lineTokens}
                     {#each lineTokens as t, ti (ti)}<span style:color={t.color}>{t.content}</span
                       >{/each}
@@ -644,7 +670,7 @@
     display: inline-block;
     width: 2px;
     height: 1.1em;
-    background: rgb(16 185 129); /* emerald-500 */
+    background: var(--success);
     margin-left: 1px;
     vertical-align: text-bottom;
     animation: artifact-blink 0.8s step-end infinite;
@@ -746,20 +772,68 @@
     color: hsl(172 66% 60%);
   }
 
-  /* Scrollbar styling */
+  /* Code surface — mono lock at 12px / lh 1.5 per DESIGN.md typography.mono.
+     Tables inside `.artifact-code-body` pick this up so cells stay consistent
+     regardless of which view (diff or full) is rendering. */
+  .artifact-code-table {
+    font-family: var(--ds-font-mono);
+    font-size: var(--fs-mono);
+    line-height: var(--lh-mono);
+  }
+
+  /* Diff row tints — wired to the semantic design tokens (--success,
+     --destructive) via color-mix so they track theme changes. The bg sits
+     at ~10% opacity over --code-bg; the rail edge at ~50% gives the
+     "this changed" cue without overpowering the syntax colors. */
+  .artifact-row-added {
+    background-color: color-mix(in oklab, var(--success), transparent 90%);
+  }
+  .artifact-row-removed {
+    background-color: color-mix(in oklab, var(--destructive), transparent 90%);
+  }
+  .artifact-row-context:hover {
+    background-color: color-mix(in oklab, var(--foreground), transparent 95%);
+  }
+  .artifact-rail-added {
+    border-left: 2px solid color-mix(in oklab, var(--success), transparent 50%);
+    color: var(--success);
+  }
+  .artifact-rail-removed {
+    border-left: 2px solid color-mix(in oklab, var(--destructive), transparent 50%);
+    color: var(--destructive);
+  }
+  /* Fallback text colors when shiki tokens aren't ready yet (streaming first
+     paint). Same tokens as the rails so the row reads as one unit. */
+  .artifact-text-added {
+    color: color-mix(in oklab, var(--success), var(--foreground) 30%);
+  }
+  .artifact-text-removed {
+    color: color-mix(in oklab, var(--destructive), var(--foreground) 30%);
+  }
+
+  /* Scrollbar — `--muted-foreground` is already a full color value in this
+     project (not an `hsl(...)` triple), so we use `color-mix` against it
+     directly instead of wrapping it in hsl(). 8px wide so it reads from
+     scroll-distance, but small enough not to compete with the gutter. */
   .artifact-code-body {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--muted-foreground) / 0.15) transparent;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground), transparent 70%) transparent;
   }
   .artifact-code-body::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   .artifact-code-body::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.15);
-    border-radius: 3px;
+    background: color-mix(in oklab, var(--muted-foreground), transparent 70%);
+    border-radius: var(--ds-radius-pill);
+  }
+  .artifact-code-body::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground), transparent 40%);
   }
   .artifact-code-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .artifact-code-body::-webkit-scrollbar-corner {
     background: transparent;
   }
 </style>
