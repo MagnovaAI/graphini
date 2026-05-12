@@ -33,31 +33,70 @@
   // blocks and replaces them with shiki-highlighted markup.
   let articleEl = $state<HTMLElement | null>(null);
 
+  // Post-render shiki pass.
+  //
+  // SvelteMarkdown emits plain `<pre><code class="language-xxx">…</code></pre>`
+  // tokens. We walk them, swap each <pre> for shiki's highlighted output, and
+  // re-apply our design-system surface via the `.doc-prose pre` CSS overrides
+  // (radius, padding, --code-bg) — shiki's inline `style="background:…"` is
+  // beaten by `!important` in our stylesheet.
+  //
+  // Important behaviors:
+  //  • `data-shiki-done` is set AFTER a successful swap, not before — earlier
+  //    versions marked the pre done before awaiting the language load, which
+  //    blocked the retry when the user typed during the load.
+  //  • `data-shiki-key` stamps the (lang, char-length, theme) signature so an
+  //    edit to the same fenced block re-highlights even if shiki already ran
+  //    on a prior version of the element. Without this, fast typing inside
+  //    a code fence would keep the stale highlight.
+  //  • The pre is rendered with `data-pending` while we wait for shiki so the
+  //    stylesheet can hide the unstyled text and avoid the plain→highlighted
+  //    flash. Once shiki succeeds we replace the element and the new pre has
+  //    no `data-pending` attribute.
   async function highlightCodeBlocks(root: HTMLElement, theme: 'github-dark' | 'github-light') {
-    const codes = root.querySelectorAll<HTMLElement>('pre:not([data-shiki-done]) > code');
-    if (codes.length === 0) return;
+    const candidates = root.querySelectorAll<HTMLElement>('pre > code');
+    if (candidates.length === 0) return;
     const hl = await getSharedHighlighter().catch(() => null);
     if (!hl) return;
-    for (const codeEl of codes) {
+    for (const codeEl of candidates) {
       const pre = codeEl.parentElement as HTMLPreElement | null;
-      if (!pre || pre.dataset.shikiDone) continue;
+      if (!pre) continue;
       const langClass = [...codeEl.classList].find((c) => c.startsWith('language-'));
       const lang = langClass ? langClass.slice('language-'.length).trim() : '';
       const code = codeEl.textContent ?? '';
-      pre.dataset.shikiDone = '1';
-      if (!code || !lang) continue;
+      if (!code) continue;
+      // No language declared: leave the plain <pre> in place (our doc-prose
+      // styles render it as a 12px mono surface on --code-bg). Clear the
+      // pending flag so the text shows.
+      if (!lang) {
+        pre.removeAttribute('data-pending');
+        continue;
+      }
+      const key = `${lang}:${theme}:${code.length}:${code.slice(-32)}`;
+      if (pre.dataset.shikiKey === key) continue;
+      // Mark as pending while we wait for the language load → keeps the
+      // unstyled tokens hidden via the `[data-pending]` selector.
+      pre.setAttribute('data-pending', '1');
       const ok = await ensureShikiLanguage(lang);
-      if (!ok) continue;
+      if (!ok) {
+        pre.removeAttribute('data-pending');
+        continue;
+      }
       try {
         const html = hl.codeToHtml(code, { lang, theme });
         const wrap = document.createElement('div');
         wrap.innerHTML = html;
         const newPre = wrap.firstElementChild as HTMLElement | null;
-        if (!newPre) continue;
-        newPre.dataset.shikiDone = '1';
-        pre.replaceWith(newPre);
+        if (!newPre) {
+          pre.removeAttribute('data-pending');
+          continue;
+        }
+        newPre.dataset.shikiKey = key;
+        // Still in the DOM? The user may have typed enough to remove the
+        // block while we were awaiting the highlighter.
+        if (pre.isConnected) pre.replaceWith(newPre);
       } catch {
-        /* keep original <pre> on failure */
+        pre.removeAttribute('data-pending');
       }
     }
   }
@@ -68,16 +107,29 @@
     void $mode;
     if (!articleEl) return;
     const theme = $mode === 'dark' ? 'github-dark' : 'github-light';
-    // Defer one frame so SvelteMarkdown has finished mounting tokens.
+    // Synchronously mark every language-tagged pre as pending so the
+    // stylesheet hides its unstyled text until shiki swaps the markup.
+    // Pre's without a language tag stay visible (plain mono surface).
+    const pres = articleEl.querySelectorAll<HTMLElement>('pre:not(.shiki) > code');
+    for (const codeEl of pres) {
+      const pre = codeEl.parentElement as HTMLPreElement | null;
+      if (!pre) continue;
+      const hasLang = [...codeEl.classList].some((c) => c.startsWith('language-'));
+      if (hasLang) pre.setAttribute('data-pending', '1');
+    }
+    // Defer one frame so SvelteMarkdown has finished mounting tokens, then
+    // do the async highlighter pass.
     queueMicrotask(() => {
       if (articleEl) void highlightCodeBlocks(articleEl, theme);
     });
   });
 </script>
 
-<div class="flex h-full flex-col bg-card">
-  <!-- Header: same chrome as Canvas/Code so users see which file is rendering. -->
-  <div class="flex h-10 items-center justify-between border-b border-border/30 px-3">
+<div class="flex h-full flex-col bg-background">
+  <!-- Header: matches the Code panel chrome (h-9, full-opacity border) so the
+       Document/Code/Canvas headers all read as one consistent row. -->
+  <div
+    class="box-content flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
     <div
       class="flex min-w-0 flex-1 items-center gap-2"
       title={activeFile ? activeFileName : 'Document'}>
@@ -97,11 +149,11 @@
       {#if markdownContent.trim()}
         <article
           bind:this={articleEl}
-          class="doc-prose prose prose-sm dark:prose-invert max-w-none">
+          class="doc-prose prose dark:prose-invert mx-auto max-w-3xl">
           <SvelteMarkdown
             source={markdownContent}
             extensions={[markedFootnote()]}
-            options={{ headerIds: true, gfm: true, breaks: true }} />
+            options={{ headerIds: true, gfm: true, breaks: false }} />
         </article>
       {:else}
         <p class="text-[13px] text-muted-foreground italic">
@@ -113,92 +165,264 @@
 </div>
 
 <style>
-  /* Tailwind Typography (`prose`) handles type scale + spacing. We override
-   * its CSS variables so colors track the app's design tokens. The token
-   * format in this project is mixed (hsl(...) wrapped values in light mode,
-   * hex in dark mode), so we use the variables directly with `color-mix`
-   * for any opacity tinting — this works regardless of the source format. */
+  /* Document markdown — every block is pinned to the design system:
+   *   • Body locked at 13px (--fs-body, lh 1.5)
+   *   • Heading ladder: 22 / 20 / 18 / 13 (card-title → subhead → body-lg → body)
+   *   • Spacing on 4px grid via --ds-space-*
+   *   • Radii from --ds-radius-*
+   *   • Code surface = --code-bg, mono locked at 12px
+   *   • Hairlines = --border (#262626 dark / matched light)
+   *
+   * We bind Tailwind Typography's CSS vars to the design tokens, then
+   * override the per-element rules where prose's defaults disagree with
+   * the system (heading sizes, code blocks, lists, blockquote, hr, tables). */
   :global(.doc-prose) {
-    --tw-prose-body: color-mix(in oklab, var(--foreground), transparent 14%);
+    /* Color tokens — wire prose's palette to the design system. */
+    --tw-prose-body: var(--foreground);
     --tw-prose-headings: var(--foreground);
     --tw-prose-lead: color-mix(in oklab, var(--foreground), transparent 25%);
     --tw-prose-links: var(--primary);
     --tw-prose-bold: var(--foreground);
     --tw-prose-counters: var(--muted-foreground);
-    --tw-prose-bullets: color-mix(in oklab, var(--border), transparent 0%);
-    --tw-prose-hr: color-mix(in oklab, var(--border), transparent 60%);
-    --tw-prose-quotes: color-mix(in oklab, var(--foreground), transparent 30%);
-    --tw-prose-quote-borders: color-mix(in oklab, var(--primary), transparent 50%);
+    --tw-prose-bullets: var(--border);
+    --tw-prose-hr: var(--border);
+    --tw-prose-quotes: color-mix(in oklab, var(--foreground), transparent 25%);
+    --tw-prose-quote-borders: var(--primary);
     --tw-prose-captions: var(--muted-foreground);
     --tw-prose-code: var(--foreground);
     --tw-prose-pre-code: var(--foreground);
-    --tw-prose-pre-bg: color-mix(in oklab, var(--muted), transparent 50%);
-    --tw-prose-th-borders: color-mix(in oklab, var(--border), transparent 50%);
-    --tw-prose-td-borders: color-mix(in oklab, var(--border), transparent 70%);
-    --tw-prose-invert-body: color-mix(in oklab, var(--foreground), transparent 14%);
+    --tw-prose-pre-bg: var(--code-bg);
+    --tw-prose-th-borders: var(--border);
+    --tw-prose-td-borders: var(--border);
+    --tw-prose-invert-body: var(--foreground);
     --tw-prose-invert-headings: var(--foreground);
     --tw-prose-invert-lead: color-mix(in oklab, var(--foreground), transparent 25%);
     --tw-prose-invert-links: var(--primary);
     --tw-prose-invert-bold: var(--foreground);
     --tw-prose-invert-counters: var(--muted-foreground);
     --tw-prose-invert-bullets: var(--border);
-    --tw-prose-invert-hr: color-mix(in oklab, var(--border), transparent 60%);
-    --tw-prose-invert-quotes: color-mix(in oklab, var(--foreground), transparent 30%);
-    --tw-prose-invert-quote-borders: color-mix(in oklab, var(--primary), transparent 50%);
+    --tw-prose-invert-hr: var(--border);
+    --tw-prose-invert-quotes: color-mix(in oklab, var(--foreground), transparent 25%);
+    --tw-prose-invert-quote-borders: var(--primary);
     --tw-prose-invert-captions: var(--muted-foreground);
     --tw-prose-invert-code: var(--foreground);
     --tw-prose-invert-pre-code: var(--foreground);
-    --tw-prose-invert-pre-bg: color-mix(in oklab, var(--muted), transparent 50%);
-    --tw-prose-invert-th-borders: color-mix(in oklab, var(--border), transparent 50%);
-    --tw-prose-invert-td-borders: color-mix(in oklab, var(--border), transparent 70%);
+    --tw-prose-invert-pre-bg: var(--code-bg);
+    --tw-prose-invert-th-borders: var(--border);
+    --tw-prose-invert-td-borders: var(--border);
+
+    /* Body: hard-locked 13px / lh 1.5 / Inter. Letter-spacing 0. */
+    font-family: var(--ds-font-text);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    letter-spacing: var(--tr-body);
   }
 
-  /* Inline code: pill that uses tokens, not prose's default fixed greys. */
-  :global(.doc-prose :not(pre) > code) {
-    background: color-mix(in oklab, var(--muted), transparent 35%);
-    border: 1px solid color-mix(in oklab, var(--border), transparent 70%);
-    border-radius: 0.375rem;
-    padding: 0.05rem 0.35rem;
+  /* Paragraph rhythm — 12px between consecutive paragraphs (on grid). */
+  :global(.doc-prose p) {
+    margin-top: 0;
+    margin-bottom: var(--ds-space-sm);
+  }
+  :global(.doc-prose > :first-child) {
+    margin-top: 0;
+  }
+  :global(.doc-prose > :last-child) {
+    margin-bottom: 0;
+  }
+
+  /* Heading ladder per DESIGN.md type tokens. */
+  :global(.doc-prose h1) {
+    font-size: var(--fs-card-title);
+    line-height: var(--lh-card-title);
+    letter-spacing: var(--tr-card-title);
     font-weight: 500;
+    margin-top: var(--ds-space-lg);
+    margin-bottom: var(--ds-space-sm);
+  }
+  :global(.doc-prose h2) {
+    font-size: var(--fs-subhead);
+    line-height: var(--lh-subhead);
+    letter-spacing: var(--tr-subhead);
+    font-weight: 500;
+    margin-top: var(--ds-space-lg);
+    margin-bottom: var(--ds-space-sm);
+  }
+  :global(.doc-prose h3) {
+    font-size: var(--fs-body-lg);
+    line-height: var(--lh-body-lg);
+    letter-spacing: var(--tr-body-lg);
+    font-weight: 500;
+    margin-top: var(--ds-space-md);
+    margin-bottom: var(--ds-space-xs);
+  }
+  :global(.doc-prose h4),
+  :global(.doc-prose h5),
+  :global(.doc-prose h6) {
+    font-size: var(--fs-body);
+    line-height: var(--lh-button);
+    font-weight: 500;
+    margin-top: var(--ds-space-md);
+    margin-bottom: var(--ds-space-xs);
+  }
+
+  /* Lists — pin to the 4px grid. Prose's default is fractional rem. */
+  :global(.doc-prose ul),
+  :global(.doc-prose ol) {
+    margin-top: 0;
+    margin-bottom: var(--ds-space-sm);
+    padding-left: var(--ds-space-lg);
+  }
+  :global(.doc-prose li) {
+    margin-top: var(--ds-space-xxs);
+    margin-bottom: var(--ds-space-xxs);
+  }
+  :global(.doc-prose li > p) {
+    margin: 0;
+  }
+
+  /* Inline code: tool-box-style pill, mono 12px, on-grid padding. */
+  :global(.doc-prose :not(pre) > code) {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--ds-radius-sm);
+    padding: 0 var(--ds-space-xxs);
+    font-family: var(--ds-font-mono);
+    font-size: var(--fs-mono);
+    font-weight: 400;
+    color: var(--foreground);
   }
   :global(.doc-prose :not(pre) > code::before),
   :global(.doc-prose :not(pre) > code::after) {
     content: '';
   }
 
-  /* shiki <pre> blocks (replace the default <pre> after post-render highlight). */
-  :global(.doc-prose pre.shiki) {
-    background: var(--shiki-bg, color-mix(in oklab, var(--muted), transparent 60%)) !important;
-    border: 1px solid color-mix(in oklab, var(--border), transparent 70%);
-    border-radius: 0.5rem;
-    padding: 0.875rem 1rem;
+  /* Code-block surface per DESIGN.md `code-block` token:
+   *   bg = --code-bg, radius = --ds-radius-lg (12px), padding 12/16. */
+  :global(.doc-prose pre) {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--ds-radius-lg);
+    padding: var(--ds-space-sm) var(--ds-space-md);
+    margin: var(--ds-space-md) 0;
     overflow-x: auto;
-    font-size: 0.78rem;
-    line-height: 1.55;
+    font-family: var(--ds-font-mono);
+    font-size: var(--fs-mono);
+    line-height: var(--lh-mono);
+  }
+  :global(.doc-prose pre code) {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    font-weight: 400;
+    color: var(--foreground);
+  }
+  /* Shiki output — same surface tokens as the plain pre above. Shiki
+     injects an inline `style="background:..."` from its theme; the
+     `!important` here beats that so all code blocks read on --code-bg. */
+  :global(.doc-prose pre.shiki) {
+    background: var(--code-bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--ds-radius-lg);
+    padding: var(--ds-space-sm) var(--ds-space-md);
+    margin: var(--ds-space-md) 0;
+    overflow-x: auto;
+    font-family: var(--ds-font-mono);
+    font-size: var(--fs-mono);
+    line-height: var(--lh-mono);
   }
   :global(.doc-prose pre.shiki code) {
-    background: transparent;
+    background: transparent !important;
     padding: 0;
     border: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
     font-weight: 400;
   }
-
-  /* Tables — give the header a subtle surface so borders read in both themes. */
-  :global(.doc-prose th) {
-    background: color-mix(in oklab, var(--muted), transparent 60%);
+  /* Per-line spans shiki emits — strip any inline bg shiki added so the
+     surface stays flat on --code-bg (some themes add subtle alt-line bg). */
+  :global(.doc-prose pre.shiki .line) {
+    background: transparent !important;
+  }
+  /* Hide the unstyled token-text while we wait for shiki to swap in the
+     highlighted markup. Avoids the plain→highlighted flash on the first
+     paint after a content change. Only applies to language-tagged pre's
+     (no-language fences clear data-pending immediately). */
+  :global(.doc-prose pre[data-pending]) {
+    color: transparent;
+  }
+  :global(.doc-prose pre[data-pending] code) {
+    color: transparent;
   }
 
-  /* Task list checkboxes inherit the design system */
+  /* Blockquote: cyan accent edge (--primary), no fill. */
+  :global(.doc-prose blockquote) {
+    margin: var(--ds-space-md) 0;
+    padding: 0 var(--ds-space-md);
+    border-left: 2px solid var(--primary);
+    font-style: normal;
+    color: color-mix(in oklab, var(--foreground), transparent 25%);
+  }
+  :global(.doc-prose blockquote p::before),
+  :global(.doc-prose blockquote p::after) {
+    content: '';
+  }
+
+  /* Horizontal rule — single 1px hairline at --border. */
+  :global(.doc-prose hr) {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: var(--ds-space-lg) 0;
+  }
+
+  /* Tables — hairline borders only, header gets a 1-step surface lift. */
+  :global(.doc-prose table) {
+    width: 100%;
+    margin: var(--ds-space-md) 0;
+    font-size: var(--fs-body);
+    border-collapse: collapse;
+  }
+  :global(.doc-prose th),
+  :global(.doc-prose td) {
+    border: 1px solid var(--border);
+    padding: var(--ds-space-xs) var(--ds-space-sm);
+    text-align: left;
+  }
+  :global(.doc-prose th) {
+    background: var(--tool-box-bg, color-mix(in oklab, var(--muted), transparent 60%));
+    font-weight: 500;
+  }
+
+  /* Links — cyan, underline only on hover (chrome stays quiet). */
+  :global(.doc-prose a) {
+    color: var(--primary);
+    text-decoration: none;
+  }
+  :global(.doc-prose a:hover) {
+    text-decoration: underline;
+  }
+
+  /* Task list checkboxes inherit the design system. */
   :global(.doc-prose input[type='checkbox']) {
     accent-color: var(--primary);
-    margin-right: 0.4em;
+    margin-right: var(--ds-space-xxs);
   }
 
-  /* Footnotes look better with a top divider */
+  /* Images take the same hairline-border treatment as cards. */
+  :global(.doc-prose img) {
+    border-radius: var(--ds-radius-md);
+    border: 1px solid var(--border);
+    margin: var(--ds-space-md) 0;
+  }
+
+  /* Footnotes: divider on top, body size unchanged (no fractional shrink). */
   :global(.doc-prose .footnotes) {
-    margin-top: 2rem;
-    padding-top: 1rem;
-    border-top: 1px solid color-mix(in oklab, var(--border), transparent 60%);
-    font-size: 0.85em;
+    margin-top: var(--ds-space-xl);
+    padding-top: var(--ds-space-md);
+    border-top: 1px solid var(--border);
+    font-size: var(--fs-body);
   }
 </style>
