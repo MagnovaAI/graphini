@@ -7,11 +7,14 @@
   import { authStore } from '$lib/client/stores/auth.svelte';
   import { conversationsStore } from '$lib/client/stores/conversations.svelte';
   import { filesStore, buildFileTree, type WorkspaceFile } from '$lib/client/stores/files.svelte';
+  import { localBridgeStore } from '$lib/client/stores/localBridge.svelte';
   import { panels, type PanelId } from '$lib/client/stores/panels.svelte';
   import {
+    Cloud,
     Code2,
     FileText,
     FolderTree,
+    HardDrive,
     Layers,
     LogOut,
     MessageSquare,
@@ -27,6 +30,15 @@
 
   const sidebar = useSidebar();
   const isIconCollapsed = $derived(sidebar.state === 'collapsed' && !sidebar.isMobile);
+  const bridge = $derived(localBridgeStore.state);
+  onMount(() => {
+    if (authStore.hasSession) void localBridgeStore.load();
+  });
+  async function switchWorkspaceSource(target: 'cloud' | 'local') {
+    if (bridge.source === target) return;
+    if (target === 'local' && !bridge.hasUrl) return;
+    await localBridgeStore.setSource(target);
+  }
 
   interface Props {
     onNewChat: () => void | Promise<void>;
@@ -407,6 +419,41 @@
         </Sidebar.GroupContent>
       </Sidebar.Group>
     {:else}
+      <!-- Workspace source: Cloud (DB) | Local (graphini-bridge) -->
+      <Sidebar.Group class="group-data-[collapsible=icon]:hidden">
+        <Sidebar.GroupContent>
+          <div
+            class="grid grid-cols-2 gap-1 rounded-lg border border-sidebar-border/70 bg-sidebar-accent/15 p-1 text-[13px]"
+            role="tablist"
+            aria-label="Workspace source">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bridge.source === 'cloud'}
+              class="sb-tab-control flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62"
+              onclick={() => switchWorkspaceSource('cloud')}>
+              <Cloud class="size-3.5" />
+              <span>Cloud</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bridge.source === 'local'}
+              disabled={!bridge.hasUrl}
+              use:tooltip={!bridge.hasUrl
+                ? { content: 'Paste a bridge URL in Settings → Local files first.' }
+                : undefined}
+              class="sb-tab-control flex h-8 items-center justify-center gap-1.5 rounded-md text-sidebar-foreground/62 disabled:cursor-not-allowed disabled:opacity-55 {bridge.hasUrl
+                ? 'cursor-pointer'
+                : ''}"
+              onclick={() => switchWorkspaceSource('local')}>
+              <HardDrive class="size-3.5" />
+              <span>Local</span>
+            </button>
+          </div>
+        </Sidebar.GroupContent>
+      </Sidebar.Group>
+
       <!-- New file + quota -->
       <Sidebar.Group>
         <Sidebar.GroupContent>

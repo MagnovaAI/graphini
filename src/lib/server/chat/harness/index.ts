@@ -19,6 +19,7 @@ import {
 } from './context-window';
 import { formatStreamError } from './error-format';
 import { runChatStream } from './loop';
+import { settingsManager } from '$lib/server/state-manager';
 import { getPersistedDisabledTools } from './settings';
 import { buildLeanSystemPrompt } from './system-prompt';
 import { trackUsage } from './usage';
@@ -433,10 +434,15 @@ export async function runChatTurn(request: Request): Promise<Response> {
   const allTools = filteredTools as typeof toolCatalog;
   const exposedToolNames = new Set(Object.keys(allTools));
 
+  const workspaceSource = await settingsManager
+    .get<'cloud' | 'local'>(userId, 'workspace', 'source', 'cloud')
+    .catch(() => 'cloud' as const);
+
   const systemPrompt = buildLeanSystemPrompt(workspaceContext, exposedToolNames, {
     includeFullToolCatalog: true,
     mermaidSourceIsEmpty: activeEngine === 'mermaid' && !activeSource.trim(),
-    personalization
+    personalization,
+    workspaceSource: workspaceSource === 'local' ? 'local' : 'cloud'
   });
 
   const contextWindow = contextWindowForModel(enabledModel);

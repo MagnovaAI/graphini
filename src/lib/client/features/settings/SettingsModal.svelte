@@ -13,6 +13,7 @@
     toolsStore
   } from '$lib/client/stores';
   import { authStore } from '$lib/client/stores/auth.svelte';
+  import { localBridgeStore } from '$lib/client/stores/localBridge.svelte';
   import { loadModelsFromAPI } from '$lib/client/stores/modelStore.svelte';
   import { modelsStore, type AvailableModel } from '$lib/client/stores/models.svelte';
   import { uiSettings, type UISettings } from '$lib/client/stores/settings.svelte';
@@ -25,6 +26,7 @@
     Check,
     Download,
     EyeOff,
+    HardDrive,
     KeyRound,
     Mic,
     Monitor,
@@ -56,7 +58,14 @@
 
   let { open = $bindable(false), onOpenChange }: Props = $props();
 
-  type SettingsTab = 'account' | 'appearance' | 'keys' | 'tools' | 'rules' | 'admin';
+  type SettingsTab =
+    | 'account'
+    | 'appearance'
+    | 'keys'
+    | 'tools'
+    | 'rules'
+    | 'localBridge'
+    | 'admin';
   type ModelSearchProvider = 'openrouter' | 'openai' | 'anthropic';
   type KeySection = 'models' | 'media' | 'search';
   type KeyField =
@@ -107,6 +116,7 @@
     { icon: KeyRound, id: 'keys' as const, label: 'API Keys' },
     { icon: Wrench, id: 'tools' as const, label: 'Tools' },
     { icon: ShieldCheck, id: 'rules' as const, label: 'Rules & Skills' },
+    { icon: HardDrive, id: 'localBridge' as const, label: 'Local files' },
     { icon: ShieldCheck, id: 'admin' as const, label: 'Models' }
   ]);
 
@@ -129,6 +139,37 @@
   });
   let keyMessage = $state<{ kind: 'error' | 'notice'; text: string } | null>(null);
   let keySaving = $state(false);
+
+  let bridgeUrlInput = $state('');
+  let bridgeMessage = $state<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const bridge = $derived(localBridgeStore.state);
+  $effect(() => {
+    if (open && activeTab === 'localBridge') {
+      void localBridgeStore.load();
+    }
+  });
+
+  async function saveBridgeUrl() {
+    const url = bridgeUrlInput.trim();
+    if (!url) {
+      bridgeMessage = { kind: 'error', text: 'Paste the URL printed by graphini-bridge.' };
+      return;
+    }
+    bridgeMessage = null;
+    const result = await localBridgeStore.save(url);
+    if (result.ok) {
+      bridgeUrlInput = '';
+      bridgeMessage = { kind: 'success', text: 'Connected — bridge is reachable.' };
+    } else {
+      bridgeMessage = { kind: 'error', text: result.error ?? 'Save failed.' };
+    }
+  }
+
+  async function disconnectBridge() {
+    await localBridgeStore.clear();
+    bridgeUrlInput = '';
+    bridgeMessage = null;
+  }
 
   let toolsConfig = $derived(toolsStore.value);
   let personalization = $derived(personalizationSettings.value);
@@ -1365,6 +1406,105 @@ Write the full skill instructions here.
                     {/if}
                   </div>
                 </div>
+              </div>
+            </div>
+          {:else if activeTab === 'localBridge'}
+            <div class="max-w-3xl space-y-4">
+              <div class="settings-panel rounded-md border border-border p-4">
+                <div class="mb-3 flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-[13px] font-medium">graphini-bridge connection</div>
+                    <p class="mt-1 text-[13px] leading-5 text-muted-foreground">
+                      Run <code class="rounded bg-secondary px-1 py-0.5">graphini-bridge</code> on
+                      your machine, then paste the URL it prints below. The chat agent will read
+                      from <code class="rounded bg-secondary px-1 py-0.5">~/Workspace</code> on your
+                      laptop instead of cloud files when Local is selected. Read-only — writes always
+                      go to your cloud workspace.
+                    </p>
+                  </div>
+                  {#if bridge.hasUrl}
+                    <Badge variant="outline" class="shrink-0 gap-1 text-[12px] text-success">
+                      <Check class="size-3" /> Connected
+                    </Badge>
+                  {/if}
+                </div>
+
+                {#if bridge.hasUrl}
+                  <div
+                    class="flex flex-col gap-2 rounded-md border border-border bg-secondary/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="min-w-0 text-[13px]">
+                      <div class="font-medium">Bridge URL is saved.</div>
+                      <div class="text-muted-foreground">
+                        The token stays encrypted at rest. The URL is never returned to the browser
+                        — disconnect and re-paste to change it.
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      class="settings-secondary-button shrink-0 gap-1"
+                      disabled={bridge.saving}
+                      onclick={disconnectBridge}>
+                      <Trash2 class="size-3.5" /> Disconnect
+                    </Button>
+                  </div>
+                {:else}
+                  <div class="space-y-2">
+                    <label for="bridge-url-input" class="block text-[13px] font-medium">
+                      Bridge URL
+                    </label>
+                    <Input
+                      id="bridge-url-input"
+                      type="url"
+                      placeholder="https://abc-123.trycloudflare.com/mcp?token=..."
+                      bind:value={bridgeUrlInput}
+                      class="h-9 text-[13px]"
+                      disabled={bridge.saving} />
+                    <div class="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        class="gap-1"
+                        disabled={bridge.saving || bridgeUrlInput.trim().length === 0}
+                        onclick={saveBridgeUrl}>
+                        {#if bridge.saving}
+                          <RefreshCw class="size-3.5 animate-spin" /> Testing…
+                        {:else}
+                          <Save class="size-3.5" /> Test &amp; save
+                        {/if}
+                      </Button>
+                    </div>
+                  </div>
+                {/if}
+
+                {#if bridgeMessage}
+                  <div
+                    class="mt-3 text-[13px] {bridgeMessage.kind === 'error'
+                      ? 'text-destructive'
+                      : 'text-success'}">
+                    {bridgeMessage.text}
+                  </div>
+                {/if}
+              </div>
+
+              <div class="settings-panel rounded-md border border-border p-4">
+                <div class="text-[13px] font-medium">How to run it</div>
+                <ol class="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-muted-foreground">
+                  <li>
+                    Install once: <code class="rounded bg-secondary px-1 py-0.5"
+                      >brew install cloudflared</code>
+                    and <code class="rounded bg-secondary px-1 py-0.5">uv pip install -e .</code> inside
+                    the graphini-bridge repo.
+                  </li>
+                  <li>
+                    Start it: <code class="rounded bg-secondary px-1 py-0.5"
+                      >graphini-bridge --root ~/Workspace</code>
+                  </li>
+                  <li>Paste the printed URL above and hit Test &amp; save.</li>
+                  <li>
+                    Flip the workspace toggle in the sidebar (Cloud / Local) to start reading from
+                    your machine.
+                  </li>
+                </ol>
               </div>
             </div>
           {:else if activeTab === 'admin'}

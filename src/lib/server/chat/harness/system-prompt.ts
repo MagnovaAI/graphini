@@ -98,6 +98,7 @@ export function buildLeanSystemPrompt(
     includeFullToolCatalog?: boolean;
     mermaidSourceIsEmpty?: boolean;
     personalization?: PersonalizationContext;
+    workspaceSource?: 'cloud' | 'local';
   } = {}
 ): string {
   const today = new Date().toLocaleDateString('en-US', {
@@ -180,9 +181,13 @@ export function buildLeanSystemPrompt(
 
   if (hasFileSystem) {
     const isEmpty = options.mermaidSourceIsEmpty;
+    const localOnly = options.workspaceSource === 'local';
     sections.push(
       [
         'Workspace file rules:',
+        localOnly
+          ? '- LOCAL WORKSPACE IS ACTIVE: `fileSystem` reads from the user\'s laptop via the graphini-bridge. Only `list`, `read`, and `grep` work. Any `create`/`edit`/`delete`/`moveFolder`/`deleteFolder`/`grep_replace` call will be rejected with a "switch to Cloud workspace to edit" error — do not attempt them. If the user asks to modify a file, tell them to flip the Cloud/Local toggle in the sidebar first.'
+          : '',
         '- Operations: list, read, create, edit, delete, moveFolder, deleteFolder.',
         '- These are operation values for the single `fileSystem` tool, not separate tool names. Never call top-level tools named `read`, `create`, `edit`, `delete`, `list`, `moveFolder`, or `deleteFolder`.',
         '- For line-range edits, use `{ "operation": "edit", "path": "...", "startLine": n, "endLine": n, "content": "..." }`.',
