@@ -739,6 +739,16 @@
   }
 
   let hoveredMessageIndex = $state<number | null>(null);
+  let expandedUserMessages = $state<Record<number, boolean>>({});
+
+  const USER_MSG_COLLAPSE_THRESHOLD = 600;
+
+  function toggleUserMessageExpanded(idx: number) {
+    expandedUserMessages = {
+      ...expandedUserMessages,
+      [idx]: !expandedUserMessages[idx]
+    };
+  }
 
   // Per-message artifact tracking with unique IDs
   // Artifacts stored by ID for quick lookup
@@ -3453,9 +3463,35 @@
                       </div>
                     </div>
                   {:else}
+                    {@const msgText = String(message.content ?? '')}
+                    {@const isLongMsg = msgText.length > USER_MSG_COLLAPSE_THRESHOLD}
+                    {@const isExpanded = !!expandedUserMessages[i]}
                     <div
-                      class="inline-block rounded-lg rounded-tr-sm bg-muted px-3 py-2 text-[13px] leading-relaxed text-foreground">
-                      {message.content}
+                      class="relative inline-block max-w-full overflow-hidden rounded-lg rounded-tr-sm bg-muted text-[13px] leading-relaxed text-foreground">
+                      <div
+                        class="overflow-y-auto px-3 py-2 break-words whitespace-pre-wrap"
+                        style={isLongMsg && !isExpanded
+                          ? 'max-height: 144px;'
+                          : isLongMsg
+                            ? 'max-height: min(60vh, 480px);'
+                            : ''}>
+                        {msgText}
+                      </div>
+                      {#if isLongMsg}
+                        <button
+                          type="button"
+                          onclick={() => toggleUserMessageExpanded(i)}
+                          class="flex w-full items-center justify-center gap-1 border-t border-border/40 bg-muted py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                          aria-expanded={isExpanded}>
+                          {#if isExpanded}
+                            <ChevronUp class="size-3" />
+                            Show less
+                          {:else}
+                            <ChevronDown class="size-3" />
+                            Show full message
+                          {/if}
+                        </button>
+                      {/if}
                     </div>
                   {/if}
                 {/if}
@@ -3463,13 +3499,13 @@
             </div>
           {:else if message.role === 'assistant'}
             <!-- Assistant Response (left-aligned) -->
-            <div class="cv-auto">
-              <div class="max-w-[95%] space-y-1.5">
+            <div class="cv-auto min-w-0">
+              <div class="max-w-[95%] min-w-0 space-y-1.5">
                 {#if messageParts[i] && messageParts[i].length > 0}
                   {#each chainDisplayParts(messageParts[i]) as part, pi (contentPartKey(part, pi))}
                     {#if part.type === 'text' && part.text}
-                      <div class="px-2 text-[13px] leading-relaxed text-foreground/90">
-                        <Response content={part.text} />
+                      <div class="min-w-0 px-2 text-[13px] leading-relaxed text-foreground/90">
+                        <Response class="min-w-0" content={part.text} />
                       </div>
                     {:else if part.type === 'thinking'}
                       <div class="flex items-center px-2 py-1 text-[13px]" aria-live="polite">
