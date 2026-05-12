@@ -97,12 +97,25 @@ export function deriveToolSubtitle(toolName: string, output: ToolOutput): string
     if (output.error) return String(output.error).slice(0, 80);
   }
   if (toolName === 'autoStyler' || toolName === 'styleSearch') {
+    // Compose a self-explanatory phrase so the chip reads naturally next
+    // to other rows. The raw `themeMode`/`palette` values would say things
+    // like "dark · vibrant" which is ambiguous in a light-mode UI — qualify
+    // them with "theme" / "palette" and merge into a single descriptor when
+    // both are present ("Vibrant dark theme · 15 nodes").
+    const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    const themeMode = output.themeMode ? String(output.themeMode).toLowerCase() : '';
+    const palette = output.palette ? String(output.palette).toLowerCase() : '';
     const parts: string[] = [];
-    if (output.themeMode) parts.push(String(output.themeMode));
-    if (output.palette) parts.push(String(output.palette));
+    if (themeMode && palette) {
+      parts.push(`${cap(palette)} ${themeMode} theme`);
+    } else if (themeMode) {
+      parts.push(`${cap(themeMode)} theme`);
+    } else if (palette) {
+      parts.push(`${cap(palette)} palette`);
+    }
     if (output.nodesStyled !== undefined) {
       const n = output.nodesStyled as number;
-      parts.push(`${n} node${n !== 1 ? 's' : ''}`);
+      parts.push(`${n} node${n !== 1 ? 's' : ''} styled`);
     }
     return parts.join(' · ') || (output.summary as string) || '';
   }
