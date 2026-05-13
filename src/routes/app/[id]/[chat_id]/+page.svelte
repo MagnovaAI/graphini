@@ -948,6 +948,12 @@
   });
 
   $effect(() => {
+    if (!hasMandatoryFileViewer && panels.panels.canvas.visible) {
+      panels.hide('canvas');
+    }
+  });
+
+  $effect(() => {
     // If the user closes both Chat and the viewer while a file is open, we
     // re-open the kind-appropriate viewer so the workspace never goes blank.
     if (hasMandatoryFileViewer && !panels.panels.chat.visible && panels.currentViewer() === null) {

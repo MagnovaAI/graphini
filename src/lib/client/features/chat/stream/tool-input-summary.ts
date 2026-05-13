@@ -80,9 +80,7 @@ export interface ToolInputDisplay {
 export function deriveToolInputDisplay(toolName: string, inputJson: string): ToolInputDisplay {
   if (toolName === 'autoStyler' || toolName === 'styleSearch') {
     const palette = matchJsonString(inputJson, 'palette');
-    const themeMode = matchJsonString(inputJson, 'themeMode');
-    const subtitle = [themeMode, palette].filter(Boolean).join(' ');
-    return subtitle ? { subtitle } : {};
+    return palette ? { subtitle: palette } : {};
   }
   if (toolName === 'iconSearch') {
     const query = matchJsonString(inputJson, 'query');
